@@ -1,0 +1,476 @@
+{
+  "$schema": "./permission-catalog.schema.json",
+  "version": 1,
+  "claude": {
+    "presets": [
+      {
+        "id": "clear",
+        "label": "🧹 清空",
+        "description": "所有目录条目置为关闭，自定义条目不动。",
+        "selections": {}
+      },
+      {
+        "id": "readonly",
+        "label": "🔒 只读",
+        "description": "允许 Read/Glob/Grep/TodoWrite；拒绝 rm 等破坏性命令。",
+        "selections": {
+          "tool-read": "allow",
+          "tool-glob": "allow",
+          "tool-grep": "allow",
+          "tool-todowrite": "allow",
+          "git-status": "allow",
+          "git-log": "allow",
+          "git-diff": "allow",
+          "git-branch": "allow",
+          "git-show": "allow",
+          "fs-ls": "allow",
+          "fs-cat": "allow",
+          "fs-head": "allow",
+          "fs-tail": "allow",
+          "fs-pwd": "allow",
+          "fs-which": "allow",
+          "fs-stat": "allow",
+          "fs-tree": "allow",
+          "fs-find": "allow",
+          "fs-rm": "deny",
+          "tool-write": "deny"
+        }
+      },
+      {
+        "id": "dev-conservative",
+        "label": "💻 开发 (保守)",
+        "description": "只读集合 + Edit/Write + pnpm/npm/node/npx + git 只读。破坏性 git 仍需确认。",
+        "selections": {
+          "tool-read": "allow",
+          "tool-edit": "allow",
+          "tool-write": "allow",
+          "tool-multiedit": "allow",
+          "tool-glob": "allow",
+          "tool-grep": "allow",
+          "tool-todowrite": "allow",
+          "tool-task": "allow",
+          "git-status": "allow",
+          "git-log": "allow",
+          "git-diff": "allow",
+          "git-branch": "allow",
+          "git-show": "allow",
+          "git-add": "allow",
+          "git-commit": "ask",
+          "git-push": "ask",
+          "git-reset": "ask",
+          "git-checkout": "ask",
+          "pkg-pnpm": "allow",
+          "pkg-npm": "allow",
+          "pkg-npx": "allow",
+          "rt-node": "allow",
+          "rt-tsx": "allow",
+          "fs-ls": "allow",
+          "fs-cat": "allow",
+          "fs-head": "allow",
+          "fs-tail": "allow",
+          "fs-pwd": "allow",
+          "fs-mkdir": "allow",
+          "fs-cp": "allow",
+          "fs-mv": "allow",
+          "fs-find": "allow",
+          "fs-which": "allow",
+          "fs-stat": "allow",
+          "fs-tree": "allow",
+          "fs-rm": "ask"
+        }
+      },
+      {
+        "id": "dev-full",
+        "label": "🛠 开发 (完整)",
+        "description": "上一档 + 容器/curl/webfetch 常见域 + 破坏性 git 放行。",
+        "selections": {
+          "tool-read": "allow",
+          "tool-edit": "allow",
+          "tool-write": "allow",
+          "tool-multiedit": "allow",
+          "tool-glob": "allow",
+          "tool-grep": "allow",
+          "tool-todowrite": "allow",
+          "tool-task": "allow",
+          "tool-websearch": "allow",
+          "tool-bashoutput": "allow",
+          "git-status": "allow",
+          "git-log": "allow",
+          "git-diff": "allow",
+          "git-branch": "allow",
+          "git-show": "allow",
+          "git-add": "allow",
+          "git-commit": "allow",
+          "git-push": "allow",
+          "git-pull": "allow",
+          "git-fetch": "allow",
+          "git-stash": "allow",
+          "git-reset": "ask",
+          "git-checkout": "allow",
+          "git-merge": "allow",
+          "git-rebase": "ask",
+          "git-tag": "allow",
+          "pkg-pnpm": "allow",
+          "pkg-npm": "allow",
+          "pkg-yarn": "allow",
+          "pkg-npx": "allow",
+          "pkg-bun": "allow",
+          "rt-node": "allow",
+          "rt-tsx": "allow",
+          "rt-tsnode": "allow",
+          "rt-python": "allow",
+          "rt-pip": "allow",
+          "rt-uv": "allow",
+          "fs-ls": "allow",
+          "fs-cat": "allow",
+          "fs-head": "allow",
+          "fs-tail": "allow",
+          "fs-pwd": "allow",
+          "fs-mkdir": "allow",
+          "fs-cp": "allow",
+          "fs-mv": "allow",
+          "fs-find": "allow",
+          "fs-which": "allow",
+          "fs-stat": "allow",
+          "fs-du": "allow",
+          "fs-tree": "allow",
+          "fs-wc": "allow",
+          "fs-rm": "ask",
+          "net-curl": "allow",
+          "net-wget": "allow",
+          "proc-ps": "allow",
+          "proc-tasklist": "allow",
+          "b-make": "allow",
+          "b-cargo": "allow",
+          "b-go": "allow",
+          "c-docker": "allow",
+          "c-compose": "allow",
+          "web-github": "allow",
+          "web-ghraw": "allow",
+          "web-npm": "allow",
+          "web-pypi": "allow",
+          "web-anthropic": "allow",
+          "web-so": "allow",
+          "web-gitlab": "allow"
+        }
+      },
+      {
+        "id": "yolo",
+        "label": "⚡ 全权 (危险)",
+        "description": "所有目录条目 allow；慎用。",
+        "applyAllAllow": true,
+        "selections": {}
+      }
+    ],
+    "groups": [
+      {
+        "id": "tools",
+        "label": "整工具",
+        "description": "整个工具级别的 allow / ask / deny。细粒度模式请用下方分组。",
+        "items": [
+          { "id": "tool-bash",          "label": "Bash (任意命令)",          "value": "Bash" },
+          { "id": "tool-read",          "label": "Read",                     "value": "Read" },
+          { "id": "tool-edit",          "label": "Edit",                     "value": "Edit" },
+          { "id": "tool-write",         "label": "Write",                    "value": "Write" },
+          { "id": "tool-multiedit",     "label": "MultiEdit",                "value": "MultiEdit" },
+          { "id": "tool-glob",          "label": "Glob",                     "value": "Glob" },
+          { "id": "tool-grep",          "label": "Grep",                     "value": "Grep" },
+          { "id": "tool-webfetch",      "label": "WebFetch (任意域)",         "value": "WebFetch" },
+          { "id": "tool-websearch",     "label": "WebSearch",                "value": "WebSearch" },
+          { "id": "tool-notebookedit",  "label": "NotebookEdit",             "value": "NotebookEdit" },
+          { "id": "tool-task",          "label": "Task (子 agent)",          "value": "Task" },
+          { "id": "tool-todowrite",     "label": "TodoWrite",                "value": "TodoWrite" },
+          { "id": "tool-slashcommand",  "label": "SlashCommand",             "value": "SlashCommand" },
+          { "id": "tool-bashoutput",    "label": "BashOutput",               "value": "BashOutput" },
+          { "id": "tool-killshell",     "label": "KillShell",                "value": "KillShell" },
+          { "id": "tool-exitplanmode",  "label": "ExitPlanMode",             "value": "ExitPlanMode" }
+        ]
+      },
+      {
+        "id": "git",
+        "label": "Git 子命令",
+        "items": [
+          { "id": "git-status",  "label": "git status",  "value": "Bash(git status)" },
+          { "id": "git-log",     "label": "git log",     "value": "Bash(git log:*)" },
+          { "id": "git-diff",    "label": "git diff",    "value": "Bash(git diff:*)" },
+          { "id": "git-branch",  "label": "git branch",  "value": "Bash(git branch:*)" },
+          { "id": "git-show",    "label": "git show",    "value": "Bash(git show:*)" },
+          { "id": "git-add",     "label": "git add",     "value": "Bash(git add:*)" },
+          { "id": "git-commit",  "label": "git commit",  "value": "Bash(git commit:*)" },
+          { "id": "git-push",    "label": "git push",    "value": "Bash(git push:*)" },
+          { "id": "git-pull",    "label": "git pull",    "value": "Bash(git pull:*)" },
+          { "id": "git-fetch",   "label": "git fetch",   "value": "Bash(git fetch:*)" },
+          { "id": "git-stash",   "label": "git stash",   "value": "Bash(git stash:*)" },
+          { "id": "git-reset",   "label": "git reset",   "value": "Bash(git reset:*)" },
+          { "id": "git-checkout","label": "git checkout","value": "Bash(git checkout:*)" },
+          { "id": "git-merge",   "label": "git merge",   "value": "Bash(git merge:*)" },
+          { "id": "git-rebase",  "label": "git rebase",  "value": "Bash(git rebase:*)" },
+          { "id": "git-tag",     "label": "git tag",     "value": "Bash(git tag:*)" }
+        ]
+      },
+      {
+        "id": "pkg",
+        "label": "包管理",
+        "items": [
+          { "id": "pkg-pnpm", "label": "pnpm *", "value": "Bash(pnpm:*)" },
+          { "id": "pkg-npm",  "label": "npm *",  "value": "Bash(npm:*)" },
+          { "id": "pkg-yarn", "label": "yarn *", "value": "Bash(yarn:*)" },
+          { "id": "pkg-bun",  "label": "bun *",  "value": "Bash(bun:*)" },
+          { "id": "pkg-npx",  "label": "npx *",  "value": "Bash(npx:*)" }
+        ]
+      },
+      {
+        "id": "runtime",
+        "label": "运行时",
+        "items": [
+          { "id": "rt-node",   "label": "node *",   "value": "Bash(node:*)" },
+          { "id": "rt-tsx",    "label": "tsx *",    "value": "Bash(tsx:*)" },
+          { "id": "rt-tsnode", "label": "ts-node *","value": "Bash(ts-node:*)" },
+          { "id": "rt-python", "label": "python *", "value": "Bash(python:*)" },
+          { "id": "rt-pip",    "label": "pip *",    "value": "Bash(pip:*)" },
+          { "id": "rt-uv",     "label": "uv *",     "value": "Bash(uv:*)" }
+        ]
+      },
+      {
+        "id": "fs-shell",
+        "label": "文件 Shell",
+        "items": [
+          { "id": "fs-ls",     "label": "ls",     "value": "Bash(ls:*)" },
+          { "id": "fs-cat",    "label": "cat",    "value": "Bash(cat:*)" },
+          { "id": "fs-head",   "label": "head",   "value": "Bash(head:*)" },
+          { "id": "fs-tail",   "label": "tail",   "value": "Bash(tail:*)" },
+          { "id": "fs-pwd",    "label": "pwd",    "value": "Bash(pwd)" },
+          { "id": "fs-mkdir",  "label": "mkdir",  "value": "Bash(mkdir:*)" },
+          { "id": "fs-rm",     "label": "rm",     "value": "Bash(rm:*)" },
+          { "id": "fs-cp",     "label": "cp",     "value": "Bash(cp:*)" },
+          { "id": "fs-mv",     "label": "mv",     "value": "Bash(mv:*)" },
+          { "id": "fs-find",   "label": "find",   "value": "Bash(find:*)" },
+          { "id": "fs-which",  "label": "which",  "value": "Bash(which:*)" },
+          { "id": "fs-stat",   "label": "stat",   "value": "Bash(stat:*)" },
+          { "id": "fs-du",     "label": "du",     "value": "Bash(du:*)" },
+          { "id": "fs-tree",   "label": "tree",   "value": "Bash(tree:*)" },
+          { "id": "fs-wc",     "label": "wc",     "value": "Bash(wc:*)" }
+        ]
+      },
+      {
+        "id": "net-shell",
+        "label": "网络 Shell",
+        "items": [
+          { "id": "net-curl", "label": "curl *", "value": "Bash(curl:*)" },
+          { "id": "net-wget", "label": "wget *", "value": "Bash(wget:*)" },
+          { "id": "net-ping", "label": "ping *", "value": "Bash(ping:*)" }
+        ]
+      },
+      {
+        "id": "proc",
+        "label": "进程",
+        "items": [
+          { "id": "proc-tasklist", "label": "tasklist (Win)", "value": "Bash(tasklist:*)" },
+          { "id": "proc-taskkill", "label": "taskkill (Win)", "value": "Bash(taskkill:*)" },
+          { "id": "proc-ps",       "label": "ps",             "value": "Bash(ps:*)" },
+          { "id": "proc-kill",     "label": "kill",           "value": "Bash(kill:*)" },
+          { "id": "proc-killall",  "label": "killall",        "value": "Bash(killall:*)" }
+        ]
+      },
+      {
+        "id": "build",
+        "label": "构建",
+        "items": [
+          { "id": "b-make",   "label": "make *",   "value": "Bash(make:*)" },
+          { "id": "b-cargo",  "label": "cargo *",  "value": "Bash(cargo:*)" },
+          { "id": "b-go",     "label": "go *",     "value": "Bash(go:*)" },
+          { "id": "b-cmake",  "label": "cmake *",  "value": "Bash(cmake:*)" },
+          { "id": "b-mvn",    "label": "mvn *",    "value": "Bash(mvn:*)" },
+          { "id": "b-gradle", "label": "gradle *", "value": "Bash(gradle:*)" }
+        ]
+      },
+      {
+        "id": "container",
+        "label": "容器",
+        "items": [
+          { "id": "c-docker",  "label": "docker *",          "value": "Bash(docker:*)" },
+          { "id": "c-compose", "label": "docker-compose *",  "value": "Bash(docker-compose:*)" },
+          { "id": "c-kubectl", "label": "kubectl *",         "value": "Bash(kubectl:*)" }
+        ]
+      },
+      {
+        "id": "sys-win",
+        "label": "Windows 系统",
+        "items": [
+          { "id": "w-powershell",  "label": "powershell *", "value": "Bash(powershell:*)" },
+          { "id": "w-wmic",        "label": "wmic *",       "value": "Bash(wmic:*)" },
+          { "id": "w-systeminfo",  "label": "systeminfo",   "value": "Bash(systeminfo)" },
+          { "id": "w-netstat",     "label": "netstat",      "value": "Bash(netstat:*)" },
+          { "id": "w-ipconfig",    "label": "ipconfig",     "value": "Bash(ipconfig:*)" }
+        ]
+      },
+      {
+        "id": "sys-unix",
+        "label": "Unix 系统",
+        "items": [
+          { "id": "u-uname",  "label": "uname",  "value": "Bash(uname:*)" },
+          { "id": "u-whoami", "label": "whoami", "value": "Bash(whoami)" },
+          { "id": "u-env",    "label": "env",    "value": "Bash(env)" },
+          { "id": "u-df",     "label": "df",     "value": "Bash(df:*)" },
+          { "id": "u-free",   "label": "free",   "value": "Bash(free:*)" },
+          { "id": "u-top",    "label": "top",    "value": "Bash(top:*)" }
+        ]
+      },
+      {
+        "id": "web-domains",
+        "label": "WebFetch 域白名单",
+        "description": "按域名精确允许 WebFetch。勾选 deny 可阻止对应域。",
+        "items": [
+          { "id": "web-github",     "label": "github.com",              "value": "WebFetch(domain:github.com)" },
+          { "id": "web-ghraw",      "label": "raw.githubusercontent.com","value": "WebFetch(domain:raw.githubusercontent.com)" },
+          { "id": "web-npm",        "label": "npmjs.com",               "value": "WebFetch(domain:npmjs.com)" },
+          { "id": "web-pypi",       "label": "pypi.org",                "value": "WebFetch(domain:pypi.org)" },
+          { "id": "web-anthropic",  "label": "docs.anthropic.com",      "value": "WebFetch(domain:docs.anthropic.com)" },
+          { "id": "web-so",         "label": "stackoverflow.com",       "value": "WebFetch(domain:stackoverflow.com)" },
+          { "id": "web-gitlab",     "label": "gitlab.com",              "value": "WebFetch(domain:gitlab.com)" },
+          { "id": "web-medium",     "label": "medium.com",              "value": "WebFetch(domain:medium.com)" },
+          { "id": "web-devto",      "label": "dev.to",                  "value": "WebFetch(domain:dev.to)" }
+        ]
+      }
+    ]
+  },
+  "codex": {
+    "presets": [
+      {
+        "id": "readonly",
+        "label": "🔒 只读",
+        "description": "沙盒只读，任何改动都需确认。",
+        "values": {
+          "approval_policy": "on-request",
+          "sandbox_mode": "read-only"
+        }
+      },
+      {
+        "id": "workspace",
+        "label": "💻 工作区可写 (无网)",
+        "description": "允许改动项目目录，网络关闭。",
+        "values": {
+          "approval_policy": "on-request",
+          "sandbox_mode": "workspace-write",
+          "sandbox_workspace_write.network_access": false
+        }
+      },
+      {
+        "id": "workspace-net",
+        "label": "🌐 工作区可写 + 网络",
+        "description": "允许改动项目目录，允许网络。",
+        "values": {
+          "approval_policy": "on-request",
+          "sandbox_mode": "workspace-write",
+          "sandbox_workspace_write.network_access": true
+        }
+      },
+      {
+        "id": "yolo",
+        "label": "⚡ 不受限 (危险)",
+        "description": "沙盒完全关闭，永不询问。慎用。",
+        "values": {
+          "approval_policy": "never",
+          "sandbox_mode": "danger-full-access"
+        }
+      }
+    ],
+    "fields": [
+      {
+        "id": "approval_policy",
+        "label": "审批策略 (approval_policy)",
+        "kind": "single",
+        "path": "approval_policy",
+        "options": [
+          { "value": "never",       "label": "never — 永不询问" },
+          { "value": "on-failure",  "label": "on-failure — 失败时询问" },
+          { "value": "on-request",  "label": "on-request — 按需询问 (默认推荐)" },
+          { "value": "untrusted",   "label": "untrusted — 所有危险操作都询问" }
+        ]
+      },
+      {
+        "id": "sandbox_mode",
+        "label": "沙盒模式 (sandbox_mode)",
+        "kind": "single",
+        "path": "sandbox_mode",
+        "options": [
+          { "value": "read-only",            "label": "read-only" },
+          { "value": "workspace-write",      "label": "workspace-write" },
+          { "value": "danger-full-access",   "label": "danger-full-access (不受限)" }
+        ]
+      },
+      {
+        "id": "ws_network",
+        "label": "workspace-write: 允许网络访问",
+        "kind": "bool",
+        "path": "sandbox_workspace_write.network_access"
+      },
+      {
+        "id": "ws_excl_tmp_env",
+        "label": "workspace-write: 排除 $TMPDIR 可写",
+        "kind": "bool",
+        "path": "sandbox_workspace_write.exclude_tmpdir_env_var"
+      },
+      {
+        "id": "ws_excl_slash_tmp",
+        "label": "workspace-write: 排除 /tmp 可写",
+        "kind": "bool",
+        "path": "sandbox_workspace_write.exclude_slash_tmp"
+      },
+      {
+        "id": "ws_writable_roots",
+        "label": "workspace-write: 额外可写目录 (writable_roots)",
+        "kind": "stringList",
+        "path": "sandbox_workspace_write.writable_roots",
+        "placeholder": "一行一个绝对路径"
+      },
+      {
+        "id": "hide_agent_reasoning",
+        "label": "隐藏推理摘要 (hide_agent_reasoning)",
+        "kind": "bool",
+        "path": "hide_agent_reasoning"
+      },
+      {
+        "id": "show_raw_agent_reasoning",
+        "label": "显示原始推理 (show_raw_agent_reasoning)",
+        "kind": "bool",
+        "path": "show_raw_agent_reasoning"
+      },
+      {
+        "id": "reasoning_effort",
+        "label": "推理投入 (model_reasoning_effort)",
+        "kind": "single",
+        "path": "model_reasoning_effort",
+        "options": [
+          { "value": "minimal", "label": "minimal" },
+          { "value": "low",     "label": "low" },
+          { "value": "medium",  "label": "medium" },
+          { "value": "high",    "label": "high" }
+        ]
+      },
+      {
+        "id": "reasoning_summary",
+        "label": "推理摘要 (model_reasoning_summary)",
+        "kind": "single",
+        "path": "model_reasoning_summary",
+        "options": [
+          { "value": "auto",     "label": "auto" },
+          { "value": "concise",  "label": "concise" },
+          { "value": "detailed", "label": "detailed" },
+          { "value": "none",     "label": "none" }
+        ]
+      },
+      {
+        "id": "verbosity",
+        "label": "模型话痨程度 (model_verbosity)",
+        "kind": "single",
+        "path": "model_verbosity",
+        "options": [
+          { "value": "low",    "label": "low" },
+          { "value": "medium", "label": "medium" },
+          { "value": "high",   "label": "high" }
+        ]
+      }
+    ]
+  }
+}

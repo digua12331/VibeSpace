@@ -1,0 +1,159 @@
+import Fastify from "fastify";
+import fastifyCors from "@fastify/cors";
+import fastifyWebsocket from "@fastify/websocket";
+import {
+  closeDb,
+  endSession,
+  getDb,
+  getDbPath,
+  getProjectsJsonPath,
+  getSession,
+  listSessions,
+  updateSessionStatus,
+  type Agent as SessionRowAgent,
+  type SessionStatus,
+} from "./db.js";
+import { ptyManager } from "./pty-manager.js";
+import { statusManager } from "./status.js";
+import { CodexStatusDetector } from "./codex-status.js";
+import { registerWsHub, SERVER_VERSION } from "./ws-hub.js";
+import { registerHealthRoutes } from "./routes/health.js";
+import { registerProjectRoutes } from "./routes/projects.js";
+import { registerSessionRoutes } from "./routes/sessions.js";
+import { registerHookRoutes } from "./routes/hooks.js";
+import { registerCliConfigRoutes } from "./routes/cli-configs.js";
+import { registerCliInstallerRoutes } from "./routes/cli-installer.js";
+import { installClaudeHooks } from "./hook-installer.js";
+
+const PORT = Number(process.env.AIMON_PORT || 8787);
+const HOST = "127.0.0.1";
+
+async function main(): Promise<void> {
+  getDb();
+
+  // Reap orphans: any session left with ended_at = null from a previous boot
+  // can never come back to life (its PTY died with the parent). Mark them
+  // stopped so the front-end's "alive" filter is meaningful again.
+  try {
+    let reaped = 0;
+    for (const s of listSessions()) {
+      if (s.endedAt == null) {
+        endSession(s.id, "stopped", null);
+        reaped += 1;
+      }
+    }
+    if (reaped > 0) console.log(`aimon: reaped ${reaped} orphan session(s) from previous run`);
+  } catch (err) {
+    console.warn("aimon: orphan reap failed:", (err as Error).message);
+  }
+
+  try {
+    const r = installClaudeHooks();
+    if (r.status === "failed") {
+      console.warn(`aimon hook install: WARN ${r.error ?? "unknown"} (path=${r.settingsPath})`);
+    } else {
+      console.log(
+        `aimon hook install: ${r.status} (path=${r.settingsPath}, changed=[${r.changed.join(",")}])`,
+      );
+    }
+  } catch (err) {
+    console.warn("aimon hook install: WARN", (err as Error).message);
+  }
+
+  const app = Fastify({ logger: { level: "info" } });
+
+  await app.register(fastifyCors, {
+    origin: ["http://127.0.0.1:8788", "http://localhost:8788"],
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  });
+  await app.register(fastifyWebsocket);
+
+  // ---- wire PTY events ----
+  // In-process agent cache so the heuristic detector doesn't hit SQLite per chunk.
+  const agentCache = new Map<string, SessionRowAgent>();
+  const codexDetector = new CodexStatusDetector(statusManager, (sid) => {
+    const cached = agentCache.get(sid);
+    if (cached) return cached;
+    const row = getSession(sid);
+    if (row?.agent) {
+      agentCache.set(sid, row.agent);
+      return row.agent;
+    }
+    return undefined;
+  });
+
+  ptyManager.on("output", (sessionId: string, chunk: string) => {
+    statusManager.onData(sessionId, chunk);
+    codexDetector.onData(sessionId, chunk);
+  });
+  ptyManager.on(
+    "exit",
+    (sessionId: string, code: number | null, signal: number | null, wasKilled: boolean) => {
+      codexDetector.onExit(sessionId);
+      agentCache.delete(sessionId);
+      statusManager.onExit(sessionId, code, signal, wasKilled);
+      const status: SessionStatus = wasKilled ? "stopped" : (code === 0 ? "stopped" : "crashed");
+      try {
+        endSession(sessionId, status, code);
+      } catch (err) {
+        app.log.error({ err, sessionId }, "failed to mark session ended");
+      }
+    },
+  );
+
+  // status changes (other than the final exit row, which already wrote ended_at)
+  statusManager.on(
+    "change",
+    (sessionId: string, status: SessionStatus) => {
+      if (status === "stopped" || status === "crashed") return;
+      try {
+        updateSessionStatus(sessionId, status);
+      } catch (err) {
+        app.log.error({ err, sessionId, status }, "failed to update session status");
+      }
+    },
+  );
+
+  // ---- routes & ws ----
+  await registerHealthRoutes(app);
+  await registerProjectRoutes(app);
+  await registerSessionRoutes(app);
+  await registerHookRoutes(app);
+  await registerCliConfigRoutes(app);
+  await registerCliInstallerRoutes(app);
+  registerWsHub(app);
+
+  await app.listen({ port: PORT, host: HOST });
+  console.log(`aimon backend v${SERVER_VERSION} listening on http://${HOST}:${PORT}`);
+  console.log(`aimon db: ${getDbPath()}`);
+  console.log(`aimon projects.json: ${getProjectsJsonPath()}`);
+
+  let shuttingDown = false;
+  const shutdown = async (sig: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.log.info({ sig }, "shutting down");
+    try {
+      for (const s of listSessions()) {
+        if (ptyManager.has(s.id)) {
+          try { endSession(s.id, "stopped", null); } catch { /* ignore */ }
+          ptyManager.kill(s.id);
+        }
+      }
+      await app.close();
+    } catch (err) {
+      app.log.error({ err }, "error during shutdown");
+    } finally {
+      try { closeDb(); } catch { /* ignore */ }
+      process.exit(0);
+    }
+  };
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+}
+
+main().catch((err) => {
+  console.error("fatal:", err);
+  process.exit(1);
+});

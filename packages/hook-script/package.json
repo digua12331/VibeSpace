@@ -1,0 +1,10 @@
+{
+  "name": "@aimon/hook-script",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "aimon-hook.mjs",
+  "bin": {
+    "aimon-hook": "aimon-hook.mjs"
+  }
+}

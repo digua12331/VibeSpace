@@ -1,0 +1,19 @@
+# Codex CLI 项目级配置（~/.codex/config.toml 会被此覆盖部分键）
+# aimon 的权限面板会读写本文件。新增字段不会被自动删除。
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false
+# writable_roots 可选：绝对路径数组
+# writable_roots = ["C:/tmp/codex-scratch"]
+
+# 以下为行为调优（非权限）
+# hide_agent_reasoning = false
+# show_raw_agent_reasoning = false
+# model_reasoning_effort = "medium"
+# model_reasoning_summary = "auto"
+# model_verbosity = "medium"

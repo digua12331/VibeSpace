@@ -1,0 +1,179 @@
+@import '@xterm/xterm/css/xterm.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+ * Windows 11 — Fluent Design dark theme
+ *
+ * Base surface is a Mica-style neutral; chrome layers (header/sidebar/dialogs)
+ * sit on top at a slightly lighter tone. Typography prioritizes Segoe UI
+ * Variable; accent is the Win11 dark-mode default blue.
+ * ------------------------------------------------------------------------- */
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #202020;
+  color: #ffffff;
+  font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI",
+    system-ui, -apple-system, ui-sans-serif, Roboto, sans-serif;
+  font-feature-settings: "ss01", "calt", "liga";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle Mica-ish vignette on the app body — a very faint gradient that
+ * emulates the warm/cool shift of Win11's Mica material without needing
+ * real background blur (which only works behind transparent windows). */
+body {
+  background-image:
+    radial-gradient(1200px 800px at 0% 0%, rgba(96, 205, 255, 0.04), transparent 60%),
+    radial-gradient(1000px 700px at 100% 100%, rgba(149, 103, 255, 0.04), transparent 60%);
+  background-attachment: fixed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input, button, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input:focus, button:focus, textarea:focus {
+  outline: none;
+}
+
+::placeholder {
+  color: #8a8a8a;
+}
+
+/* ---- Focus ring — Fluent "reveal" style (2px accent outline) -------------- */
+:focus-visible {
+  outline: 2px solid #60cdff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- Win11 scrollbar ------------------------------------------------------
+ * Thin, auto-hide feel, rounded thumb, transparent track. Matches the
+ * "overlay scrollbar" used across WinUI surfaces. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #5a5a5a transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---- xterm host ----------------------------------------------------------- */
+.xterm,
+.xterm .xterm-viewport,
+.xterm .xterm-screen {
+  background-color: #1c1c1c !important;
+}
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.xterm .xterm-selection-layer {
+  opacity: 0.35;
+}
+
+/* ---- react-grid-layout theming (Fluent-style drop target) ----------------- */
+.aimon-layout .react-grid-item.react-grid-placeholder {
+  background: rgba(96, 205, 255, 0.15);
+  border: 1px dashed rgba(96, 205, 255, 0.55);
+  border-radius: 8px;
+  opacity: 1;
+}
+.aimon-layout .react-grid-item > .react-resizable-handle {
+  z-index: 5;
+}
+.aimon-layout .react-grid-item > .react-resizable-handle::after {
+  border-right-color: #6b6b6b;
+  border-bottom-color: #6b6b6b;
+}
+.aimon-layout .react-grid-item.react-draggable-dragging {
+  cursor: grabbing;
+  opacity: 0.9;
+}
+
+/* ---- Fluent helper utilities ---------------------------------------------- */
+
+/* Acrylic: translucent, blurred overlay used on flyouts / context menus. */
+.fluent-acrylic {
+  background-color: rgba(44, 44, 44, 0.78);
+  backdrop-filter: saturate(140%) blur(30px);
+  -webkit-backdrop-filter: saturate(140%) blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Mica: opaque-ish tinted surface used on app chrome. */
+.fluent-mica {
+  background-color: rgba(32, 32, 32, 0.85);
+  backdrop-filter: saturate(150%) blur(60px);
+  -webkit-backdrop-filter: saturate(150%) blur(60px);
+}
+
+/* Reveal border — a 1px top highlight that simulates Fluent's layer stroke. */
+.fluent-card {
+  background-color: #2b2b2b;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 2px 4px rgba(0, 0, 0, 0.14);
+}
+
+/* Nav selection indicator: vertical accent pill on the left side. */
+.fluent-selection-indicator {
+  position: relative;
+}
+.fluent-selection-indicator::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: #60cdff;
+  box-shadow: 0 0 6px rgba(96, 205, 255, 0.35);
+}
+
+/* Fluent button hover/press ripple substitute: background brightens slightly. */
+.fluent-btn {
+  transition:
+    background-color 120ms cubic-bezier(0.1, 0.9, 0.2, 1),
+    border-color 120ms cubic-bezier(0.1, 0.9, 0.2, 1),
+    color 120ms cubic-bezier(0.1, 0.9, 0.2, 1),
+    box-shadow 120ms cubic-bezier(0.1, 0.9, 0.2, 1),
+    transform 120ms cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+.fluent-btn:active {
+  transform: translateY(0.5px);
+  filter: brightness(0.95);
+}

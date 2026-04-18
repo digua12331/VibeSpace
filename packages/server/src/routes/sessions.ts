@@ -1,0 +1,145 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { nanoid } from "nanoid";
+import {
+  BUILTIN_SHELL_AGENTS,
+  createSession,
+  endSession,
+  getProject,
+  getSession,
+  listSessions,
+  listSessionsByProject,
+  updateSessionPid,
+  type Agent,
+  type Session,
+  type SessionStatus,
+} from "../db.js";
+import { ptyManager } from "../pty-manager.js";
+import { statusManager } from "../status.js";
+import { getCliEntry } from "../cli-catalog.js";
+
+const BUILTIN = new Set<string>(BUILTIN_SHELL_AGENTS);
+const CreateSessionSchema = z.object({
+  projectId: z.string().min(1),
+  agent: z
+    .string()
+    .min(1)
+    .refine((id) => BUILTIN.has(id) || !!getCliEntry(id), {
+      message: "unknown agent",
+    }),
+});
+
+const ListQuerySchema = z.object({
+  projectId: z.string().min(1).optional(),
+});
+
+function decorateStatus(s: Session): Session {
+  const live = statusManager.get(s.id);
+  return live ? { ...s, status: live as SessionStatus } : s;
+}
+
+/** Wire shape: snake_case so the web client (and POST response) match. */
+interface WireSession {
+  id: string;
+  projectId: string;
+  agent: Agent;
+  status: SessionStatus;
+  pid: number | null;
+  started_at: number;
+  ended_at: number | null;
+  exit_code: number | null;
+}
+function serialize(s: Session): WireSession {
+  return {
+    id: s.id,
+    projectId: s.projectId,
+    agent: s.agent,
+    status: s.status,
+    pid: s.pid,
+    started_at: s.startedAt,
+    ended_at: s.endedAt,
+    exit_code: s.exitCode,
+  };
+}
+
+export async function registerSessionRoutes(app: FastifyInstance): Promise<void> {
+  app.get("/api/sessions", async (req, reply) => {
+    const parsed = ListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_query", detail: parsed.error.issues });
+    }
+    const { projectId } = parsed.data;
+    const rows = projectId ? listSessionsByProject(projectId) : listSessions();
+    return rows.map(decorateStatus).map(serialize);
+  });
+
+  app.post("/api/sessions", async (req, reply) => {
+    const parsed = CreateSessionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+    }
+    return startSession(parsed.data.projectId, parsed.data.agent, reply);
+  });
+
+  app.delete<{ Params: { id: string } }>(
+    "/api/sessions/:id",
+    async (req, reply) => {
+      const { id } = req.params;
+      const s = getSession(id);
+      if (!s) return reply.code(404).send({ error: "not_found" });
+      if (ptyManager.has(id)) {
+        ptyManager.kill(id);
+      }
+      endSession(id, "stopped", null);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/api/sessions/:id/restart",
+    async (req, reply) => {
+      const { id } = req.params;
+      const old = getSession(id);
+      if (!old) return reply.code(404).send({ error: "not_found" });
+      if (ptyManager.has(id)) {
+        ptyManager.kill(id);
+        endSession(id, "stopped", null);
+      }
+      return startSession(old.projectId, old.agent, reply);
+    },
+  );
+}
+
+async function startSession(
+  projectId: string,
+  agent: Agent,
+  reply: import("fastify").FastifyReply,
+): Promise<unknown> {
+  const proj = getProject(projectId);
+  if (!proj) return reply.code(404).send({ error: "project_not_found" });
+
+  const sessionId = nanoid(16);
+  const created = createSession({
+    id: sessionId,
+    projectId,
+    agent,
+    status: "starting",
+    pid: null,
+  });
+  statusManager.onSpawn(sessionId);
+
+  let pid: number;
+  try {
+    const r = ptyManager.spawn({ sessionId, agent, cwd: proj.path });
+    pid = r.pid;
+  } catch (err) {
+    const msg = (err as Error).message || "spawn failed";
+    endSession(sessionId, "crashed", null);
+    return reply.code(500).send({ error: "spawn_failed", detail: msg });
+  }
+  updateSessionPid(sessionId, pid);
+
+  return reply.code(201).send(
+    serialize({ ...created, pid, status: "starting" as SessionStatus }),
+  );
+}

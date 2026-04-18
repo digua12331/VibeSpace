@@ -1,0 +1,32 @@
+{
+  "name": "aimon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @aimon/server dev",
+    "dev:server": "pnpm --filter @aimon/server dev",
+    "dev:web": "pnpm --filter @aimon/web dev",
+    "dev:all": "pnpm -r --parallel run dev",
+    "build": "pnpm -r build",
+    "smoke:server": "node scripts/server-smoke.mjs",
+    "smoke:web": "node scripts/web-smoke.mjs",
+    "smoke:hooks": "node scripts/hooks-smoke.mjs",
+    "smoke:codex": "node scripts/codex-smoke.mjs",
+    "smoke:persistence": "node scripts/persistence-check.mjs",
+    "smoke:refresh": "node scripts/refresh-smoke.mjs"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@homebridge/node-pty-prebuilt-multiarch",
+      "better-sqlite3"
+    ]
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "项目级 Claude Code 基线配置。通常共享到团队的基础权限放这里；个人/主机差异放 settings.local.json。",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "TodoWrite"
+    ],
+    "ask": [],
+    "deny": []
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "_comment": "个人/主机本地覆盖。通常不提交到 VCS。aimon 的权限面板会读写这个文件。",
+  "permissions": {
+    "allow": [],
+    "ask": [],
+    "deny": []
+  }
+}

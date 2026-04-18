@@ -1,0 +1,27 @@
+{
+  "name": "@aimon/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^9.1.1",
+    "@fastify/websocket": "^11.2.0",
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "better-sqlite3": "^12.9.0",
+    "fastify": "^5.8.5",
+    "nanoid": "^5.1.9",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
