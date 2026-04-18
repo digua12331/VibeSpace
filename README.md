@@ -1,5 +1,7 @@
 # aimon
 
+**English** · [简体中文](./README.zh-CN.md)
+
 Browser-based monitoring panel for AI CLI agents (Claude Code, Codex). Each
 project is a directory; each session is a `claude` or `codex` CLI instance
 spawned inside a server-hosted PTY and streamed to the browser over
