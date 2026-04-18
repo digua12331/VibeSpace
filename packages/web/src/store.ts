@@ -84,6 +84,12 @@ interface State {
   loadProjectLayout: (projectId: string) => Promise<void>
   setProjectLayout: (projectId: string, layout: ProjectLayout) => void
   saveProjectLayout: (projectId: string) => Promise<void>
+  /**
+   * Preserve a tile's x/y/w/h across session restart: rename the layout entry
+   * from the stopped session's id to the freshly-spawned one so RGL keeps the
+   * same cell instead of placing the new session at defaults.
+   */
+  renameTileInLayout: (projectId: string, oldId: string, newId: string) => void
 }
 
 function initialPerm(): NotificationPermissionState {
@@ -313,6 +319,30 @@ export const useStore = create<State>((set, get) => ({
   setProjectLayout: (projectId, layout) => {
     set((st) => {
       const nextMap = { ...st.layoutByProject, [projectId]: layout }
+      writeLayoutsToStorage(nextMap)
+      return {
+        layoutByProject: nextMap,
+        layoutDirty: { ...st.layoutDirty, [projectId]: true },
+      }
+    })
+  },
+
+  renameTileInLayout: (projectId, oldId, newId) => {
+    if (oldId === newId) return
+    set((st) => {
+      const cur = st.layoutByProject[projectId]
+      if (!cur) return st
+      if (!cur.tiles.some((t) => t.i === oldId)) return st
+      const nextTiles = cur.tiles
+        // Drop any pre-existing tile with newId — duplicate i values confuse RGL.
+        .filter((t) => t.i !== newId)
+        .map((t) => (t.i === oldId ? { ...t, i: newId } : t))
+      const nextLayout: ProjectLayout = {
+        ...cur,
+        tiles: nextTiles,
+        updatedAt: Date.now(),
+      }
+      const nextMap = { ...st.layoutByProject, [projectId]: nextLayout }
       writeLayoutsToStorage(nextMap)
       return {
         layoutByProject: nextMap,

@@ -220,17 +220,17 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
   const modal = (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/55 backdrop-blur-sm"
         onClick={() => !saving && onClose()}
       />
       <div
-        className="relative w-[720px] max-w-full max-h-[90vh] bg-card border border-border rounded-lg flex flex-col shadow-2xl overflow-hidden"
+        className="relative w-[720px] max-w-full h-[85vh] fluent-acrylic rounded-win flex flex-col shadow-dialog overflow-hidden animate-fluent-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 h-12 border-b border-border bg-bg/40 gap-3">
+        <div className="flex items-center justify-between px-4 h-12 border-b border-border/60 bg-white/[0.02] gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <span className="text-sm text-muted shrink-0">设置</span>
-            <span className="truncate text-fg font-medium">{project.name}</span>
+            <span className="truncate text-fg font-semibold">{project.name}</span>
             {mode === 'permissions' && dirty && (
               <span className="text-xs text-amber-300 shrink-0">● 未保存</span>
             )}
@@ -241,13 +241,13 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
                 onClick={() => void onSave()}
                 disabled={saving || !dirty}
                 title={!dirty ? '没有未保存的改动' : '写入 .claude/settings.local.json 和 .codex/config.toml'}
-                className="px-3 py-1 text-sm rounded border border-accent/40 bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="fluent-btn px-3 py-1 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {saving ? '保存中…' : '💾 保存'}
               </button>
             )}
             <button
-              className="text-muted hover:text-fg text-sm px-2 py-1 border border-border rounded"
+              className="fluent-btn text-muted hover:text-fg text-sm px-2.5 py-1 border border-border bg-white/[0.03] hover:bg-white/[0.08] rounded-md"
               onClick={onClose}
               disabled={saving}
               title="关闭 (未保存的改动会丢失)"
@@ -947,10 +947,10 @@ function PostSaveRestartDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-card border border-border rounded-lg w-[480px] max-w-full shadow-2xl">
-        <div className="px-4 py-3 border-b border-border">
-          <div className="text-base font-medium text-fg">配置已保存</div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm">
+      <div className="fluent-acrylic rounded-win w-[480px] max-w-full shadow-dialog animate-fluent-in">
+        <div className="px-4 py-3 border-b border-border/60">
+          <div className="text-base font-display font-semibold text-fg">配置已保存</div>
           <div className="text-xs text-muted mt-0.5">
             检测到 {sessions.length} 个进行中的 session。重启才能让新权限对这些 session 生效。
           </div>
@@ -959,31 +959,32 @@ function PostSaveRestartDialog({
           {sessions.map((s) => (
             <label
               key={s.id}
-              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg/40 cursor-pointer"
+              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/[0.05] cursor-pointer"
             >
               <input
                 type="checkbox"
                 checked={picked.has(s.id)}
                 onChange={() => togglePick(s.id)}
+                className="accent-accent"
               />
               <span className="text-sm">🤖 {s.agent}</span>
-              <span className="text-xs text-muted">({s.status})</span>
-              <span className="text-xs text-muted ml-auto">…{s.id.slice(-6)}</span>
+              <span className="text-xs text-subtle">({s.status})</span>
+              <span className="text-xs text-subtle ml-auto font-mono">…{s.id.slice(-6)}</span>
             </label>
           ))}
         </div>
-        <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
+        <div className="px-4 py-3 border-t border-border/60 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
             disabled={busy}
-            className="px-3 py-1 text-sm rounded border border-border text-muted hover:text-fg"
+            className="fluent-btn px-3 py-1.5 text-sm rounded-md border border-border bg-white/[0.03] text-muted hover:bg-white/[0.08] hover:text-fg"
           >
             稍后重启
           </button>
           <button
             onClick={() => void restartSelected()}
             disabled={busy || picked.size === 0}
-            className="px-3 py-1 text-sm rounded border border-accent/40 bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50"
+            className="fluent-btn px-3 py-1.5 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
           >
             {busy ? '重启中…' : `重启选中 (${picked.size})`}
           </button>

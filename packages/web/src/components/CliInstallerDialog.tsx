@@ -170,16 +170,16 @@ export default function CliInstallerDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center"
+      className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-[760px] max-w-[95vw] max-h-[85vh] bg-card border border-border rounded-lg shadow-xl flex flex-col"
+        className="w-[760px] max-w-[95vw] max-h-[85vh] fluent-acrylic rounded-win shadow-dialog flex flex-col animate-fluent-in"
       >
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
           <div>
-            <div className="text-base font-medium">📦 安装 AI CLI</div>
+            <div className="text-base font-display font-semibold">📦 安装 AI CLI</div>
             <div className="text-xs text-muted mt-0.5">
               平台: {platform}
               {missingTools.length > 0 && (
@@ -190,13 +190,15 @@ export default function CliInstallerDialog({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex bg-bg/40 rounded border border-border text-xs overflow-hidden">
+            <div className="flex bg-white/[0.04] rounded-md border border-border text-xs overflow-hidden p-0.5 gap-0.5">
               {(['all', 'missing', 'installed'] as const).map((k) => (
                 <button
                   key={k}
                   onClick={() => setFilter(k)}
-                  className={`px-2 py-1 ${
-                    filter === k ? 'bg-accent/20 text-accent' : 'hover:bg-bg/60 text-muted'
+                  className={`fluent-btn px-2 py-1 rounded ${
+                    filter === k
+                      ? 'bg-accent/20 text-accent'
+                      : 'hover:bg-white/[0.06] text-muted'
                   }`}
                 >
                   {k === 'all' ? '全部' : k === 'missing' ? '未装' : '已装'}
@@ -205,14 +207,14 @@ export default function CliInstallerDialog({
             </div>
             <button
               onClick={() => void refresh()}
-              className="px-2 py-1 text-xs rounded border border-border hover:border-fg/30"
+              className="fluent-btn px-2 py-1 text-xs rounded-md border border-border bg-white/[0.03] hover:bg-white/[0.08]"
               title="重新检测"
             >
               ↻
             </button>
             <button
               onClick={onClose}
-              className="px-2 py-1 text-xs rounded border border-border hover:border-fg/30"
+              className="fluent-btn px-2 py-1 text-xs rounded-md border border-border bg-white/[0.03] hover:bg-white/[0.08]"
             >
               关闭
             </button>
@@ -221,7 +223,7 @@ export default function CliInstallerDialog({
 
         <div className="flex-1 overflow-auto px-5 py-3">
           {loadError && (
-            <div className="mb-3 px-3 py-2 text-xs text-rose-300 bg-rose-950/50 border border-rose-900 rounded">
+            <div className="mb-3 px-3 py-2 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
               加载失败: {loadError}
             </div>
           )}
@@ -237,14 +239,14 @@ export default function CliInstallerDialog({
               return (
                 <div
                   key={entry.id}
-                  className="border border-border rounded bg-bg/30 overflow-hidden"
+                  className="border border-border rounded-md bg-white/[0.02] hover:bg-white/[0.04] transition-colors overflow-hidden"
                 >
                   <div className="flex items-center gap-3 px-3 py-2.5">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{entry.label}</span>
                         {entry.builtin && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
                             内置
                           </span>
                         )}
@@ -256,12 +258,12 @@ export default function CliInstallerDialog({
                         </div>
                       )}
                       {installPath && (
-                        <div className="text-[10px] text-muted/70 font-mono mt-0.5 truncate">
+                        <div className="text-[10px] text-subtle font-mono mt-0.5 truncate">
                           {installPath}
                         </div>
                       )}
                       {entry.installCmd && (
-                        <div className="text-[10px] text-muted/60 font-mono mt-0.5 truncate">
+                        <div className="text-[10px] text-subtle font-mono mt-0.5 truncate">
                           $ {entry.installCmd}
                         </div>
                       )}
@@ -277,7 +279,7 @@ export default function CliInstallerDialog({
                       {isRunning ? (
                         <button
                           onClick={() => void cancel(entry.id)}
-                          className="px-2 py-1 text-xs rounded border border-rose-500/40 text-rose-300 hover:bg-rose-950/40"
+                          className="fluent-btn px-2 py-1 text-xs rounded-md border border-rose-500/40 text-rose-200 bg-rose-500/10 hover:bg-rose-500/20"
                         >
                           ■ 取消
                         </button>
@@ -285,10 +287,10 @@ export default function CliInstallerDialog({
                         <button
                           disabled={!entry.installCmd}
                           onClick={() => void install(entry)}
-                          className={`px-2.5 py-1 text-xs rounded border ${
+                          className={`fluent-btn px-2.5 py-1 text-xs rounded-md border ${
                             installed
-                              ? 'border-border text-muted hover:border-fg/30'
-                              : 'border-accent/40 text-accent bg-accent/10 hover:bg-accent/20'
+                              ? 'border-border bg-white/[0.03] text-muted hover:bg-white/[0.08]'
+                              : 'bg-accent text-[#003250] font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
                           } disabled:opacity-40 disabled:cursor-not-allowed`}
                           title={!entry.installCmd ? `当前平台 ${platform} 暂无安装命令` : ''}
                         >

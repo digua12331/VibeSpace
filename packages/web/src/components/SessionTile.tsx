@@ -40,6 +40,8 @@ export default function SessionTile({ session }: { session: Session }) {
   const [showPerm, setShowPerm] = useState(false)
   const liveStatus = useStore((s) => s.liveStatus[session.id])
   const removeSession = useStore((s) => s.removeSession)
+  const addSession = useStore((s) => s.addSession)
+  const renameTileInLayout = useStore((s) => s.renameTileInLayout)
   const isNotifying = useStore((s) => s.notifyingSessions.has(session.id))
   const clearNotify = useStore((s) => s.clearNotify)
   const project = projects.find((p) => p.id === session.projectId)
@@ -152,7 +154,14 @@ export default function SessionTile({ session }: { session: Session }) {
     if (!e.shiftKey && !confirm(`重启 ${session.agent} session?`)) return
     setBusy(true)
     try {
-      await api.restartSession(session.id)
+      const next = await api.restartSession(session.id)
+      // Inherit the old tile's x/y/w/h for the newly-spawned session so RGL
+      // keeps the same cell instead of re-placing it at defaults. Must happen
+      // before the new session hits `sessions`, otherwise SessionGrid treats
+      // it as a fresh tile and runs placeNewTile against defaults.
+      renameTileInLayout(session.projectId, session.id, next.id)
+      removeSession(session.id)
+      addSession(next)
     } catch (err: unknown) {
       alert(`重启失败: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
