@@ -4,7 +4,7 @@ import type { Layout as LayoutArray } from 'react-grid-layout'
 import { useStore } from '../store'
 import SessionTile from './SessionTile'
 import StartSessionMenu from './StartSessionMenu'
-import type { TileLayout } from '../types'
+import type { Session, TileLayout } from '../types'
 
 const DEFAULT_COLS = 12
 const DEFAULT_ROW_HEIGHT = 40
@@ -24,6 +24,8 @@ export default function SessionGrid() {
   const loadProjectLayout = useStore((s) => s.loadProjectLayout)
   const setProjectLayout = useStore((s) => s.setProjectLayout)
   const saveProjectLayout = useStore((s) => s.saveProjectLayout)
+  const tileSizeByAgent = useStore((s) => s.tileSizeByAgent)
+  const rememberTileSize = useStore((s) => s.rememberTileSize)
 
   const hostRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1200)
@@ -66,6 +68,9 @@ export default function SessionGrid() {
     const kept = saved.filter((t) => visibleIds.has(t.i))
     const savedIds = new Set(kept.map((t) => t.i))
     const sessionById = new Map(visible.map((s) => [s.id, s]))
+    const agentSizes = selectedProjectId
+      ? (tileSizeByAgent[selectedProjectId] ?? {})
+      : {}
 
     // Process new sessions oldest-first so the newest ends up rightmost.
     const newSessions = visible
@@ -75,7 +80,7 @@ export default function SessionGrid() {
 
     const placed: TileLayout[] = kept.slice()
     for (const s of newSessions) {
-      placed.push(placeNewTile(s.id, placed, sessionById))
+      placed.push(placeNewTile(s, placed, sessionById, agentSizes))
     }
 
     return placed.map((t) => ({
@@ -87,11 +92,12 @@ export default function SessionGrid() {
       minW: t.minW ?? MIN_TILE_W,
       minH: t.minH ?? MIN_TILE_H,
     }))
-  }, [visible, layoutByProject, selectedProjectId])
+  }, [visible, layoutByProject, selectedProjectId, tileSizeByAgent])
 
   function onLayoutChange(next: LayoutArray) {
     if (!selectedProjectId) return
     const visibleIds = new Set(visible.map((s) => s.id))
+    const sessionById = new Map(visible.map((s) => [s.id, s]))
     const tiles: TileLayout[] = next
       .filter((t) => visibleIds.has(t.i))
       .map((t) => ({
@@ -106,6 +112,18 @@ export default function SessionGrid() {
     const prev = layoutByProject[selectedProjectId]
     // Skip identity updates — RGL fires onLayoutChange on every render.
     if (prev && sameTiles(prev.tiles, tiles)) return
+
+    // Remember size-by-agent so a later fresh launch of the same agent type
+    // opens at the user's last chosen dimensions, even after the current
+    // tile is closed.
+    const prevById = new Map(prev?.tiles.map((t) => [t.i, t]) ?? [])
+    for (const t of tiles) {
+      const prior = prevById.get(t.i)
+      if (prior && prior.w === t.w && prior.h === t.h) continue
+      const sess = sessionById.get(t.i)
+      if (sess) rememberTileSize(selectedProjectId, sess.agent, t.w, t.h)
+    }
+
     setProjectLayout(selectedProjectId, {
       cols: prev?.cols ?? DEFAULT_COLS,
       rowHeight: prev?.rowHeight ?? DEFAULT_ROW_HEIGHT,
@@ -236,14 +254,21 @@ function collides(
 }
 
 /**
- * Place a new tile using the most-recently-started existing tile as its size
- * reference. Try the slot to the right of that reference first (same row);
- * wrap to a fresh row if there's no horizontal room or a collision.
+ * Place a new tile, picking its w/h from (in order):
+ *   1. Remembered size for this agent in this project (so a fresh `claude`
+ *      session inherits the dimensions the user last chose for a `claude`
+ *      tile, even if no other `claude` tile is currently open).
+ *   2. The most-recently-started existing tile (original behavior).
+ *   3. DEFAULT_TILE_W / DEFAULT_TILE_H.
+ *
+ * Placement: try the slot to the right of the ref first (same row), wrap to
+ * a fresh row if there's no horizontal room or a collision.
  */
 function placeNewTile(
-  sessionId: string,
+  session: Session,
   placed: readonly TileLayout[],
-  sessionById: Map<string, { started_at: number }>,
+  sessionById: Map<string, Session>,
+  agentSizes: Record<string, { w: number; h: number }>,
 ): TileLayout {
   let ref: TileLayout | null = null
   let refStartedAt = -Infinity
@@ -255,9 +280,10 @@ function placeNewTile(
       ref = t
     }
   }
-  const w = ref?.w ?? DEFAULT_TILE_W
-  const h = ref?.h ?? DEFAULT_TILE_H
-  const base = { i: sessionId, w, h, minW: MIN_TILE_W, minH: MIN_TILE_H } as const
+  const remembered = agentSizes[session.agent]
+  const w = remembered?.w ?? ref?.w ?? DEFAULT_TILE_W
+  const h = remembered?.h ?? ref?.h ?? DEFAULT_TILE_H
+  const base = { i: session.id, w, h, minW: MIN_TILE_W, minH: MIN_TILE_H } as const
 
   if (!ref) return { ...base, x: 0, y: 0 }
 

@@ -15,6 +15,8 @@ import { pushLog } from './logs'
 const LOG_RING_CAPACITY = 500
 
 const LAYOUTS_LS_KEY = 'aimon_layouts_v1'
+const SELECTED_PROJECT_LS_KEY = 'aimon_selected_project_v1'
+const TILE_SIZE_LS_KEY = 'aimon_tile_size_by_agent_v1'
 
 function readLayoutsFromStorage(): Record<string, ProjectLayout> {
   if (typeof localStorage === 'undefined') return {}
@@ -38,6 +40,51 @@ function writeLayoutsToStorage(layouts: Record<string, ProjectLayout>): void {
   }
 }
 
+function readSelectedProject(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const v = localStorage.getItem(SELECTED_PROJECT_LS_KEY)
+    return v && v.length > 0 ? v : null
+  } catch {
+    return null
+  }
+}
+
+function writeSelectedProject(id: string | null): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    if (id == null) localStorage.removeItem(SELECTED_PROJECT_LS_KEY)
+    else localStorage.setItem(SELECTED_PROJECT_LS_KEY, id)
+  } catch {
+    // non-fatal
+  }
+}
+
+type TileSize = { w: number; h: number }
+type TileSizeByAgent = Record<string, Record<string, TileSize>>
+
+function readTileSizeMemory(): TileSizeByAgent {
+  if (typeof localStorage === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(TILE_SIZE_LS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return {}
+    return parsed as TileSizeByAgent
+  } catch {
+    return {}
+  }
+}
+
+function writeTileSizeMemory(m: TileSizeByAgent): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(TILE_SIZE_LS_KEY, JSON.stringify(m))
+  } catch {
+    // non-fatal
+  }
+}
+
 interface State {
   projects: Project[]
   sessions: Session[]
@@ -55,6 +102,12 @@ interface State {
   layoutDirty: Record<string, boolean>
   /** projectIds for which layout has been fetched (null result counts). */
   layoutLoaded: Record<string, boolean>
+  /**
+   * Remembered last-known tile size per (projectId, agent). Used as the
+   * default when a fresh session is launched and there are no existing tiles
+   * in that project to copy from. Client-only (not synced to server).
+   */
+  tileSizeByAgent: Record<string, Record<string, { w: number; h: number }>>
 
   /** Ring-buffered project log entries, newest last. */
   logs: LogEntry[]
@@ -90,6 +143,9 @@ interface State {
    * same cell instead of placing the new session at defaults.
    */
   renameTileInLayout: (projectId: string, oldId: string, newId: string) => void
+  /** Remember a tile size for a (projectId, agent) pair so freshly-launched
+   * sessions of that agent inherit the user's last chosen dimensions. */
+  rememberTileSize: (projectId: string, agent: string, w: number, h: number) => void
 }
 
 function initialPerm(): NotificationPermissionState {
@@ -139,7 +195,7 @@ export const useStore = create<State>((set, get) => ({
   projects: [],
   sessions: [],
   liveStatus: {},
-  selectedProjectId: null,
+  selectedProjectId: readSelectedProject(),
   wsState: 'connecting',
   serverVersion: null,
   notifyPerm: initialPerm(),
@@ -147,6 +203,7 @@ export const useStore = create<State>((set, get) => ({
   layoutByProject: readLayoutsFromStorage(),
   layoutDirty: {},
   layoutLoaded: {},
+  tileSizeByAgent: readTileSizeMemory(),
   logs: [],
   logOpen: false,
 
@@ -163,13 +220,19 @@ export const useStore = create<State>((set, get) => ({
   },
   setServerVersion: (v) => set({ serverVersion: v }),
   setNotifyPerm: (p) => set({ notifyPerm: p }),
-  selectProject: (id) => set({ selectedProjectId: id }),
+  selectProject: (id) => {
+    writeSelectedProject(id)
+    set({ selectedProjectId: id })
+  },
 
   refreshProjects: async () => {
     const projects = await api.listProjects()
     set({ projects })
     const sel = get().selectedProjectId
-    if (sel && !projects.some((p) => p.id === sel)) set({ selectedProjectId: null })
+    if (sel && !projects.some((p) => p.id === sel)) {
+      writeSelectedProject(null)
+      set({ selectedProjectId: null })
+    }
   },
 
   refreshSessions: async (projectId) => {
@@ -324,6 +387,19 @@ export const useStore = create<State>((set, get) => ({
         layoutByProject: nextMap,
         layoutDirty: { ...st.layoutDirty, [projectId]: true },
       }
+    })
+  },
+
+  rememberTileSize: (projectId, agent, w, h) => {
+    if (!projectId || !agent) return
+    set((st) => {
+      const perProject = st.tileSizeByAgent[projectId] ?? {}
+      const prev = perProject[agent]
+      if (prev && prev.w === w && prev.h === h) return st
+      const nextProject = { ...perProject, [agent]: { w, h } }
+      const next = { ...st.tileSizeByAgent, [projectId]: nextProject }
+      writeTileSizeMemory(next)
+      return { tileSizeByAgent: next }
     })
   },
 
