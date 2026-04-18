@@ -835,6 +835,54 @@ function ButtonRow({
   onChange: (patch: Partial<CustomButton>) => void
   onRemove: () => void
 }) {
+  // Pull agent ids that the user has actually used so the per-agent editor
+  // offers relevant suggestions. Falls back to the built-in shells.
+  const sessions = useStore((s) => s.sessions)
+  const agentSuggestions = useMemo(() => {
+    const set = new Set<string>(['shell', 'cmd', 'pwsh'])
+    for (const s of sessions) set.add(s.agent)
+    return Array.from(set)
+  }, [sessions])
+
+  const overrides = btn.commandByAgent ?? {}
+  const overrideEntries = Object.entries(overrides)
+
+  function updateOverride(agent: string, command: string) {
+    const next = { ...overrides }
+    if (command === '') delete next[agent]
+    else next[agent] = command
+    onChange({ commandByAgent: Object.keys(next).length > 0 ? next : undefined })
+  }
+
+  function renameOverrideAgent(oldAgent: string, newAgent: string) {
+    if (oldAgent === newAgent) return
+    const next = { ...overrides }
+    const cmd = next[oldAgent] ?? ''
+    delete next[oldAgent]
+    if (newAgent) next[newAgent] = cmd
+    onChange({ commandByAgent: Object.keys(next).length > 0 ? next : undefined })
+  }
+
+  function removeOverride(agent: string) {
+    const next = { ...overrides }
+    delete next[agent]
+    onChange({ commandByAgent: Object.keys(next).length > 0 ? next : undefined })
+  }
+
+  function addOverride() {
+    // Seed with the first suggestion that isn't already overridden, or empty.
+    const candidate = agentSuggestions.find((a) => !(a in overrides)) ?? ''
+    if (candidate in overrides) return
+    onChange({
+      commandByAgent: {
+        ...overrides,
+        [candidate]: '',
+      },
+    })
+  }
+
+  const datalistId = `agents-${btn.id}`
+
   return (
     <div className="border border-border/60 rounded bg-bg/30 p-3 space-y-2">
       <div className="flex items-center gap-2">
@@ -861,13 +909,62 @@ function ButtonRow({
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="space-y-1">
+        <div className="text-[11px] text-muted">默认命令（留空则使用下面的终端特定命令）</div>
         <input
           value={btn.command}
           onChange={(e) => onChange({ command: e.target.value })}
           placeholder="发送到终端的命令，例如 /resume"
-          className="flex-1 bg-bg border border-border text-sm rounded px-2 py-1 font-mono"
+          className="w-full bg-bg border border-border text-sm rounded px-2 py-1 font-mono"
         />
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] text-muted">针对不同终端的命令（覆盖默认）</div>
+          <button
+            onClick={addOverride}
+            className="text-[11px] text-accent hover:underline"
+          >
+            + 添加
+          </button>
+        </div>
+        {overrideEntries.length === 0 && (
+          <div className="text-[11px] text-subtle italic">
+            未配置。例如 claude 用 /clear，cmd 用 cls。
+          </div>
+        )}
+        {overrideEntries.length > 0 && (
+          <datalist id={datalistId}>
+            {agentSuggestions.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
+        )}
+        {overrideEntries.map(([agent, cmd]) => (
+          <div key={agent} className="flex items-center gap-2">
+            <input
+              list={datalistId}
+              value={agent}
+              onChange={(e) => renameOverrideAgent(agent, e.target.value.trim())}
+              placeholder="终端类型 (claude/codex/cmd…)"
+              className="w-40 bg-bg border border-border text-sm rounded px-2 py-1 font-mono"
+            />
+            <input
+              value={cmd}
+              onChange={(e) => updateOverride(agent, e.target.value)}
+              placeholder="对该终端发送的命令"
+              className="flex-1 bg-bg border border-border text-sm rounded px-2 py-1 font-mono"
+            />
+            <button
+              onClick={() => removeOverride(agent)}
+              title="删除该条"
+              className="px-2 py-1 text-xs rounded border border-border text-muted hover:text-fg hover:border-fg/30"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

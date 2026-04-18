@@ -8,10 +8,30 @@ export interface CustomButton {
   id: string
   text: string
   color: ButtonColor
-  /** Sent to the session PTY as-is, with a trailing \r appended. */
+  /**
+   * Fallback command when no per-agent override is set for the session's
+   * agent. Sent to the PTY with a trailing \r appended.
+   */
   command: string
+  /**
+   * Per-agent command overrides. Keyed by AgentKind (e.g. 'claude', 'codex',
+   * 'shell', 'cmd', 'pwsh'). When the current session's agent has an entry
+   * here, it wins over `command`. If the resolved command is empty the
+   * button is hidden for that session.
+   */
+  commandByAgent?: Record<string, string>
   /** When false, the button stays in the settings list but doesn't render on tiles. */
   showInTopbar: boolean
+}
+
+/**
+ * Resolve the command for a specific session's agent: per-agent override
+ * first, then the button's default. Returns '' if nothing is configured.
+ */
+export function resolveCommand(btn: CustomButton, agent: string): string {
+  const override = btn.commandByAgent?.[agent]
+  if (typeof override === 'string' && override.length > 0) return override
+  return btn.command
 }
 
 // Win11 Fluent-styled chip buttons: soft tinted fill + accent border + hover lift.
@@ -51,8 +71,22 @@ const INIT_KEY = 'aimon_custom_buttons_init_v1'
 
 function defaultButtons(): CustomButton[] {
   return [
-    { id: 'default-clear', text: '🧹 清除', color: 'amber', command: '/clear', showInTopbar: true },
-    { id: 'default-resume', text: '🕘 历史对话', color: 'violet', command: '/resume', showInTopbar: true },
+    {
+      id: 'default-clear',
+      text: '🧹 清除',
+      color: 'amber',
+      command: '/clear',
+      // Shells don't understand /clear — map them to the native clear command.
+      commandByAgent: { cmd: 'cls', pwsh: 'clear', shell: 'clear' },
+      showInTopbar: true,
+    },
+    {
+      id: 'default-resume',
+      text: '🕘 历史对话',
+      color: 'violet',
+      command: '/resume',
+      showInTopbar: true,
+    },
   ]
 }
 
@@ -66,13 +100,21 @@ function isButtonColor(v: unknown): v is ButtonColor {
 function isValid(x: unknown): x is CustomButton {
   if (!x || typeof x !== 'object') return false
   const o = x as Record<string, unknown>
-  return (
+  const baseOk = (
     typeof o.id === 'string'
     && typeof o.text === 'string'
     && typeof o.command === 'string'
     && typeof o.showInTopbar === 'boolean'
     && isButtonColor(o.color)
   )
+  if (!baseOk) return false
+  if (o.commandByAgent != null) {
+    if (typeof o.commandByAgent !== 'object') return false
+    for (const v of Object.values(o.commandByAgent as Record<string, unknown>)) {
+      if (typeof v !== 'string') return false
+    }
+  }
+  return true
 }
 
 function readList(): CustomButton[] {

@@ -11,6 +11,7 @@ import {
   BUTTON_COLOR_CLASSES,
   getCustomButtons,
   onCustomButtonsChange,
+  resolveCommand,
   type CustomButton,
 } from '../customButtons'
 import type { AgentKind, Session } from '../types'
@@ -139,15 +140,18 @@ export default function SessionTile({ session }: { session: Session }) {
   }, [session.id])
 
   async function confirmCloseSession() {
-    setConfirmClose(false)
     setBusy(true)
     try {
       await api.deleteSession(session.id)
     } catch (e: unknown) {
-      alert(`关闭失败: ${e instanceof Error ? e.message : String(e)}`)
-    } finally {
       setBusy(false)
+      alert(`关闭失败: ${e instanceof Error ? e.message : String(e)}`)
+      return
     }
+    // Success: drop the tile from the grid so the user doesn't have to click
+    // a second "关闭" on the stopped state. This unmounts the component, so
+    // there's no point resetting busy/modal state afterward.
+    removeSession(session.id)
   }
 
   async function restart(e: React.MouseEvent) {
@@ -241,18 +245,25 @@ export default function SessionTile({ session }: { session: Session }) {
                 ⟳ 重启
               </button>
               {customButtons
-                .filter((b) => b.showInTopbar && b.command.length > 0)
-                .map((b) => (
-                  <button
-                    key={b.id}
-                    onClick={() => aimonWS.sendInput(session.id, b.command + '\r')}
-                    disabled={busy}
-                    title={`发送: ${b.command}`}
-                    className={`fluent-btn px-2 py-0.5 text-xs rounded border disabled:opacity-50 ${BUTTON_COLOR_CLASSES[b.color]}`}
-                  >
-                    {b.text}
-                  </button>
-                ))}
+                .filter((b) => b.showInTopbar)
+                .map((b) => {
+                  // Resolve per-agent: per-agent override wins, then default.
+                  // If the result is empty, skip rendering the button for
+                  // this particular session's agent.
+                  const cmd = resolveCommand(b, session.agent)
+                  if (!cmd) return null
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => aimonWS.sendInput(session.id, cmd + '\r')}
+                      disabled={busy}
+                      title={`发送: ${cmd}`}
+                      className={`fluent-btn px-2 py-0.5 text-xs rounded border disabled:opacity-50 ${BUTTON_COLOR_CLASSES[b.color]}`}
+                    >
+                      {b.text}
+                    </button>
+                  )
+                })}
               <button
                 onClick={() => setConfirmClose(true)}
                 disabled={busy}
