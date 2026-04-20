@@ -207,6 +207,76 @@ export interface CliConfigState {
   }
 }
 
+// ---------- Git changes viewer ----------
+
+export type ChangeStatus = 'M' | 'A' | 'D' | 'R' | 'C' | 'U' | '?'
+
+export interface ChangeEntry {
+  path: string
+  status: ChangeStatus
+  renamedFrom?: string
+}
+
+export interface ChangesResult {
+  enabled: true
+  branch: string | null
+  ahead: number
+  behind: number
+  detached: boolean
+  staged: ChangeEntry[]
+  unstaged: ChangeEntry[]
+  untracked: ChangeEntry[]
+}
+
+export interface NotGitRepoResult {
+  enabled: false
+}
+
+export type ChangesResponse = ChangesResult | NotGitRepoResult
+
+export interface CommitSummary {
+  sha: string
+  shortSha: string
+  author: string
+  email: string
+  date: string
+  subject: string
+  body: string
+  parents: string[]
+}
+
+export interface CommitFile {
+  path: string
+  status: ChangeStatus
+  additions: number
+  deletions: number
+  renamedFrom?: string
+}
+
+export interface CommitDetail extends CommitSummary {
+  files: CommitFile[]
+}
+
+export type GitRef = 'HEAD' | 'WORKTREE' | 'INDEX' | string
+
+export interface FileContent {
+  path: string
+  ref: GitRef
+  size: number
+  truncated: boolean
+  encoding: 'utf8' | 'base64'
+  content: string
+  language: string
+}
+
+export interface DiffResult {
+  path: string
+  from: GitRef
+  to: GitRef
+  patch: string
+  isBinary: boolean
+}
+
 export interface CliConfigSavePayload {
   claude?: {
     selections: Record<string, TriState>

@@ -100,17 +100,18 @@ pnpm dev:web      # Vite 监听 127.0.0.1:8788
 
 ## HTTP API
 
-| 方法 | 路径                           | 说明                                                                   |
-| ---: | ----------------------------- | ---------------------------------------------------------------------- |
-|  GET | `/api/health`                 | `{ ok, version, uptime }`                                              |
-|  GET | `/api/projects`               | 列表                                                                   |
-| POST | `/api/projects`               | `{ name, path }` —— `path` 必须存在且为目录                             |
-| DELETE | `/api/projects/:id`         | 同时会 kill 所有存活 session 并级联删除数据库行                         |
-|  GET | `/api/sessions[?projectId=…]` | 列表，附带实时状态                                                      |
-| POST | `/api/sessions`               | `{ projectId, agent: 'claude' \| 'codex' }`                             |
-| DELETE | `/api/sessions/:id`         | **请求里不能带 body 或 `content-type` 头**（否则 Fastify 会 400）。成功时返回 204。 |
-| POST | `/api/sessions/:id/restart`   | 并不是在同一个 id 上 kill+respawn —— 返回一个新的 session id             |
-| POST | `/api/hooks/claude`           | 由 `aimon-hook.mjs` 调用；恒定返回 `{ ok: true }`                       |
+
+|   方法 | 路径                           | 说明                                                                                |
+| -----: | ------------------------------ | ----------------------------------------------------------------------------------- |
+|    GET | `/api/health`                  | `{ ok, version, uptime }`                                                           |
+|    GET | `/api/projects`                | 列表                                                                                |
+|   POST | `/api/projects`                | `{ name, path }` —— `path` 必须存在且为目录                                       |
+| DELETE | `/api/projects/:id`            | 同时会 kill 所有存活 session 并级联删除数据库行                                     |
+|    GET | `/api/sessions[?projectId=…]` | 列表，附带实时状态                                                                  |
+|   POST | `/api/sessions`                | `{ projectId, agent: 'claude'                                                       |
+| DELETE | `/api/sessions/:id`            | **请求里不能带 body 或 `content-type` 头**（否则 Fastify 会 400）。成功时返回 204。 |
+|   POST | `/api/sessions/:id/restart`    | 并不是在同一个 id 上 kill+respawn —— 返回一个新的 session id                      |
+|   POST | `/api/hooks/claude`            | 由`aimon-hook.mjs` 调用；恒定返回 `{ ok: true }`                                    |
 
 ## WebSocket 协议
 

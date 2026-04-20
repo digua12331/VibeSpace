@@ -6,6 +6,7 @@ import ProjectSidebar from './components/ProjectSidebar'
 import SessionGrid from './components/SessionGrid'
 import NewProjectDialog from './components/NewProjectDialog'
 import LogDrawer from './components/LogDrawer'
+import ChangesDrawer from './components/ChangesDrawer'
 
 export default function App() {
   const wsState = useStore((s) => s.wsState)
@@ -21,6 +22,8 @@ export default function App() {
   const toggleLog = useStore((s) => s.toggleLog)
   const logCount = useStore((s) => s.logs.length)
   const logErrorCount = useStore((s) => s.logs.filter((l) => l.level === 'error').length)
+  const selectedProjectId = useStore((s) => s.selectedProjectId)
+  const openChanges = useStore((s) => s.openChanges)
 
   useEffect(() => {
     setBootLoading(true)
@@ -99,6 +102,18 @@ export default function App() {
         </div>
         <div className="flex items-center gap-1.5">
           <button
+            onClick={() => selectedProjectId && openChanges(selectedProjectId)}
+            disabled={!selectedProjectId}
+            title={selectedProjectId ? '查看源代码更改' : '请先选中一个项目'}
+            className={`fluent-btn px-2.5 py-1 text-sm rounded-md border ${
+              selectedProjectId
+                ? 'border-border text-muted hover:text-fg hover:bg-white/[0.04]'
+                : 'border-border/50 text-subtle cursor-not-allowed'
+            }`}
+          >
+            📂 更改
+          </button>
+          <button
             onClick={toggleLog}
             title={logOpen ? '收起项目日志' : '展开项目日志'}
             className={`fluent-btn px-2.5 py-1 text-sm rounded-md border ${
@@ -171,6 +186,7 @@ export default function App() {
       </div>
 
       {newProjectOpen && <NewProjectDialog onClose={() => setNewProjectOpen(false)} />}
+      <ChangesDrawer />
     </div>
   )
 }

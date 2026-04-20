@@ -3,6 +3,7 @@ import * as api from './api'
 import { aimonWS } from './ws'
 import { isPageFocused, notifyWaitingInput, type NotificationPermissionState } from './notify'
 import type {
+  GitRef,
   LogEntry,
   Project,
   ProjectLayout,
@@ -10,6 +11,19 @@ import type {
   SessionStatus,
   WSConnState,
 } from './types'
+
+export interface SelectedChange {
+  path: string
+  /** Which ref's raw content to show in Source/Preview tab. Defaults to WORKTREE. */
+  ref?: GitRef
+  /** Diff boundary — default is from=HEAD to=WORKTREE. */
+  from?: GitRef
+  to?: GitRef
+  /** Commit sha this selection belongs to (if user is browsing a commit). */
+  commitSha?: string
+  /** Optional status code for display (M/A/D/...). */
+  status?: string
+}
 import { pushLog } from './logs'
 
 const LOG_RING_CAPACITY = 500
@@ -117,6 +131,13 @@ interface State {
   toggleLog: () => void
   clearLogs: () => void
 
+  /** ----- Changes drawer (git source viewer) ----- */
+  changesProjectId: string | null
+  selectedChange: SelectedChange | null
+  openChanges: (projectId: string) => void
+  closeChanges: () => void
+  selectChange: (c: SelectedChange | null) => void
+
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
   setNotifyPerm: (p: NotificationPermissionState) => void
@@ -206,6 +227,22 @@ export const useStore = create<State>((set, get) => ({
   tileSizeByAgent: readTileSizeMemory(),
   logs: [],
   logOpen: false,
+  changesProjectId: null,
+  selectedChange: null,
+
+  openChanges: (projectId) =>
+    set((st) =>
+      st.changesProjectId === projectId
+        ? st
+        : { changesProjectId: projectId, selectedChange: null },
+    ),
+  closeChanges: () =>
+    set((st) =>
+      st.changesProjectId == null && st.selectedChange == null
+        ? st
+        : { changesProjectId: null, selectedChange: null },
+    ),
+  selectChange: (c) => set({ selectedChange: c }),
 
   setWsState: (s) => {
     const prev = get().wsState

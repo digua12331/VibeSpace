@@ -23,6 +23,7 @@ import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerHookRoutes } from "./routes/hooks.js";
 import { registerCliConfigRoutes } from "./routes/cli-configs.js";
 import { registerCliInstallerRoutes } from "./routes/cli-installer.js";
+import { registerGitRoutes } from "./routes/git.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
 const PORT = Number(process.env.AIMON_PORT || 8787);
@@ -122,6 +123,7 @@ async function main(): Promise<void> {
   await registerHookRoutes(app);
   await registerCliConfigRoutes(app);
   await registerCliInstallerRoutes(app);
+  await registerGitRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });

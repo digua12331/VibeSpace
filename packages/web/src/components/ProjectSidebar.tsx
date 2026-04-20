@@ -16,6 +16,7 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
   const sessions = useStore((s) => s.sessions)
   const selected = useStore((s) => s.selectedProjectId)
   const select = useStore((s) => s.selectProject)
+  const openChanges = useStore((s) => s.openChanges)
   const refreshProjects = useStore((s) => s.refreshProjects)
   const refreshSessions = useStore((s) => s.refreshSessions)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
@@ -145,6 +146,17 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
             className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
           >
             ⚙ 权限配置
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              const { projectId } = menu
+              setMenu(null)
+              openChanges(projectId)
+            }}
+            className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
+          >
+            📂 代码更改
           </button>
           <button
             role="menuitem"

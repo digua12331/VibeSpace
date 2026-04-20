@@ -1,9 +1,15 @@
 import type {
   AgentKind,
+  ChangesResponse,
   CliConfigSavePayload,
   CliConfigState,
   CliEntry,
   CliStatusResponse,
+  CommitDetail,
+  CommitSummary,
+  DiffResult,
+  FileContent,
+  GitRef,
   InstallJob,
   PermissionCatalog,
   Project,
@@ -143,6 +149,61 @@ export function cancelInstallJob(jobId: string): Promise<void> {
 
 export function installJobStreamUrl(jobId: string): string {
   return `${BASE}/api/cli-installer/jobs/${encodeURIComponent(jobId)}/stream`
+}
+
+// ---------- Git changes viewer ----------
+
+export function getProjectChanges(projectId: string): Promise<ChangesResponse> {
+  return request<ChangesResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/changes`,
+  )
+}
+
+export function listProjectCommits(
+  projectId: string,
+  opts: { limit?: number; branch?: string } = {},
+): Promise<CommitSummary[]> {
+  const qs = new URLSearchParams()
+  if (opts.limit != null) qs.set('limit', String(opts.limit))
+  if (opts.branch) qs.set('branch', opts.branch)
+  const suffix = qs.toString() ? `?${qs}` : ''
+  return request<CommitSummary[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/commits${suffix}`,
+  )
+}
+
+export function getProjectCommit(
+  projectId: string,
+  sha: string,
+): Promise<CommitDetail> {
+  return request<CommitDetail>(
+    `/api/projects/${encodeURIComponent(projectId)}/commits/${encodeURIComponent(sha)}`,
+  )
+}
+
+export function getProjectFile(
+  projectId: string,
+  path: string,
+  ref?: GitRef,
+): Promise<FileContent> {
+  const qs = new URLSearchParams({ path })
+  if (ref) qs.set('ref', ref)
+  return request<FileContent>(
+    `/api/projects/${encodeURIComponent(projectId)}/file?${qs}`,
+  )
+}
+
+export function getProjectDiff(
+  projectId: string,
+  path: string,
+  opts: { from?: GitRef; to?: GitRef } = {},
+): Promise<DiffResult> {
+  const qs = new URLSearchParams({ path })
+  if (opts.from) qs.set('from', opts.from)
+  if (opts.to) qs.set('to', opts.to)
+  return request<DiffResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/diff?${qs}`,
+  )
 }
 
 export function initProjectCliConfig(

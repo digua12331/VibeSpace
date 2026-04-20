@@ -177,3 +177,41 @@ input:focus, button:focus, textarea:focus {
   transform: translateY(0.5px);
   filter: brightness(0.95);
 }
+
+/* ---------------------------------------------------------------------------
+ * Code rendering (shiki + diff view)
+ * ------------------------------------------------------------------------- */
+
+.shiki-wrap pre {
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
+}
+
+/* Line numbers gutter for CodeView / MarkdownView code blocks. */
+.shiki-wrap.with-linenos pre code {
+  counter-reset: step;
+  counter-increment: step 0;
+  display: block;
+}
+.shiki-wrap.with-linenos .line {
+  display: inline-block;
+  width: 100%;
+  padding-left: 0.5rem;
+}
+.shiki-wrap.with-linenos .line::before {
+  content: attr(data-line);
+  display: inline-block;
+  width: 2.5rem;
+  margin-right: 0.75rem;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.25);
+  user-select: none;
+}
+
+/* Diff-view host — matches surrounding dark surface. */
+.diff-view-host {
+  background: #0d1117;
+  border-radius: 6px;
+  overflow: auto;
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
+  font-size: 12.5px;
+}
