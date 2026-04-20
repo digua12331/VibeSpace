@@ -6,7 +6,6 @@ import type {
   GitRef,
   LogEntry,
   Project,
-  ProjectLayout,
   Session,
   SessionStatus,
   WSConnState,
@@ -24,35 +23,85 @@ export interface SelectedChange {
   /** Optional status code for display (M/A/D/...). */
   status?: string
 }
-import { pushLog } from './logs'
 
-const LOG_RING_CAPACITY = 500
+export type Activity = 'explorer' | 'scm' | 'logs' | 'inbox'
 
-const LAYOUTS_LS_KEY = 'aimon_layouts_v1'
-const SELECTED_PROJECT_LS_KEY = 'aimon_selected_project_v1'
-const TILE_SIZE_LS_KEY = 'aimon_tile_size_by_agent_v1'
+export interface EditorTab {
+  /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}` */
+  key: string
+  projectId: string
+  path: string
+  ref?: GitRef
+  from?: GitRef
+  to?: GitRef
+  commitSha?: string
+  status?: string
+}
 
-function readLayoutsFromStorage(): Record<string, ProjectLayout> {
+function editorTabKey(
+  projectId: string,
+  path: string,
+  opts: Pick<EditorTab, 'ref' | 'from' | 'to'>,
+): string {
+  return [
+    projectId,
+    path,
+    opts.ref ?? 'WORKTREE',
+    opts.from ?? '',
+    opts.to ?? '',
+  ].join('\u0000')
+}
+
+interface WorkbenchPersisted {
+  activity?: Activity
+  sidebarCollapsed?: boolean
+  sidebarSize?: number
+  terminalSize?: number
+  terminalCollapsed?: boolean
+  activeSessionIdByProject?: Record<string, string>
+}
+
+function readWorkbench(): WorkbenchPersisted {
   if (typeof localStorage === 'undefined') return {}
   try {
-    const raw = localStorage.getItem(LAYOUTS_LS_KEY)
+    const raw = localStorage.getItem(WORKBENCH_LS_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as unknown
     if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as Record<string, ProjectLayout>
+    return parsed as WorkbenchPersisted
   } catch {
     return {}
   }
 }
 
-function writeLayoutsToStorage(layouts: Record<string, ProjectLayout>): void {
+function writeWorkbench(v: WorkbenchPersisted): void {
   if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(LAYOUTS_LS_KEY, JSON.stringify(layouts))
-  } catch {
-    // quota exceeded or private mode — non-fatal
-  }
+  try { localStorage.setItem(WORKBENCH_LS_KEY, JSON.stringify(v)) } catch { /* noop */ }
 }
+
+function persistWorkbench(s: {
+  activity: Activity
+  sidebarCollapsed: boolean
+  sidebarSize: number
+  terminalCollapsed: boolean
+  terminalSize: number
+  activeSessionIdByProject: Record<string, string>
+}): void {
+  writeWorkbench({
+    activity: s.activity,
+    sidebarCollapsed: s.sidebarCollapsed,
+    sidebarSize: s.sidebarSize,
+    terminalCollapsed: s.terminalCollapsed,
+    terminalSize: s.terminalSize,
+    activeSessionIdByProject: s.activeSessionIdByProject,
+  })
+}
+import { pushLog } from './logs'
+
+const LOG_RING_CAPACITY = 500
+
+const SELECTED_PROJECT_LS_KEY = 'aimon_selected_project_v1'
+const WORKBENCH_LS_KEY = 'aimon_workbench_v2'
 
 function readSelectedProject(): string | null {
   if (typeof localStorage === 'undefined') return null
@@ -74,31 +123,6 @@ function writeSelectedProject(id: string | null): void {
   }
 }
 
-type TileSize = { w: number; h: number }
-type TileSizeByAgent = Record<string, Record<string, TileSize>>
-
-function readTileSizeMemory(): TileSizeByAgent {
-  if (typeof localStorage === 'undefined') return {}
-  try {
-    const raw = localStorage.getItem(TILE_SIZE_LS_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as TileSizeByAgent
-  } catch {
-    return {}
-  }
-}
-
-function writeTileSizeMemory(m: TileSizeByAgent): void {
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(TILE_SIZE_LS_KEY, JSON.stringify(m))
-  } catch {
-    // non-fatal
-  }
-}
-
 interface State {
   projects: Project[]
   sessions: Session[]
@@ -110,33 +134,37 @@ interface State {
   /** Sessions currently nagging the user (waiting_input + page not focused). */
   notifyingSessions: Set<string>
 
-  /** Per-project grid layout, keyed by projectId. */
-  layoutByProject: Record<string, ProjectLayout>
-  /** projectId → true when local layout differs from last-persisted. */
-  layoutDirty: Record<string, boolean>
-  /** projectIds for which layout has been fetched (null result counts). */
-  layoutLoaded: Record<string, boolean>
-  /**
-   * Remembered last-known tile size per (projectId, agent). Used as the
-   * default when a fresh session is launched and there are no existing tiles
-   * in that project to copy from. Client-only (not synced to server).
-   */
-  tileSizeByAgent: Record<string, Record<string, { w: number; h: number }>>
-
   /** Ring-buffered project log entries, newest last. */
   logs: LogEntry[]
-  /** Whether the bottom log drawer is expanded. */
-  logOpen: boolean
   appendLog: (entry: LogEntry) => void
-  toggleLog: () => void
   clearLogs: () => void
 
-  /** ----- Changes drawer (git source viewer) ----- */
-  changesProjectId: string | null
+  /** Which row is highlighted inside ChangesList (selection only, no overlay). */
   selectedChange: SelectedChange | null
-  openChanges: (projectId: string) => void
-  closeChanges: () => void
   selectChange: (c: SelectedChange | null) => void
+
+  /** ----- VS Code-style workbench ----- */
+  activity: Activity
+  sidebarCollapsed: boolean
+  sidebarSize: number
+  terminalCollapsed: boolean
+  terminalSize: number
+  openFiles: EditorTab[]
+  activeFileKey: string | null
+  activeSessionIdByProject: Record<string, string>
+
+  setActivity: (a: Activity) => void
+  toggleSidebar: () => void
+  setSidebarSize: (n: number) => void
+  toggleTerminal: () => void
+  setTerminalSize: (n: number) => void
+
+  openFile: (t: Omit<EditorTab, 'key'>) => void
+  closeFile: (key: string) => void
+  closeAllFiles: () => void
+  setActiveFile: (key: string | null) => void
+
+  setActiveSession: (projectId: string, sessionId: string) => void
 
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
@@ -155,18 +183,6 @@ interface State {
   /** Called by App when tab regains focus to clear all nags. */
   clearAllNotify: () => void
 
-  loadProjectLayout: (projectId: string) => Promise<void>
-  setProjectLayout: (projectId: string, layout: ProjectLayout) => void
-  saveProjectLayout: (projectId: string) => Promise<void>
-  /**
-   * Preserve a tile's x/y/w/h across session restart: rename the layout entry
-   * from the stopped session's id to the freshly-spawned one so RGL keeps the
-   * same cell instead of placing the new session at defaults.
-   */
-  renameTileInLayout: (projectId: string, oldId: string, newId: string) => void
-  /** Remember a tile size for a (projectId, agent) pair so freshly-launched
-   * sessions of that agent inherit the user's last chosen dimensions. */
-  rememberTileSize: (projectId: string, agent: string, w: number, h: number) => void
 }
 
 function initialPerm(): NotificationPermissionState {
@@ -221,28 +237,78 @@ export const useStore = create<State>((set, get) => ({
   serverVersion: null,
   notifyPerm: initialPerm(),
   notifyingSessions: new Set<string>(),
-  layoutByProject: readLayoutsFromStorage(),
-  layoutDirty: {},
-  layoutLoaded: {},
-  tileSizeByAgent: readTileSizeMemory(),
   logs: [],
-  logOpen: false,
-  changesProjectId: null,
   selectedChange: null,
 
-  openChanges: (projectId) =>
-    set((st) =>
-      st.changesProjectId === projectId
-        ? st
-        : { changesProjectId: projectId, selectedChange: null },
-    ),
-  closeChanges: () =>
-    set((st) =>
-      st.changesProjectId == null && st.selectedChange == null
-        ? st
-        : { changesProjectId: null, selectedChange: null },
-    ),
   selectChange: (c) => set({ selectedChange: c }),
+
+  // ----- workbench state (v2 layout: 4-column horizontal) -----
+  activity: readWorkbench().activity ?? 'explorer',
+  sidebarCollapsed: readWorkbench().sidebarCollapsed ?? false,
+  sidebarSize: readWorkbench().sidebarSize ?? 18,
+  terminalCollapsed: readWorkbench().terminalCollapsed ?? false,
+  terminalSize: readWorkbench().terminalSize ?? 35,
+  openFiles: [],
+  activeFileKey: null,
+  activeSessionIdByProject: readWorkbench().activeSessionIdByProject ?? {},
+
+  setActivity: (a) => {
+    set((st) => (st.activity === a ? st : { activity: a }))
+    persistWorkbench(useStore.getState())
+  },
+  toggleSidebar: () => {
+    set((st) => ({ sidebarCollapsed: !st.sidebarCollapsed }))
+    persistWorkbench(useStore.getState())
+  },
+  setSidebarSize: (n) => {
+    set({ sidebarSize: Math.max(10, Math.min(50, n)) })
+    persistWorkbench(useStore.getState())
+  },
+  toggleTerminal: () => {
+    set((st) => ({ terminalCollapsed: !st.terminalCollapsed }))
+    persistWorkbench(useStore.getState())
+  },
+  setTerminalSize: (n) => {
+    set({ terminalSize: Math.max(10, Math.min(80, n)) })
+    persistWorkbench(useStore.getState())
+  },
+
+  openFile: (t) => {
+    const key = editorTabKey(t.projectId, t.path, t)
+    set((st) => {
+      const exists = st.openFiles.some((x) => x.key === key)
+      const tab: EditorTab = { ...t, key }
+      return {
+        openFiles: exists ? st.openFiles : [...st.openFiles, tab],
+        activeFileKey: key,
+      }
+    })
+  },
+  closeFile: (key) => {
+    set((st) => {
+      const idx = st.openFiles.findIndex((x) => x.key === key)
+      if (idx < 0) return st
+      const next = st.openFiles.filter((x) => x.key !== key)
+      let nextActive = st.activeFileKey
+      if (st.activeFileKey === key) {
+        const fallback = next[Math.min(idx, next.length - 1)]
+        nextActive = fallback?.key ?? null
+      }
+      return { openFiles: next, activeFileKey: nextActive }
+    })
+  },
+  closeAllFiles: () => set({ openFiles: [], activeFileKey: null }),
+  setActiveFile: (key) => set({ activeFileKey: key }),
+
+  setActiveSession: (projectId, sessionId) => {
+    set((st) => ({
+      activeSessionIdByProject: {
+        ...st.activeSessionIdByProject,
+        [projectId]: sessionId,
+      },
+    }))
+    persistWorkbench(useStore.getState())
+  },
 
   setWsState: (s) => {
     const prev = get().wsState
@@ -388,109 +454,6 @@ export const useStore = create<State>((set, get) => ({
     updateAppBadge(0)
   },
 
-  loadProjectLayout: async (projectId) => {
-    if (get().layoutLoaded[projectId]) return
-    try {
-      const remote = await api.getProjectLayout(projectId)
-      set((st) => {
-        const loaded = { ...st.layoutLoaded, [projectId]: true }
-        if (!remote) return { layoutLoaded: loaded }
-        const local = st.layoutByProject[projectId]
-        // Keep local layout only if it's newer (user changed it while offline
-        // and hasn't saved yet). Otherwise trust the server copy.
-        const keepLocal =
-          st.layoutDirty[projectId] &&
-          local &&
-          local.updatedAt > remote.updatedAt
-        return {
-          layoutLoaded: loaded,
-          layoutByProject: {
-            ...st.layoutByProject,
-            [projectId]: keepLocal ? local : remote,
-          },
-        }
-      })
-    } catch {
-      // Server unavailable — rely on whatever localStorage gave us.
-      set((st) => ({ layoutLoaded: { ...st.layoutLoaded, [projectId]: true } }))
-    }
-  },
-
-  setProjectLayout: (projectId, layout) => {
-    set((st) => {
-      const nextMap = { ...st.layoutByProject, [projectId]: layout }
-      writeLayoutsToStorage(nextMap)
-      return {
-        layoutByProject: nextMap,
-        layoutDirty: { ...st.layoutDirty, [projectId]: true },
-      }
-    })
-  },
-
-  rememberTileSize: (projectId, agent, w, h) => {
-    if (!projectId || !agent) return
-    set((st) => {
-      const perProject = st.tileSizeByAgent[projectId] ?? {}
-      const prev = perProject[agent]
-      if (prev && prev.w === w && prev.h === h) return st
-      const nextProject = { ...perProject, [agent]: { w, h } }
-      const next = { ...st.tileSizeByAgent, [projectId]: nextProject }
-      writeTileSizeMemory(next)
-      return { tileSizeByAgent: next }
-    })
-  },
-
-  renameTileInLayout: (projectId, oldId, newId) => {
-    if (oldId === newId) return
-    set((st) => {
-      const cur = st.layoutByProject[projectId]
-      if (!cur) return st
-      if (!cur.tiles.some((t) => t.i === oldId)) return st
-      const nextTiles = cur.tiles
-        // Drop any pre-existing tile with newId — duplicate i values confuse RGL.
-        .filter((t) => t.i !== newId)
-        .map((t) => (t.i === oldId ? { ...t, i: newId } : t))
-      const nextLayout: ProjectLayout = {
-        ...cur,
-        tiles: nextTiles,
-        updatedAt: Date.now(),
-      }
-      const nextMap = { ...st.layoutByProject, [projectId]: nextLayout }
-      writeLayoutsToStorage(nextMap)
-      return {
-        layoutByProject: nextMap,
-        layoutDirty: { ...st.layoutDirty, [projectId]: true },
-      }
-    })
-  },
-
-  saveProjectLayout: async (projectId) => {
-    const layout = get().layoutByProject[projectId]
-    if (!layout) return
-    const { updatedAt: _ignored, ...payload } = layout
-    void _ignored
-    try {
-      await api.saveProjectLayout(projectId, payload)
-      set((st) => ({
-        layoutDirty: { ...st.layoutDirty, [projectId]: false },
-      }))
-      pushLog({
-        level: 'info',
-        scope: 'layout',
-        projectId,
-        msg: `已保存布局 (${payload.tiles.length} 个 tile)`,
-      })
-    } catch (err) {
-      pushLog({
-        level: 'error',
-        scope: 'layout',
-        projectId,
-        msg: `保存布局失败: ${err instanceof Error ? err.message : String(err)}`,
-      })
-      throw err
-    }
-  },
-
   appendLog: (entry) => {
     set((st) => {
       const next = st.logs.length >= LOG_RING_CAPACITY
@@ -499,8 +462,6 @@ export const useStore = create<State>((set, get) => ({
       return { logs: next }
     })
   },
-
-  toggleLog: () => set((st) => ({ logOpen: !st.logOpen })),
 
   clearLogs: () => set({ logs: [] }),
 }))

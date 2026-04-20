@@ -3,7 +3,7 @@ import * as api from '../api'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
 import { pushLog } from '../logs'
-import type { AgentKind, CliEntry, CliStatusResponse } from '../types'
+import type { AgentKind, CliEntry, CliStatusResponse, Session } from '../types'
 import CliInstallerDialog from './CliInstallerDialog'
 
 interface AgentRow {
@@ -30,7 +30,17 @@ const EMOJI_BY_ID: Record<string, string> = {
   kilo: '🐤',
 }
 
-export default function StartSessionMenu({ projectId }: { projectId: string | null }) {
+export default function StartSessionMenu({
+  projectId,
+  onStarted,
+  triggerLabel = '▶ 启动',
+  compact = false,
+}: {
+  projectId: string | null
+  onStarted?: (s: Session) => void
+  triggerLabel?: string
+  compact?: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [installerOpen, setInstallerOpen] = useState(false)
   const [busy, setBusy] = useState<AgentKind | null>(null)
@@ -88,6 +98,7 @@ export default function StartSessionMenu({ projectId }: { projectId: string | nu
       const s = await api.createSession({ projectId, agent })
       addSession(s)
       aimonWS.subscribe([s.id])
+      onStarted?.(s)
       pushLog({
         level: 'info',
         scope: 'session',
@@ -127,14 +138,16 @@ export default function StartSessionMenu({ projectId }: { projectId: string | nu
         <button
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          className={`fluent-btn px-3 py-1.5 text-sm rounded-md border ${
+          className={`fluent-btn ${compact ? 'px-2 py-0.5' : 'px-3 py-1.5'} text-sm rounded-md border ${
             disabled
               ? 'border-border text-muted cursor-not-allowed opacity-50'
-              : 'bg-accent text-[#003250] font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+              : compact
+                ? 'border-border text-muted hover:text-fg hover:bg-white/[0.04]'
+                : 'bg-accent text-[#003250] font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
           }`}
           title={disabled ? '先在左侧选择一个项目' : '启动新 session'}
         >
-          ▶ 启动
+          {triggerLabel}
         </button>
         <button
           onClick={() => setInstallerOpen(true)}

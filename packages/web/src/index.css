@@ -101,25 +101,6 @@ input:focus, button:focus, textarea:focus {
   opacity: 0.35;
 }
 
-/* ---- react-grid-layout theming (Fluent-style drop target) ----------------- */
-.aimon-layout .react-grid-item.react-grid-placeholder {
-  background: rgba(96, 205, 255, 0.15);
-  border: 1px dashed rgba(96, 205, 255, 0.55);
-  border-radius: 8px;
-  opacity: 1;
-}
-.aimon-layout .react-grid-item > .react-resizable-handle {
-  z-index: 5;
-}
-.aimon-layout .react-grid-item > .react-resizable-handle::after {
-  border-right-color: #6b6b6b;
-  border-bottom-color: #6b6b6b;
-}
-.aimon-layout .react-grid-item.react-draggable-dragging {
-  cursor: grabbing;
-  opacity: 0.9;
-}
-
 /* ---- Fluent helper utilities ---------------------------------------------- */
 
 /* Acrylic: translucent, blurred overlay used on flyouts / context menus. */

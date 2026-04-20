@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { aimonWS } from './ws'
 import { useStore } from './store'
-import 'react-grid-layout/css/styles.css'
 import './index.css'
 
 window.addEventListener('contextmenu', (e) => e.preventDefault())
@@ -76,11 +75,8 @@ function focusSession(sessionId: string, projectId?: string) {
   const st = useStore.getState()
   if (projectId) st.selectProject(projectId)
   st.clearNotify(sessionId)
-  // Defer so the tile has a chance to mount after selectProject.
-  requestAnimationFrame(() => {
-    const el = document.getElementById(`tile-${sessionId}`)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  })
+  // Switch the terminal tab to the notifying session.
+  st.setActiveSession(projectId ?? '__all__', sessionId)
 }
 
 handleSessionDeeplink()

@@ -355,8 +355,8 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
   )
 
   // Portal to document.body so the modal escapes any transform/overflow
-  // ancestors (react-grid-layout wraps each tile in a transformed div, which
-  // would otherwise clip `fixed inset-0` to the tile's cell).
+  // ancestors (e.g. the resizable-panels container) that would otherwise
+  // clip `fixed inset-0` to the panel's bounds.
   if (typeof document === 'undefined') return modal
   return createPortal(modal, document.body)
 }

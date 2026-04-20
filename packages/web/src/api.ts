@@ -13,7 +13,6 @@ import type {
   InstallJob,
   PermissionCatalog,
   Project,
-  ProjectLayout,
   Session,
 } from './types'
 
@@ -70,22 +69,6 @@ export function createProject(input: { name: string; path: string }): Promise<Pr
 
 export function deleteProject(id: string): Promise<void> {
   return request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
-}
-
-export function getProjectLayout(projectId: string): Promise<ProjectLayout | null> {
-  return request<ProjectLayout | null>(
-    `/api/projects/${encodeURIComponent(projectId)}/layout`,
-  )
-}
-
-export function saveProjectLayout(
-  projectId: string,
-  layout: Omit<ProjectLayout, 'updatedAt'>,
-): Promise<{ ok: boolean }> {
-  return request(
-    `/api/projects/${encodeURIComponent(projectId)}/layout`,
-    jsonInit('PUT', layout),
-  )
 }
 
 export function listSessions(projectId?: string): Promise<Session[]> {

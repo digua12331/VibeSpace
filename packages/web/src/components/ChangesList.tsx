@@ -54,6 +54,7 @@ export default function ChangesList({ projectId }: Props) {
 
   const selected = useStore((s) => s.selectedChange)
   const selectChange = useStore((s) => s.selectChange)
+  const openFile = useStore((s) => s.openFile)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -103,6 +104,7 @@ export default function ChangesList({ projectId }: Props) {
       to: kind === 'untracked' ? undefined : 'WORKTREE',
     }
     selectChange(sel)
+    openFile({ projectId, ...sel })
   }
 
   function selectCommitFile(sha: string, filePath: string, status: ChangeStatus): void {
@@ -115,6 +117,7 @@ export default function ChangesList({ projectId }: Props) {
       ...(parent ? { from: parent, to: sha } : {}),
     }
     selectChange(sel)
+    openFile({ projectId, ...sel })
   }
 
   if (loading && !data) {

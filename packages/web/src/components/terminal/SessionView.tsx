@@ -2,19 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { aimonWS } from '../ws'
-import { useStore } from '../store'
-import * as api from '../api'
-import StatusBadge from './StatusBadge'
-import PermissionsDrawer from './PermissionsDrawer'
+import { aimonWS } from '../../ws'
+import { useStore } from '../../store'
+import * as api from '../../api'
+import StatusBadge from '../StatusBadge'
+import PermissionsDrawer from '../PermissionsDrawer'
 import {
   BUTTON_COLOR_CLASSES,
   getCustomButtons,
   onCustomButtonsChange,
   resolveCommand,
   type CustomButton,
-} from '../customButtons'
-import type { AgentKind, Session } from '../types'
+} from '../../customButtons'
+import type { AgentKind, Session } from '../../types'
 
 function agentIcon(a: AgentKind): string {
   switch (a) {
@@ -27,22 +27,24 @@ function agentIcon(a: AgentKind): string {
     case 'kilo': return '🐤'
     case 'claude':
     case 'codex':
-    default:
-      return '🤖'
+    default: return '🤖'
   }
 }
-function agentLabel(a: AgentKind): string {
-  // CLI ids are already stable lowercase strings; just display verbatim.
-  return a
+
+interface Props {
+  session: Session
+  /** True when this view is the active tab. Others stay mounted but hidden. */
+  active: boolean
+  /** Called when user dismisses a stopped/crashed session or closes a live one. */
+  onClose: (id: string) => void
+  /** Called when user restarts; parent should swap activeSessionId to the new id. */
+  onRestart: (oldId: string, newSession: Session) => void
 }
 
-export default function SessionTile({ session }: { session: Session }) {
+export default function SessionView({ session, active, onClose, onRestart }: Props) {
   const projects = useStore((s) => s.projects)
   const [showPerm, setShowPerm] = useState(false)
   const liveStatus = useStore((s) => s.liveStatus[session.id])
-  const removeSession = useStore((s) => s.removeSession)
-  const addSession = useStore((s) => s.addSession)
-  const renameTileInLayout = useStore((s) => s.renameTileInLayout)
   const isNotifying = useStore((s) => s.notifyingSessions.has(session.id))
   const clearNotify = useStore((s) => s.clearNotify)
   const project = projects.find((p) => p.id === session.projectId)
@@ -76,11 +78,7 @@ export default function SessionTile({ session }: { session: Session }) {
     term.loadAddon(fit)
     term.loadAddon(new WebLinksAddon())
     term.open(host)
-    try {
-      fit.fit()
-    } catch {
-      // host not visible yet; ResizeObserver will catch up
-    }
+    try { fit.fit() } catch { /* ignore */ }
     termRef.current = term
     fitRef.current = fit
 
@@ -93,9 +91,7 @@ export default function SessionTile({ session }: { session: Session }) {
       try {
         fitRef.current.fit()
         aimonWS.sendResize(session.id, termRef.current.cols, termRef.current.rows)
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     })
     ro.observe(host)
 
@@ -109,13 +105,11 @@ export default function SessionTile({ session }: { session: Session }) {
       if (msg.type === 'output' && msg.sessionId === session.id) {
         term.write(msg.data)
       } else if (msg.type === 'replay' && msg.sessionId === session.id) {
-        // clear so the replay isn't appended after stale local content
         term.reset()
         term.write(msg.data)
       }
     })
 
-    // On WS reconnect, request a fresh replay so xterm matches server buffer.
     let prevState = aimonWS.getState()
     const offConn = aimonWS.onConnectionChange((s) => {
       if (s === 'open' && prevState !== 'open') {
@@ -139,6 +133,21 @@ export default function SessionTile({ session }: { session: Session }) {
     }
   }, [session.id])
 
+  // When this tab becomes active after being hidden, xterm's measured
+  // dimensions are stale (display toggled). Re-fit on activation.
+  useEffect(() => {
+    if (!active) return
+    const raf = requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit()
+        if (termRef.current) {
+          aimonWS.sendResize(session.id, termRef.current.cols, termRef.current.rows)
+        }
+      } catch { /* ignore */ }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [active, session.id])
+
   async function confirmCloseSession() {
     setBusy(true)
     try {
@@ -148,10 +157,7 @@ export default function SessionTile({ session }: { session: Session }) {
       alert(`关闭失败: ${e instanceof Error ? e.message : String(e)}`)
       return
     }
-    // Success: drop the tile from the grid so the user doesn't have to click
-    // a second "关闭" on the stopped state. This unmounts the component, so
-    // there's no point resetting busy/modal state afterward.
-    removeSession(session.id)
+    onClose(session.id)
   }
 
   async function restart(e: React.MouseEvent) {
@@ -159,13 +165,7 @@ export default function SessionTile({ session }: { session: Session }) {
     setBusy(true)
     try {
       const next = await api.restartSession(session.id)
-      // Inherit the old tile's x/y/w/h for the newly-spawned session so RGL
-      // keeps the same cell instead of re-placing it at defaults. Must happen
-      // before the new session hits `sessions`, otherwise SessionGrid treats
-      // it as a fresh tile and runs placeNewTile against defaults.
-      renameTileInLayout(session.projectId, session.id, next.id)
-      removeSession(session.id)
-      addSession(next)
+      onRestart(session.id, next)
     } catch (err: unknown) {
       alert(`重启失败: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -174,7 +174,7 @@ export default function SessionTile({ session }: { session: Session }) {
   }
 
   function dismiss() {
-    removeSession(session.id)
+    onClose(session.id)
   }
 
   function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -188,25 +188,30 @@ export default function SessionTile({ session }: { session: Session }) {
   const isDead = status === 'stopped' || status === 'crashed'
   const exitCode = session.exit_code
 
-  const tileBorder = isNotifying
-    ? 'border-rose-500/80 ring-1 ring-rose-500/40 animate-pulse-soft'
-    : 'border-border'
+  const ringClass = isNotifying
+    ? 'ring-1 ring-rose-500/40 animate-pulse-soft'
+    : ''
 
   return (
     <div
-      id={`tile-${session.id}`}
+      id={`session-view-${session.id}`}
       onMouseDown={() => clearNotify(session.id)}
-      className={`relative flex flex-col bg-card border rounded-win overflow-hidden h-full shadow-tile ${tileBorder}`}
+      className={`absolute inset-0 flex flex-col bg-bg ${ringClass}`}
+      style={{
+        visibility: active ? 'visible' : 'hidden',
+        pointerEvents: active ? 'auto' : 'none',
+      }}
+      aria-hidden={!active}
     >
-      <div className="drag-handle flex items-center justify-between px-3 py-2 border-b border-border/70 bg-white/[0.02] text-sm cursor-move select-none">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60 bg-white/[0.02] text-sm select-none">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-muted">{agentIcon(session.agent)} {agentLabel(session.agent)}</span>
+          <span className="text-muted">{agentIcon(session.agent)} {session.agent}</span>
           <StatusBadge status={status} />
           {isDead && exitCode != null && (
             <span className="text-xs text-subtle">exit {exitCode}</span>
           )}
         </div>
-        <div className="no-drag flex items-center gap-1">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setShowPerm(true)}
             disabled={!project}
@@ -247,9 +252,6 @@ export default function SessionTile({ session }: { session: Session }) {
               {customButtons
                 .filter((b) => b.showInTopbar)
                 .map((b) => {
-                  // Resolve per-agent: per-agent override wins, then default.
-                  // If the result is empty, skip rendering the button for
-                  // this particular session's agent.
                   const cmd = resolveCommand(b, session.agent)
                   if (!cmd) return null
                   return (
@@ -278,10 +280,10 @@ export default function SessionTile({ session }: { session: Session }) {
 
       <div
         ref={termHostRef}
-        className={`no-drag flex-1 min-h-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
+        className={`flex-1 min-h-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
       />
 
-      <div className="no-drag flex items-center gap-2 px-3 py-2 border-t border-border/70 bg-white/[0.02]">
+      <div className="flex items-center gap-2 px-3 py-2 border-t border-border/60 bg-white/[0.02]">
         <span className="text-subtle text-xs">{'>'}</span>
         <input
           value={inputValue}
@@ -300,13 +302,13 @@ export default function SessionTile({ session }: { session: Session }) {
 
       {confirmClose && (
         <div
-          className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-win"
+          className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="w-[80%] max-w-xs fluent-acrylic rounded-win shadow-dialog p-4 text-sm animate-fluent-in">
             <div className="text-fg font-semibold mb-1">关闭该终端?</div>
             <div className="text-muted text-xs mb-4">
-              将结束 {agentLabel(session.agent)} session，未保存的上下文会丢失。
+              将结束 {session.agent} session，未保存的上下文会丢失。
             </div>
             <div className="flex justify-end gap-2">
               <button

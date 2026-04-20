@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useStore } from '../store'
-import * as api from '../api'
-import PermissionsDrawer from './PermissionsDrawer'
+import { useStore } from '../../store'
+import * as api from '../../api'
+import PermissionsDrawer from '../PermissionsDrawer'
 
 interface ContextMenuState {
   projectId: string
@@ -10,16 +10,21 @@ interface ContextMenuState {
   y: number
 }
 
-export default function ProjectSidebar({ onNewProject }: { onNewProject: () => void }) {
-  const [permProjectId, setPermProjectId] = useState<string | null>(null)
+export default function ExplorerView({
+  onNewProject,
+}: {
+  onNewProject: () => void
+}) {
   const projects = useStore((s) => s.projects)
   const sessions = useStore((s) => s.sessions)
   const selected = useStore((s) => s.selectedProjectId)
   const select = useStore((s) => s.selectProject)
-  const openChanges = useStore((s) => s.openChanges)
+  const setActivity = useStore((s) => s.setActivity)
   const refreshProjects = useStore((s) => s.refreshProjects)
   const refreshSessions = useStore((s) => s.refreshSessions)
+
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
+  const [permProjectId, setPermProjectId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
@@ -30,9 +35,7 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
     window.addEventListener('blur', close)
     window.addEventListener('resize', close)
     window.addEventListener('scroll', close, true)
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
-    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('click', close)
@@ -65,20 +68,21 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
   function openMenu(e: React.MouseEvent, id: string, name: string) {
     e.preventDefault()
     e.stopPropagation()
-    // Clamp so the menu doesn't clip the viewport edges.
-    const MENU_W = 140
-    const MENU_H = 44
+    const MENU_W = 160
+    const MENU_H = 80
     const x = Math.min(e.clientX, window.innerWidth - MENU_W - 4)
     const y = Math.min(e.clientY, window.innerHeight - MENU_H - 4)
     setMenu({ projectId: id, projectName: name, x, y })
   }
 
+  function openScmFor(pid: string) {
+    select(pid)
+    setActivity('scm')
+  }
+
   return (
-    <aside className="w-[260px] shrink-0 border-r border-border/60 fluent-mica flex flex-col">
-      <div className="px-4 pt-3 pb-2 text-[11px] uppercase tracking-[0.1em] text-subtle font-medium">
-        项目
-      </div>
-      <div className="flex-1 overflow-auto px-2 pb-2 space-y-0.5">
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 overflow-auto px-2 py-1.5 space-y-0.5">
         <button
           onClick={() => select(null)}
           className={`fluent-btn relative w-full text-left pl-3 pr-3 py-2 text-sm rounded-md ${
@@ -87,7 +91,9 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
               : 'text-fg hover:bg-white/[0.04]'
           }`}
         >
-          <span className={selected === null ? 'font-medium' : 'opacity-90'}>全部 sessions</span>
+          <span className={selected === null ? 'font-medium' : 'opacity-90'}>
+            全部 sessions
+          </span>
           <span className="ml-2 text-xs text-subtle">({sessions.length})</span>
         </button>
         {projects.length === 0 && (
@@ -100,24 +106,34 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
         {projects.map((p) => (
           <div
             key={p.id}
-            className={`fluent-btn group flex items-center px-3 py-2 text-sm rounded-md cursor-pointer ${
+            className={`fluent-btn group flex items-center gap-2 px-3 py-2 text-sm rounded-md cursor-pointer ${
               selected === p.id
                 ? 'fluent-selection-indicator bg-white/[0.08]'
                 : 'hover:bg-white/[0.04]'
             } ${busy === p.id ? 'opacity-50 pointer-events-none' : ''}`}
             onClick={() => select(p.id)}
             onContextMenu={(e) => openMenu(e, p.id, p.name)}
-            title="右键菜单可删除"
+            title="右键菜单可管理"
           >
             <div className="flex-1 min-w-0">
-              <div
-                className={`truncate ${selected === p.id ? 'text-fg font-medium' : 'text-fg'}`}
-              >
+              <div className={`truncate ${selected === p.id ? 'text-fg font-medium' : 'text-fg'}`}>
                 {p.name}
               </div>
               <div className="truncate text-xs text-muted font-mono">{p.path}</div>
             </div>
-            <span className="text-xs text-subtle ml-2 shrink-0 tabular-nums">{countFor(p.id)}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                openScmFor(p.id)
+              }}
+              title="查看此项目的代码更改"
+              className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-6 h-6 inline-flex items-center justify-center rounded text-[13px] text-muted hover:text-fg hover:bg-white/[0.08]"
+            >
+              📂
+            </button>
+            <span className="text-xs text-subtle shrink-0 tabular-nums min-w-[16px] text-right">
+              {countFor(p.id)}
+            </span>
           </div>
         ))}
       </div>
@@ -141,22 +157,22 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
             onClick={() => {
               const { projectId } = menu
               setMenu(null)
-              setPermProjectId(projectId)
+              openScmFor(projectId)
             }}
             className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
           >
-            ⚙ 权限配置
+            📂 代码更改
           </button>
           <button
             role="menuitem"
             onClick={() => {
               const { projectId } = menu
               setMenu(null)
-              openChanges(projectId)
+              setPermProjectId(projectId)
             }}
             className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
           >
-            📂 代码更改
+            ⚙ 权限配置
           </button>
           <button
             role="menuitem"
@@ -177,6 +193,6 @@ export default function ProjectSidebar({ onNewProject }: { onNewProject: () => v
         if (!proj) return null
         return <PermissionsDrawer project={proj} onClose={() => setPermProjectId(null)} />
       })()}
-    </aside>
+    </div>
   )
 }
