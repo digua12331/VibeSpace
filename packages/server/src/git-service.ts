@@ -71,6 +71,42 @@ export interface DiffResult {
   isBinary: boolean;
 }
 
+export interface BranchRef {
+  name: string;
+  shortName: string;
+  /** "local" | "remote" | "tag" */
+  kind: "local" | "remote" | "tag";
+  sha: string;
+  /** True for the HEAD of this repo (only one local branch has it). */
+  isHead: boolean;
+}
+
+/** Simplified commit node for graph rendering. */
+export interface GraphCommit {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  author: string;
+  date: string;
+  parents: string[];
+  refs: string[]; // branch/tag names pointing at this commit
+  isHead: boolean;
+}
+
+export interface CommitInput {
+  message: string;
+  /** If true, pass --amend. */
+  amend?: boolean;
+  /** If true, pass --allow-empty. Otherwise empty commits fail. */
+  allowEmpty?: boolean;
+}
+
+export interface CommitResult {
+  sha: string;
+  shortSha: string;
+  summary: string;
+}
+
 // ---------- Errors ----------
 
 export class GitServiceError extends Error {
@@ -489,4 +525,204 @@ export async function getDiff(
   const patch = await g.raw(args);
   const isBinary = /Binary files .* differ/.test(patch);
   return { path: relPosix, from, to, patch, isBinary };
+}
+
+// ---------- Write operations (stage / unstage / discard / commit) ----------
+
+function resolveRepoPaths(projectPath: string, paths: string[]): string[] {
+  if (paths.length === 0) {
+    throw new GitServiceError("invalid_ref", "empty path list", 400);
+  }
+  return paths.map((p) => {
+    const abs = safeResolve(projectPath, p);
+    return toRepoRelative(projectPath, abs);
+  });
+}
+
+function bustStatusCache(projectPath: string): void {
+  const cacheKey = `${projectPath}\u0000status`;
+  statusCache.delete(cacheKey);
+}
+
+export async function stagePaths(
+  projectPath: string,
+  paths: string[],
+): Promise<{ staged: string[] }> {
+  const rels = resolveRepoPaths(projectPath, paths);
+  const g = gitFor(projectPath);
+  await g.raw(["add", "--", ...rels]);
+  bustStatusCache(projectPath);
+  return { staged: rels };
+}
+
+export async function unstagePaths(
+  projectPath: string,
+  paths: string[],
+): Promise<{ unstaged: string[] }> {
+  const rels = resolveRepoPaths(projectPath, paths);
+  const g = gitFor(projectPath);
+  // `git reset HEAD --` works before first commit and after; use `restore --staged`
+  // when HEAD exists, fall back to `reset` otherwise.
+  try {
+    await g.raw(["restore", "--staged", "--", ...rels]);
+  } catch {
+    await g.raw(["reset", "HEAD", "--", ...rels]);
+  }
+  bustStatusCache(projectPath);
+  return { unstaged: rels };
+}
+
+/**
+ * Discard working-tree changes for tracked files. For untracked files (status '?'),
+ * the caller must pass them in `untracked` so we can `git clean` them.
+ *
+ * DESTRUCTIVE: user should have confirmed in UI before calling.
+ */
+export async function discardPaths(
+  projectPath: string,
+  input: { tracked: string[]; untracked: string[] },
+): Promise<{ discarded: string[] }> {
+  const trackedRels = input.tracked.length
+    ? resolveRepoPaths(projectPath, input.tracked)
+    : [];
+  const untrackedRels = input.untracked.length
+    ? resolveRepoPaths(projectPath, input.untracked)
+    : [];
+  if (trackedRels.length === 0 && untrackedRels.length === 0) {
+    throw new GitServiceError("invalid_ref", "nothing to discard", 400);
+  }
+  const g = gitFor(projectPath);
+  if (trackedRels.length > 0) {
+    try {
+      await g.raw(["restore", "--staged", "--worktree", "--source=HEAD", "--", ...trackedRels]);
+    } catch {
+      await g.raw(["checkout", "HEAD", "--", ...trackedRels]);
+    }
+  }
+  if (untrackedRels.length > 0) {
+    // Remove untracked files, one at a time via `clean -f -- <path>` so paths
+    // with special characters are treated as literals.
+    for (const p of untrackedRels) {
+      await g.raw(["clean", "-f", "--", p]);
+    }
+  }
+  bustStatusCache(projectPath);
+  return { discarded: [...trackedRels, ...untrackedRels] };
+}
+
+export async function createCommit(
+  projectPath: string,
+  input: CommitInput,
+): Promise<CommitResult> {
+  const message = (input.message ?? "").trim();
+  if (!message) {
+    throw new GitServiceError("invalid_ref", "empty commit message", 400);
+  }
+  const args = ["commit", "-m", message];
+  if (input.amend) args.push("--amend");
+  if (input.allowEmpty) args.push("--allow-empty");
+  const g = gitFor(projectPath);
+  try {
+    await g.raw(args);
+  } catch (err) {
+    throw new GitServiceError(
+      "git_failed",
+      `commit failed: ${(err as Error).message}`,
+      400,
+    );
+  }
+  bustStatusCache(projectPath);
+  const sha = (await g.raw(["rev-parse", "HEAD"])).trim();
+  const summary = (await g.raw(["log", "-n", "1", "--format=%s", sha])).trim();
+  return { sha, shortSha: sha.slice(0, 7), summary };
+}
+
+// ---------- Branches / refs ----------
+
+export async function listBranches(
+  projectPath: string,
+): Promise<BranchRef[]> {
+  const g = gitFor(projectPath);
+  // NOTE: for-each-ref's --format language does NOT interpret %x1f byte
+  // escapes (that's git log only). Use a literal tab — refnames / object
+  // hashes / the HEAD marker ('*' or ' ') cannot contain tabs.
+  const raw = await g.raw([
+    "for-each-ref",
+    "--format=%(refname)\t%(objectname)\t%(HEAD)",
+    "refs/heads",
+    "refs/remotes",
+    "refs/tags",
+  ]);
+  const rows: BranchRef[] = [];
+  for (const line of raw.split(/\r?\n/).filter(Boolean)) {
+    const [refname, sha, headMark] = line.split("\t");
+    if (!refname || !sha) continue;
+    let kind: BranchRef["kind"] = "local";
+    let shortName = refname;
+    if (refname.startsWith("refs/heads/")) {
+      kind = "local";
+      shortName = refname.slice("refs/heads/".length);
+    } else if (refname.startsWith("refs/remotes/")) {
+      kind = "remote";
+      shortName = refname.slice("refs/remotes/".length);
+    } else if (refname.startsWith("refs/tags/")) {
+      kind = "tag";
+      shortName = refname.slice("refs/tags/".length);
+    }
+    rows.push({
+      name: refname,
+      shortName,
+      kind,
+      sha,
+      isHead: (headMark ?? "").trim() === "*",
+    });
+  }
+  return rows;
+}
+
+// ---------- Commit graph ----------
+
+export async function getGraph(
+  projectPath: string,
+  opts: { limit?: number; all?: boolean } = {},
+): Promise<GraphCommit[]> {
+  const g = gitFor(projectPath);
+  const limit = Math.max(1, Math.min(opts.limit ?? 200, 1000));
+  const args = [
+    "log",
+    `--max-count=${limit}`,
+    "--date-order",
+    "--format=%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%s",
+  ];
+  if (opts.all !== false) args.push("--all");
+  const raw = await g.raw(args);
+
+  // Build ref map: sha -> [refShortNames]
+  const refs = await listBranches(projectPath);
+  const refMap = new Map<string, string[]>();
+  let headSha: string | null = null;
+  for (const r of refs) {
+    const arr = refMap.get(r.sha) ?? [];
+    arr.push(r.kind === "remote" ? r.shortName : r.shortName);
+    refMap.set(r.sha, arr);
+    if (r.isHead) headSha = r.sha;
+  }
+
+  return raw
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, shortSha, parents, author, date, subject] = line.split("\x1f");
+      const parentArr = (parents ?? "").trim().split(/\s+/).filter(Boolean);
+      return {
+        sha,
+        shortSha,
+        subject: subject ?? "",
+        author: author ?? "",
+        date: date ?? "",
+        parents: parentArr,
+        refs: refMap.get(sha) ?? [],
+        isHead: sha === headSha,
+      } satisfies GraphCommit;
+    });
 }

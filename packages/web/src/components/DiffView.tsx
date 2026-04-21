@@ -11,31 +11,21 @@ interface Props {
 }
 
 /**
- * The server hands us a single unified diff string produced by `git diff`. The
- * component wants an array of hunk strings, so we slice the raw patch on hunk
- * boundaries and drop the file header (no `@@` in it — @git-diff-view parses
- * file names from its own `data.*.fileName`).
+ * `@git-diff-view/core` expects each entry in `hunks` to be a full unified
+ * diff string (including `@@` headers). Pass the whole patch as one element
+ * and let the library parse multiple hunks internally. Strip everything
+ * before the first `@@` so `diff --git` / `index` / `---` / `+++` preamble
+ * lines don't confuse the parser.
  */
-function splitHunks(patch: string): string[] {
+function prepareHunks(patch: string): string[] {
   if (!patch.trim()) return []
-  const lines = patch.split('\n')
-  const hunks: string[] = []
-  let current: string[] | null = null
-  for (const line of lines) {
-    if (line.startsWith('@@')) {
-      if (current) hunks.push(current.join('\n'))
-      current = [line]
-    } else if (current) {
-      current.push(line)
-    }
-    // Lines before the first hunk header are the file/metadata preamble — drop.
-  }
-  if (current) hunks.push(current.join('\n'))
-  return hunks
+  const idx = patch.indexOf('@@')
+  if (idx < 0) return []
+  return [patch.slice(idx)]
 }
 
 export default function DiffView({ patch, lang, fileName, mode = 'unified' }: Props) {
-  const hunks = useMemo(() => splitHunks(patch), [patch])
+  const hunks = useMemo(() => prepareHunks(patch), [patch])
   const data = useMemo(
     () => ({
       oldFile: {

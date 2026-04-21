@@ -1,30 +1,31 @@
 import { useStore } from '../../store'
-import ExplorerView from '../sidebar/ExplorerView'
 import ScmView from '../sidebar/ScmView'
 import LogsView from '../sidebar/LogsView'
 import InboxView from '../sidebar/InboxView'
+import DocsView from '../sidebar/DocsView'
+import PerfView from '../sidebar/PerfView'
 
 const TITLES: Record<string, string> = {
-  explorer: '资源管理器',
   scm: '源代码更改',
+  docs: 'Dev Docs',
+  perf: '性能',
   logs: '日志',
   inbox: '通知',
 }
 
-export default function PrimarySidebar({
-  onNewProject,
-}: {
-  onNewProject: () => void
-}) {
+export default function PrimarySidebar() {
   const activity = useStore((s) => s.activity)
 
   let body: React.ReactNode
   switch (activity) {
-    case 'explorer':
-      body = <ExplorerView onNewProject={onNewProject} />
-      break
     case 'scm':
       body = <ScmView />
+      break
+    case 'docs':
+      body = <DocsView />
+      break
+    case 'perf':
+      body = <PerfView />
       break
     case 'logs':
       body = <LogsView />

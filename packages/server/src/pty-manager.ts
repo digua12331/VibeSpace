@@ -260,6 +260,10 @@ export class PtyManager extends EventEmitter {
     return [...this.sessions.keys()];
   }
 
+  getPid(sessionId: string): number | null {
+    return this.sessions.get(sessionId)?.proc.pid ?? null;
+  }
+
   killAll(): void {
     for (const id of [...this.sessions.keys()]) {
       this.kill(id);

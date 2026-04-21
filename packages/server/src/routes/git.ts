@@ -3,12 +3,18 @@ import { z } from "zod";
 import { getProject } from "../db.js";
 import {
   GitServiceError,
+  createCommit,
+  discardPaths,
   getChanges,
   getCommit,
   getDiff,
+  getGraph,
   isGitRepo,
+  listBranches,
   listCommits,
   readFileAtRef,
+  stagePaths,
+  unstagePaths,
 } from "../git-service.js";
 
 const RefParam = z
@@ -31,6 +37,23 @@ const DiffQuery = z.object({
 const CommitsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
   branch: z.string().min(1).max(256).optional(),
+});
+
+const GraphQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(1000).optional(),
+  all: z.coerce.boolean().optional(),
+});
+
+const PathArray = z.array(z.string().min(1).max(4096)).min(1).max(500);
+const StageBody = z.object({ paths: PathArray });
+const DiscardBody = z.object({
+  tracked: z.array(z.string().min(1).max(4096)).max(500).optional(),
+  untracked: z.array(z.string().min(1).max(4096)).max(500).optional(),
+});
+const CommitBody = z.object({
+  message: z.string().min(1).max(10000),
+  amend: z.boolean().optional(),
+  allowEmpty: z.boolean().optional(),
 });
 
 function sendGitError(reply: import("fastify").FastifyReply, err: unknown) {
@@ -127,6 +150,129 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
           }
         }
         return reply.send(await readFileAtRef(proj.path, parsed.data));
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /branches ----------
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/branches",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      try {
+        if (!(await isGitRepo(proj.path))) return reply.send([]);
+        return reply.send(await listBranches(proj.path));
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /graph ----------
+  app.get<{ Params: { id: string }; Querystring: unknown }>(
+    "/api/projects/:id/graph",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = GraphQuery.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_query", detail: parsed.error.issues });
+      }
+      try {
+        if (!(await isGitRepo(proj.path))) return reply.send([]);
+        return reply.send(await getGraph(proj.path, parsed.data));
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /stage ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/stage",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = StageBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      try {
+        if (!(await isGitRepo(proj.path))) {
+          return reply.code(400).send({ error: "not_a_git_repo" });
+        }
+        return reply.send(await stagePaths(proj.path, parsed.data.paths));
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /unstage ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/unstage",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = StageBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      try {
+        if (!(await isGitRepo(proj.path))) {
+          return reply.code(400).send({ error: "not_a_git_repo" });
+        }
+        return reply.send(await unstagePaths(proj.path, parsed.data.paths));
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /discard ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/discard",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = DiscardBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      try {
+        if (!(await isGitRepo(proj.path))) {
+          return reply.code(400).send({ error: "not_a_git_repo" });
+        }
+        return reply.send(
+          await discardPaths(proj.path, {
+            tracked: parsed.data.tracked ?? [],
+            untracked: parsed.data.untracked ?? [],
+          }),
+        );
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /commit ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/commit",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = CommitBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      try {
+        if (!(await isGitRepo(proj.path))) {
+          return reply.code(400).send({ error: "not_a_git_repo" });
+        }
+        return reply.send(await createCommit(proj.path, parsed.data));
       } catch (err) {
         return sendGitError(reply, err);
       }

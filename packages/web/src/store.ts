@@ -3,6 +3,7 @@ import * as api from './api'
 import { aimonWS } from './ws'
 import { isPageFocused, notifyWaitingInput, type NotificationPermissionState } from './notify'
 import type {
+  DocTaskSummary,
   GitRef,
   LogEntry,
   Project,
@@ -24,7 +25,7 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'explorer' | 'scm' | 'logs' | 'inbox'
+export type Activity = 'scm' | 'docs' | 'perf' | 'logs' | 'inbox'
 
 export interface EditorTab {
   /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}` */
@@ -54,10 +55,9 @@ function editorTabKey(
 
 interface WorkbenchPersisted {
   activity?: Activity
+  projectsColumnSize?: number
   sidebarCollapsed?: boolean
   sidebarSize?: number
-  terminalSize?: number
-  terminalCollapsed?: boolean
   activeSessionIdByProject?: Record<string, string>
 }
 
@@ -81,18 +81,16 @@ function writeWorkbench(v: WorkbenchPersisted): void {
 
 function persistWorkbench(s: {
   activity: Activity
+  projectsColumnSize: number
   sidebarCollapsed: boolean
   sidebarSize: number
-  terminalCollapsed: boolean
-  terminalSize: number
   activeSessionIdByProject: Record<string, string>
 }): void {
   writeWorkbench({
     activity: s.activity,
+    projectsColumnSize: s.projectsColumnSize,
     sidebarCollapsed: s.sidebarCollapsed,
     sidebarSize: s.sidebarSize,
-    terminalCollapsed: s.terminalCollapsed,
-    terminalSize: s.terminalSize,
     activeSessionIdByProject: s.activeSessionIdByProject,
   })
 }
@@ -101,7 +99,7 @@ import { pushLog } from './logs'
 const LOG_RING_CAPACITY = 500
 
 const SELECTED_PROJECT_LS_KEY = 'aimon_selected_project_v1'
-const WORKBENCH_LS_KEY = 'aimon_workbench_v2'
+const WORKBENCH_LS_KEY = 'aimon_workbench_v3'
 
 function readSelectedProject(): string | null {
   if (typeof localStorage === 'undefined') return null
@@ -145,19 +143,19 @@ interface State {
 
   /** ----- VS Code-style workbench ----- */
   activity: Activity
+  projectsColumnSize: number
   sidebarCollapsed: boolean
   sidebarSize: number
-  terminalCollapsed: boolean
-  terminalSize: number
   openFiles: EditorTab[]
   activeFileKey: string | null
   activeSessionIdByProject: Record<string, string>
+  /** Which kind of tab is currently showing in the unified workspace. */
+  activeTabKind: 'file' | 'session' | null
 
   setActivity: (a: Activity) => void
+  setProjectsColumnSize: (n: number) => void
   toggleSidebar: () => void
   setSidebarSize: (n: number) => void
-  toggleTerminal: () => void
-  setTerminalSize: (n: number) => void
 
   openFile: (t: Omit<EditorTab, 'key'>) => void
   closeFile: (key: string) => void
@@ -165,6 +163,15 @@ interface State {
   setActiveFile: (key: string | null) => void
 
   setActiveSession: (projectId: string, sessionId: string) => void
+  setActiveTabKind: (k: 'file' | 'session' | null) => void
+
+  /** ----- Dev Docs ----- */
+  docsTasks: Record<string, DocTaskSummary[]>
+  docsLoading: Record<string, boolean>
+  docsError: Record<string, string | null>
+  refreshDocs: (projectId: string) => Promise<void>
+  createDocsTask: (projectId: string, name: string) => Promise<DocTaskSummary>
+  archiveDocsTask: (projectId: string, name: string) => Promise<void>
 
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
@@ -242,18 +249,25 @@ export const useStore = create<State>((set, get) => ({
 
   selectChange: (c) => set({ selectedChange: c }),
 
-  // ----- workbench state (v2 layout: 4-column horizontal) -----
-  activity: readWorkbench().activity ?? 'explorer',
+  // ----- workbench state (v3 layout: 5-column horizontal) -----
+  activity: readWorkbench().activity ?? 'scm',
+  projectsColumnSize: readWorkbench().projectsColumnSize ?? 16,
   sidebarCollapsed: readWorkbench().sidebarCollapsed ?? false,
-  sidebarSize: readWorkbench().sidebarSize ?? 18,
-  terminalCollapsed: readWorkbench().terminalCollapsed ?? false,
-  terminalSize: readWorkbench().terminalSize ?? 35,
+  sidebarSize: readWorkbench().sidebarSize ?? 16,
   openFiles: [],
   activeFileKey: null,
   activeSessionIdByProject: readWorkbench().activeSessionIdByProject ?? {},
+  activeTabKind: null,
+  docsTasks: {},
+  docsLoading: {},
+  docsError: {},
 
   setActivity: (a) => {
     set((st) => (st.activity === a ? st : { activity: a }))
+    persistWorkbench(useStore.getState())
+  },
+  setProjectsColumnSize: (n) => {
+    set({ projectsColumnSize: Math.max(8, Math.min(40, n)) })
     persistWorkbench(useStore.getState())
   },
   toggleSidebar: () => {
@@ -262,14 +276,6 @@ export const useStore = create<State>((set, get) => ({
   },
   setSidebarSize: (n) => {
     set({ sidebarSize: Math.max(10, Math.min(50, n)) })
-    persistWorkbench(useStore.getState())
-  },
-  toggleTerminal: () => {
-    set((st) => ({ terminalCollapsed: !st.terminalCollapsed }))
-    persistWorkbench(useStore.getState())
-  },
-  setTerminalSize: (n) => {
-    set({ terminalSize: Math.max(10, Math.min(80, n)) })
     persistWorkbench(useStore.getState())
   },
 
@@ -281,6 +287,7 @@ export const useStore = create<State>((set, get) => ({
       return {
         openFiles: exists ? st.openFiles : [...st.openFiles, tab],
         activeFileKey: key,
+        activeTabKind: 'file',
       }
     })
   },
@@ -290,15 +297,24 @@ export const useStore = create<State>((set, get) => ({
       if (idx < 0) return st
       const next = st.openFiles.filter((x) => x.key !== key)
       let nextActive = st.activeFileKey
+      let nextKind = st.activeTabKind
       if (st.activeFileKey === key) {
         const fallback = next[Math.min(idx, next.length - 1)]
         nextActive = fallback?.key ?? null
+        if (!fallback) nextKind = st.activeTabKind === 'file' ? null : st.activeTabKind
       }
-      return { openFiles: next, activeFileKey: nextActive }
+      return { openFiles: next, activeFileKey: nextActive, activeTabKind: nextKind }
     })
   },
-  closeAllFiles: () => set({ openFiles: [], activeFileKey: null }),
-  setActiveFile: (key) => set({ activeFileKey: key }),
+  closeAllFiles: () =>
+    set((st) => ({
+      openFiles: [],
+      activeFileKey: null,
+      activeTabKind: st.activeTabKind === 'file' ? null : st.activeTabKind,
+    })),
+  setActiveFile: (key) =>
+    set({ activeFileKey: key, activeTabKind: key ? 'file' : null }),
+  setActiveTabKind: (k) => set({ activeTabKind: k }),
 
   setActiveSession: (projectId, sessionId) => {
     set((st) => ({
@@ -464,6 +480,51 @@ export const useStore = create<State>((set, get) => ({
   },
 
   clearLogs: () => set({ logs: [] }),
+
+  refreshDocs: async (projectId) => {
+    set((st) => ({
+      docsLoading: { ...st.docsLoading, [projectId]: true },
+      docsError: { ...st.docsError, [projectId]: null },
+    }))
+    try {
+      const tasks = await api.listDocsTasks(projectId)
+      set((st) => ({
+        docsTasks: { ...st.docsTasks, [projectId]: tasks },
+        docsLoading: { ...st.docsLoading, [projectId]: false },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        docsLoading: { ...st.docsLoading, [projectId]: false },
+        docsError: { ...st.docsError, [projectId]: msg },
+      }))
+      throw e
+    }
+  },
+
+  createDocsTask: async (projectId, name) => {
+    const created = await api.createDocsTask(projectId, name)
+    set((st) => {
+      const prev = st.docsTasks[projectId] ?? []
+      return {
+        docsTasks: { ...st.docsTasks, [projectId]: [created, ...prev] },
+      }
+    })
+    return created
+  },
+
+  archiveDocsTask: async (projectId, name) => {
+    await api.archiveDocsTask(projectId, name)
+    set((st) => {
+      const prev = st.docsTasks[projectId] ?? []
+      return {
+        docsTasks: {
+          ...st.docsTasks,
+          [projectId]: prev.filter((t) => t.name !== name),
+        },
+      }
+    })
+  },
 }))
 
 // When the user comes back to the tab, all nags are implicitly acknowledged.

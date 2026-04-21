@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { statSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import {
@@ -12,11 +13,65 @@ import {
   updateProjectLayout,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
+import { KARPATHY_GUIDELINES } from "../karpathy-guidelines.js";
+import { DEV_DOCS_GUIDELINES } from "../dev-docs-guidelines.js";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   path: z.string().min(1),
+  applyKarpathyGuidelines: z.boolean().optional(),
+  applyDevDocsGuidelines: z.boolean().optional(),
 });
+
+/**
+ * Append `body` to <projectPath>/CLAUDE.md, guarding against:
+ * - duplicate application (by a stable anchor line),
+ * - awkward newline boundaries between existing content and the appended body.
+ *
+ * Returns `true` when the file was written, `false` when it was already present.
+ */
+function appendToClaudeMd(
+  projectPath: string,
+  body: string,
+  anchor: string,
+): boolean {
+  const target = join(projectPath, "CLAUDE.md");
+  let existing = "";
+  try {
+    existing = readFileSync(target, "utf8");
+  } catch {
+    // file does not exist — write fresh
+  }
+  if (anchor && existing.includes(anchor)) return false;
+  const needsSeparator = existing.length > 0;
+  const trailingNewlines = existing.endsWith("\n\n")
+    ? ""
+    : existing.endsWith("\n")
+      ? "\n"
+      : "\n\n";
+  const payload = needsSeparator
+    ? `${existing}${trailingNewlines}---\n\n${body}`
+    : body;
+  writeFileSync(target, payload, "utf8");
+  return true;
+}
+
+function appendKarpathyGuidelines(projectPath: string): boolean {
+  return appendToClaudeMd(
+    projectPath,
+    KARPATHY_GUIDELINES,
+    KARPATHY_GUIDELINES.trimEnd(),
+  );
+}
+
+function appendDevDocsGuidelines(projectPath: string): boolean {
+  // Stable anchor so re-applying is a no-op even if user edits surrounding text.
+  return appendToClaudeMd(
+    projectPath,
+    DEV_DOCS_GUIDELINES,
+    "# Dev Docs 工作流",
+  );
+}
 
 const LayoutSchema = z.object({
   cols: z.number().int().min(1).max(48),
@@ -44,7 +99,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
     }
-    const { name, path } = parsed.data;
+    const {
+      name,
+      path,
+      applyKarpathyGuidelines,
+      applyDevDocsGuidelines,
+    } = parsed.data;
 
     // Validate path exists & is directory
     try {
@@ -58,6 +118,26 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
     try {
       const proj = createProject({ id: nanoid(12), name, path });
+      if (applyKarpathyGuidelines) {
+        try {
+          appendKarpathyGuidelines(path);
+        } catch (err) {
+          app.log.warn(
+            { err, path },
+            "failed to append Karpathy guidelines to CLAUDE.md",
+          );
+        }
+      }
+      if (applyDevDocsGuidelines) {
+        try {
+          appendDevDocsGuidelines(path);
+        } catch (err) {
+          app.log.warn(
+            { err, path },
+            "failed to append Dev Docs guidelines to CLAUDE.md",
+          );
+        }
+      }
       return reply.code(201).send(proj);
     } catch (err) {
       const msg = (err as Error).message || "";
@@ -90,6 +170,25 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       });
       if (!ok) return reply.code(404).send({ error: "not_found" });
       return reply.send({ ok: true });
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/apply-dev-docs",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      try {
+        const wrote = appendDevDocsGuidelines(proj.path);
+        return reply.send({
+          ok: true,
+          wrote,
+          target: join(proj.path, "CLAUDE.md"),
+        });
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        return reply.code(500).send({ error: "write_failed", message: msg });
+      }
     },
   );
 

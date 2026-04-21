@@ -1,18 +1,25 @@
 import type {
   AgentKind,
+  BranchRef,
   ChangesResponse,
   CliConfigSavePayload,
   CliConfigState,
   CliEntry,
   CliStatusResponse,
   CommitDetail,
+  CommitResult,
   CommitSummary,
   DiffResult,
+  DocFileContent,
+  DocFileKind,
+  DocTaskSummary,
   FileContent,
   GitRef,
+  GraphCommit,
   InstallJob,
   PermissionCatalog,
   Project,
+  ProjectPerf,
   Session,
 } from './types'
 
@@ -63,8 +70,22 @@ export function listProjects(): Promise<Project[]> {
   return request<Project[]>('/api/projects')
 }
 
-export function createProject(input: { name: string; path: string }): Promise<Project> {
+export function createProject(input: {
+  name: string
+  path: string
+  applyKarpathyGuidelines?: boolean
+  applyDevDocsGuidelines?: boolean
+}): Promise<Project> {
   return request<Project>('/api/projects', jsonInit('POST', input))
+}
+
+export function applyDevDocsGuidelines(
+  projectId: string,
+): Promise<{ ok: boolean; wrote: boolean; target: string }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/apply-dev-docs`,
+    { method: 'POST' },
+  )
 }
 
 export function deleteProject(id: string): Promise<void> {
@@ -189,6 +210,65 @@ export function getProjectDiff(
   )
 }
 
+export function getProjectBranches(projectId: string): Promise<BranchRef[]> {
+  return request<BranchRef[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/branches`,
+  )
+}
+
+export function getProjectGraph(
+  projectId: string,
+  opts: { limit?: number; all?: boolean } = {},
+): Promise<GraphCommit[]> {
+  const qs = new URLSearchParams()
+  if (opts.limit != null) qs.set('limit', String(opts.limit))
+  if (opts.all != null) qs.set('all', String(opts.all))
+  const suffix = qs.toString() ? `?${qs}` : ''
+  return request<GraphCommit[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/graph${suffix}`,
+  )
+}
+
+export function stagePaths(
+  projectId: string,
+  paths: string[],
+): Promise<{ staged: string[] }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/stage`,
+    jsonInit('POST', { paths }),
+  )
+}
+
+export function unstagePaths(
+  projectId: string,
+  paths: string[],
+): Promise<{ unstaged: string[] }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/unstage`,
+    jsonInit('POST', { paths }),
+  )
+}
+
+export function discardPaths(
+  projectId: string,
+  input: { tracked?: string[]; untracked?: string[] },
+): Promise<{ discarded: string[] }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/discard`,
+    jsonInit('POST', input),
+  )
+}
+
+export function createCommit(
+  projectId: string,
+  input: { message: string; amend?: boolean; allowEmpty?: boolean },
+): Promise<CommitResult> {
+  return request<CommitResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/commit`,
+    jsonInit('POST', input),
+  )
+}
+
 export function initProjectCliConfig(
   projectId: string,
   variants: Array<'claude' | 'codex'>,
@@ -197,5 +277,52 @@ export function initProjectCliConfig(
   return request(
     `/api/projects/${encodeURIComponent(projectId)}/cli-configs/init`,
     jsonInit('POST', { variants, force }),
+  )
+}
+
+// ---------- Dev Docs ----------
+
+export function listDocsTasks(projectId: string): Promise<DocTaskSummary[]> {
+  return request<DocTaskSummary[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/docs`,
+  )
+}
+
+export function getDocsFile(
+  projectId: string,
+  task: string,
+  kind: DocFileKind,
+): Promise<DocFileContent> {
+  const qs = new URLSearchParams({ kind })
+  return request<DocFileContent>(
+    `/api/projects/${encodeURIComponent(projectId)}/docs/${encodeURIComponent(task)}/file?${qs}`,
+  )
+}
+
+export function createDocsTask(
+  projectId: string,
+  name: string,
+): Promise<DocTaskSummary> {
+  return request<DocTaskSummary>(
+    `/api/projects/${encodeURIComponent(projectId)}/docs`,
+    jsonInit('POST', { name }),
+  )
+}
+
+export function archiveDocsTask(
+  projectId: string,
+  name: string,
+): Promise<{ archivedAs: string }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/docs/${encodeURIComponent(name)}/archive`,
+    { method: 'POST' },
+  )
+}
+
+// ---------- Perf ----------
+
+export function getProjectPerf(projectId: string): Promise<ProjectPerf> {
+  return request<ProjectPerf>(
+    `/api/projects/${encodeURIComponent(projectId)}/metrics`,
   )
 }

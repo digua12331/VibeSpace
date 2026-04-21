@@ -37,6 +37,9 @@ importers:
       nanoid:
         specifier: ^5.1.9
         version: 5.1.9
+      pidusage:
+        specifier: ^3.0.2
+        version: 3.0.2
       simple-git:
         specifier: ^3.36.0
         version: 3.36.0
@@ -47,6 +50,9 @@ importers:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
+      '@types/pidusage':
+        specifier: ^2.0.5
+        version: 2.0.5
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -543,6 +549,9 @@ packages:
 
   '@types/node@25.6.0':
     resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
+
+  '@types/pidusage@2.0.5':
+    resolution: {integrity: sha512-MIiyZI4/MK9UGUXWt0jJcCZhVw7YdhBuTOuqP/BjuLDLZ2PmmViMIQgZiWxtaMicQfAz/kMrZ5T7PKxFSkTeUA==}
 
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
@@ -1349,6 +1358,10 @@ packages:
   picomatch@4.0.4:
     resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
     engines: {node: '>=12'}
+
+  pidusage@3.0.2:
+    resolution: {integrity: sha512-g0VU+y08pKw5M8EZ2rIGiEBaB8wrQMjYGFfW2QVIfyT8V+fq8YFLkvlz4bz5ljvFDJYNFCWT3PWqcRr2FKO81w==}
+    engines: {node: '>=10'}
 
   pify@2.3.0:
     resolution: {integrity: sha512-udgsAY+fTnvv7kI7aaxbqwWNb0AHiB0qBO89PZKPkoTmGOgdbrHDKD+0B2X4uTfJ/FT1R09r9gTsjUjNJotuog==}
@@ -2218,6 +2231,8 @@ snapshots:
   '@types/node@25.6.0':
     dependencies:
       undici-types: 7.19.2
+
+  '@types/pidusage@2.0.5': {}
 
   '@types/react-dom@19.2.3(@types/react@19.2.14)':
     dependencies:
@@ -3205,6 +3220,10 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.4: {}
+
+  pidusage@3.0.2:
+    dependencies:
+      safe-buffer: 5.2.1
 
   pify@2.3.0: {}
 

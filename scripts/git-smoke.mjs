@@ -206,6 +206,103 @@ try {
   assert(bad.status === 400, "path traversal must 400, got " + bad.status);
   console.log("[git-smoke] path traversal rejected");
 
+  // ---- /branches ----
+  const branches = await jsonFetch(
+    "GET",
+    `/api/projects/${encodeURIComponent(projectId)}/branches`,
+  );
+  assert(branches.status === 200 && Array.isArray(branches.body), "/branches shape");
+  assert(branches.body.some((b) => b.shortName === "main" && b.isHead), "main is HEAD");
+  console.log("[git-smoke] /branches ok");
+
+  // ---- /graph ----
+  const graph = await jsonFetch(
+    "GET",
+    `/api/projects/${encodeURIComponent(projectId)}/graph?limit=10&all=true`,
+  );
+  assert(graph.status === 200 && Array.isArray(graph.body), "/graph shape");
+  assert(graph.body.length >= 2, "graph has at least 2 commits");
+  assert(graph.body[0].sha === secondSha, "graph newest sha matches HEAD");
+  assert(graph.body[0].isHead === true, "graph newest isHead");
+  console.log("[git-smoke] /graph ok (" + graph.body.length + " commits)");
+
+  // ---- /stage (untracked.txt + staged.txt already done; stage README.md) ----
+  const stage = await jsonFetch(
+    "POST",
+    `/api/projects/${encodeURIComponent(projectId)}/stage`,
+    { paths: ["README.md"] },
+  );
+  assert(stage.status === 200, "/stage status " + stage.status);
+  const afterStage = await jsonFetch(
+    "GET",
+    `/api/projects/${encodeURIComponent(projectId)}/changes`,
+  );
+  assert(
+    afterStage.body.staged.some((e) => e.path === "README.md"),
+    "README.md became staged",
+  );
+  console.log("[git-smoke] /stage ok");
+
+  // ---- /unstage ----
+  const unstage = await jsonFetch(
+    "POST",
+    `/api/projects/${encodeURIComponent(projectId)}/unstage`,
+    { paths: ["README.md"] },
+  );
+  assert(unstage.status === 200, "/unstage status " + unstage.status);
+  const afterUnstage = await jsonFetch(
+    "GET",
+    `/api/projects/${encodeURIComponent(projectId)}/changes`,
+  );
+  assert(
+    !afterUnstage.body.staged.some((e) => e.path === "README.md"),
+    "README.md unstaged",
+  );
+  assert(
+    afterUnstage.body.unstaged.some((e) => e.path === "README.md"),
+    "README.md back in unstaged",
+  );
+  console.log("[git-smoke] /unstage ok");
+
+  // ---- /commit (stage README + commit) ----
+  await jsonFetch("POST", `/api/projects/${encodeURIComponent(projectId)}/stage`, {
+    paths: ["README.md", "staged.txt"],
+  });
+  const commit = await jsonFetch(
+    "POST",
+    `/api/projects/${encodeURIComponent(projectId)}/commit`,
+    { message: "smoke: add README edit + staged.txt" },
+  );
+  assert(commit.status === 200, "/commit status " + commit.status);
+  assert(typeof commit.body.sha === "string" && commit.body.sha.length === 40, "commit sha");
+  console.log("[git-smoke] /commit ok (sha " + commit.body.shortSha + ")");
+
+  // ---- /discard (tracked): re-dirty README then discard ----
+  writeFileSync(join(repo, "README.md"), "dirty again\n");
+  const beforeDiscard = await jsonFetch(
+    "GET",
+    `/api/projects/${encodeURIComponent(projectId)}/changes`,
+  );
+  assert(
+    beforeDiscard.body.unstaged.some((e) => e.path === "README.md"),
+    "README.md dirtied",
+  );
+  const discard = await jsonFetch(
+    "POST",
+    `/api/projects/${encodeURIComponent(projectId)}/discard`,
+    { tracked: ["README.md"] },
+  );
+  assert(discard.status === 200, "/discard status " + discard.status);
+  const afterDiscard = await jsonFetch(
+    "GET",
+    `/api/projects/${encodeURIComponent(projectId)}/changes`,
+  );
+  assert(
+    !afterDiscard.body.unstaged.some((e) => e.path === "README.md"),
+    "README.md restored",
+  );
+  console.log("[git-smoke] /discard (tracked) ok");
+
   console.log("\n[git-smoke] ALL OK ✅");
   process.exit(0);
 } catch (err) {

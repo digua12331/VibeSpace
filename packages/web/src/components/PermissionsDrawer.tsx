@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import * as api from '../api'
 import { useStore } from '../store'
+import { alertDialog } from './dialog/DialogHost'
 import {
   BUTTON_COLORS,
   BUTTON_COLOR_LABELS,
@@ -176,7 +177,10 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
       setCustomEntries(st.claude.custom)
       setInitNeeded(false)
     } catch (e: unknown) {
-      alert(`初始化失败: ${e instanceof Error ? e.message : String(e)}`)
+      await alertDialog(
+        `初始化失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '初始化失败', variant: 'danger' },
+      )
     } finally {
       setSaving(false)
     }
@@ -283,15 +287,22 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
               </TabBtn>
             </div>
 
-            {initNeeded && (
-              <div className="px-4 py-2 text-xs text-amber-300 bg-amber-950/40 border-b border-amber-900/40 flex items-center justify-between">
+            {initNeeded && state && (
+              <div className="px-4 py-2 text-xs text-amber-300 bg-amber-950/40 border-b border-amber-900/40 flex items-center justify-between gap-3">
                 <span>
-                  项目下还没有 <code>.claude/</code> 或 <code>.codex/</code> 配置文件。
+                  {(() => {
+                    const missing: string[] = []
+                    if (!state.probe.claudeDir.exists) missing.push('.claude/')
+                    if (!state.probe.codexDir.exists) missing.push('.codex/')
+                    return missing.length === 2
+                      ? <>项目下还没有 <code>.claude/</code> 或 <code>.codex/</code> 配置目录。</>
+                      : <>项目下还没有 <code>{missing[0]}</code> 配置目录。</>
+                  })()}
                 </span>
                 <button
                   onClick={() => void onInitConfigs()}
                   disabled={saving}
-                  className="px-2 py-0.5 rounded border border-amber-700/60 hover:bg-amber-900/30 disabled:opacity-50"
+                  className="px-2 py-0.5 rounded border border-amber-700/60 hover:bg-amber-900/30 disabled:opacity-50 shrink-0"
                 >
                   一键初始化模板
                 </button>
@@ -1038,7 +1049,10 @@ function PostSaveRestartDialog({
     }
     setBusy(false)
     if (errors.length > 0) {
-      alert(`部分重启失败:\n${errors.join('\n')}`)
+      await alertDialog(`部分重启失败:\n${errors.join('\n')}`, {
+        title: '部分重启失败',
+        variant: 'danger',
+      })
     }
     onClose()
   }

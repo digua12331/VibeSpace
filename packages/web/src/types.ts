@@ -277,6 +277,31 @@ export interface DiffResult {
   isBinary: boolean
 }
 
+export interface BranchRef {
+  name: string
+  shortName: string
+  kind: 'local' | 'remote' | 'tag'
+  sha: string
+  isHead: boolean
+}
+
+export interface GraphCommit {
+  sha: string
+  shortSha: string
+  subject: string
+  author: string
+  date: string
+  parents: string[]
+  refs: string[]
+  isHead: boolean
+}
+
+export interface CommitResult {
+  sha: string
+  shortSha: string
+  summary: string
+}
+
 export interface CliConfigSavePayload {
   claude?: {
     selections: Record<string, TriState>
@@ -285,4 +310,46 @@ export interface CliConfigSavePayload {
   codex?: {
     values: Record<string, string | boolean | string[]>
   }
+}
+
+// ---------- Dev Docs ----------
+
+export type DocFileKind = 'plan' | 'context' | 'tasks'
+export type DocTaskStatus = 'todo' | 'doing' | 'done'
+
+export interface DocTaskSummary {
+  name: string
+  status: DocTaskStatus
+  checked: number
+  total: number
+  updatedAt: number
+}
+
+export interface DocFileContent {
+  path: string
+  content: string
+  updatedAt: number
+}
+
+// ---------- Perf ----------
+
+export interface SessionPerfSample {
+  sessionId: string
+  agent: AgentKind
+  pid: number | null
+  /** Percentage, 0-100+ (multi-core can exceed 100). */
+  cpu: number
+  /** Resident set size in bytes. */
+  memRss: number
+  sampledAt: number
+  /** If set, the sample failed — UI should show "—" rather than 0. */
+  error?: string
+}
+
+export interface ProjectPerf {
+  projectId: string
+  sessions: SessionPerfSample[]
+  totalCpu: number
+  totalRssBytes: number
+  sampledAt: number
 }

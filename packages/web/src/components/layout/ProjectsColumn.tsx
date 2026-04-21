@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import PermissionsDrawer from '../PermissionsDrawer'
+import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 
 interface ContextMenuState {
   projectId: string
@@ -10,7 +11,7 @@ interface ContextMenuState {
   y: number
 }
 
-export default function ExplorerView({
+export default function ProjectsColumn({
   onNewProject,
 }: {
   onNewProject: () => void
@@ -35,7 +36,9 @@ export default function ExplorerView({
     window.addEventListener('blur', close)
     window.addEventListener('resize', close)
     window.addEventListener('scroll', close, true)
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('click', close)
@@ -48,14 +51,21 @@ export default function ExplorerView({
   }, [menu])
 
   async function onDelete(id: string, name: string) {
-    if (!confirm(`确认删除项目 "${name}"? (其下 sessions 也会被终止)`)) return
+    const ok = await confirmDialog(
+      `确认删除项目 "${name}"? (其下 sessions 也会被终止)`,
+      { title: '删除项目', variant: 'danger', confirmLabel: '删除' },
+    )
+    if (!ok) return
     setBusy(id)
     try {
       await api.deleteProject(id)
       await refreshProjects()
       await refreshSessions()
     } catch (e: unknown) {
-      alert(`删除失败: ${e instanceof Error ? e.message : String(e)}`)
+      await alertDialog(
+        `删除失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '删除失败', variant: 'danger' },
+      )
     } finally {
       setBusy(null)
     }
@@ -68,8 +78,8 @@ export default function ExplorerView({
   function openMenu(e: React.MouseEvent, id: string, name: string) {
     e.preventDefault()
     e.stopPropagation()
-    const MENU_W = 160
-    const MENU_H = 80
+    const MENU_W = 180
+    const MENU_H = 100
     const x = Math.min(e.clientX, window.innerWidth - MENU_W - 4)
     const y = Math.min(e.clientY, window.innerHeight - MENU_H - 4)
     setMenu({ projectId: id, projectName: name, x, y })
@@ -81,7 +91,14 @@ export default function ExplorerView({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <aside className="h-full flex flex-col fluent-mica border-r border-border/60 min-h-0">
+      <div className="h-9 px-3 flex items-center justify-between text-[11px] uppercase tracking-[0.12em] text-subtle font-medium border-b border-border/40">
+        <span>项目</span>
+        <span className="text-[10px] normal-case tracking-normal text-subtle tabular-nums">
+          {projects.length}
+        </span>
+      </div>
+
       <div className="flex-1 overflow-auto px-2 py-1.5 space-y-0.5">
         <button
           onClick={() => select(null)}
@@ -113,10 +130,12 @@ export default function ExplorerView({
             } ${busy === p.id ? 'opacity-50 pointer-events-none' : ''}`}
             onClick={() => select(p.id)}
             onContextMenu={(e) => openMenu(e, p.id, p.name)}
-            title="右键菜单可管理"
+            title="右键可管理"
           >
             <div className="flex-1 min-w-0">
-              <div className={`truncate ${selected === p.id ? 'text-fg font-medium' : 'text-fg'}`}>
+              <div
+                className={`truncate ${selected === p.id ? 'text-fg font-medium' : 'text-fg'}`}
+              >
                 {p.name}
               </div>
               <div className="truncate text-xs text-muted font-mono">{p.path}</div>
@@ -150,7 +169,7 @@ export default function ExplorerView({
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
-          className="fixed z-50 min-w-[160px] rounded-lg fluent-acrylic shadow-flyout py-1 text-sm animate-fluent-in"
+          className="fixed z-50 min-w-[170px] rounded-lg fluent-acrylic shadow-flyout py-1 text-sm animate-fluent-in"
         >
           <button
             role="menuitem"
@@ -193,6 +212,6 @@ export default function ExplorerView({
         if (!proj) return null
         return <PermissionsDrawer project={proj} onClose={() => setPermProjectId(null)} />
       })()}
-    </div>
+    </aside>
   )
 }

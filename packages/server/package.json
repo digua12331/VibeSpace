@@ -17,11 +17,13 @@
     "better-sqlite3": "^12.9.0",
     "fastify": "^5.8.5",
     "nanoid": "^5.1.9",
+    "pidusage": "^3.0.2",
     "simple-git": "^3.36.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "@types/pidusage": "^2.0.5",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

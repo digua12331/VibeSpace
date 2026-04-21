@@ -6,9 +6,10 @@ import { currentPermission, requestPermission } from '../../notify'
 import { aimonWS } from '../../ws'
 import ActivityBar from './ActivityBar'
 import PrimarySidebar from './PrimarySidebar'
+import ProjectsColumn from './ProjectsColumn'
 import EditorArea from '../editor/EditorArea'
-import TerminalPanel from '../terminal/TerminalPanel'
 import NewProjectDialog from '../NewProjectDialog'
+import DialogHost, { confirmDialog } from '../dialog/DialogHost'
 
 export default function Workbench() {
   const wsState = useStore((s) => s.wsState)
@@ -18,19 +19,17 @@ export default function Workbench() {
   const notifyPerm = useStore((s) => s.notifyPerm)
   const setNotifyPerm = useStore((s) => s.setNotifyPerm)
 
+  const projectsColumnSize = useStore((s) => s.projectsColumnSize)
+  const setProjectsColumnSize = useStore((s) => s.setProjectsColumnSize)
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed)
   const sidebarSize = useStore((s) => s.sidebarSize)
   const setSidebarSize = useStore((s) => s.setSidebarSize)
-  const terminalCollapsed = useStore((s) => s.terminalCollapsed)
-  const terminalSize = useStore((s) => s.terminalSize)
-  const setTerminalSize = useStore((s) => s.setTerminalSize)
 
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [bootError, setBootError] = useState<string | null>(null)
   const [bootLoading, setBootLoading] = useState(true)
 
   const sidebarRef = useRef<PanelImperativeHandle | null>(null)
-  const terminalRef = useRef<PanelImperativeHandle | null>(null)
 
   useEffect(() => {
     setBootLoading(true)
@@ -59,12 +58,6 @@ export default function Workbench() {
     if (sidebarCollapsed) h.collapse()
     else if (h.isCollapsed()) h.expand()
   }, [sidebarCollapsed])
-  useEffect(() => {
-    const h = terminalRef.current
-    if (!h) return
-    if (terminalCollapsed) h.collapse()
-    else if (h.isCollapsed()) h.expand()
-  }, [terminalCollapsed])
 
   async function onNotifyClick() {
     if (notifyPerm === 'default') {
@@ -128,34 +121,33 @@ export default function Workbench() {
             </div>
           </div>
         )}
-        <ActivityBar />
         <Group orientation="horizontal" id="aimon-main-hsplit" className="flex-1 min-h-0 flex">
+          <Panel
+            minSize="8%"
+            maxSize="40%"
+            defaultSize={`${projectsColumnSize}%`}
+            onResize={(s: PanelSize) => setProjectsColumnSize(s.asPercentage)}
+          >
+            <ProjectsColumn onNewProject={() => setNewProjectOpen(true)} />
+          </Panel>
+          <Separator className="w-[3px] bg-transparent hover:bg-accent/40 active:bg-accent/70 transition-colors" />
+          <Panel minSize="44px" maxSize="44px" defaultSize="44px">
+            <ActivityBar />
+          </Panel>
           <Panel
             panelRef={sidebarRef}
             collapsible
             collapsedSize="0%"
-            minSize="10%"
-            maxSize="40%"
+            minSize="8%"
+            maxSize="35%"
             defaultSize={`${sidebarSize}%`}
             onResize={(s: PanelSize) => setSidebarSize(s.asPercentage)}
           >
-            <PrimarySidebar onNewProject={() => setNewProjectOpen(true)} />
+            <PrimarySidebar />
           </Panel>
           <Separator className="w-[3px] bg-transparent hover:bg-accent/40 active:bg-accent/70 transition-colors" />
-          <Panel minSize="20%">
+          <Panel minSize="30%">
             <EditorArea />
-          </Panel>
-          <Separator className="w-[3px] bg-transparent hover:bg-accent/40 active:bg-accent/70 transition-colors" />
-          <Panel
-            panelRef={terminalRef}
-            collapsible
-            collapsedSize="0%"
-            minSize="15%"
-            maxSize="70%"
-            defaultSize={`${terminalSize}%`}
-            onResize={(s: PanelSize) => setTerminalSize(s.asPercentage)}
-          >
-            <TerminalPanel />
           </Panel>
         </Group>
       </div>
@@ -170,9 +162,15 @@ export default function Workbench() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              if (!confirm('重置布局与持久化设置 (页面会刷新)?')) return
+            onClick={async () => {
+              const ok = await confirmDialog('重置布局与持久化设置 (页面会刷新)?', {
+                title: '重置布局',
+                variant: 'danger',
+                confirmLabel: '重置',
+              })
+              if (!ok) return
               try {
+                localStorage.removeItem('aimon_workbench_v3')
                 localStorage.removeItem('aimon_workbench_v2')
                 localStorage.removeItem('aimon_workbench_v1')
                 localStorage.removeItem('aimon_layouts_v1')
@@ -212,6 +210,7 @@ export default function Workbench() {
       </footer>
 
       {newProjectOpen && <NewProjectDialog onClose={() => setNewProjectOpen(false)} />}
+      <DialogHost />
     </div>
   )
 }

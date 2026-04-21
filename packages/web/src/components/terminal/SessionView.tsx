@@ -7,6 +7,7 @@ import { useStore } from '../../store'
 import * as api from '../../api'
 import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
+import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import {
   BUTTON_COLOR_CLASSES,
   getCustomButtons,
@@ -154,20 +155,32 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       await api.deleteSession(session.id)
     } catch (e: unknown) {
       setBusy(false)
-      alert(`关闭失败: ${e instanceof Error ? e.message : String(e)}`)
+      await alertDialog(
+        `关闭失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '关闭失败', variant: 'danger' },
+      )
       return
     }
     onClose(session.id)
   }
 
   async function restart(e: React.MouseEvent) {
-    if (!e.shiftKey && !confirm(`重启 ${session.agent} session?`)) return
+    if (!e.shiftKey) {
+      const ok = await confirmDialog(`重启 ${session.agent} session?`, {
+        title: '重启 session',
+        confirmLabel: '重启',
+      })
+      if (!ok) return
+    }
     setBusy(true)
     try {
       const next = await api.restartSession(session.id)
       onRestart(session.id, next)
     } catch (err: unknown) {
-      alert(`重启失败: ${err instanceof Error ? err.message : String(err)}`)
+      await alertDialog(
+        `重启失败: ${err instanceof Error ? err.message : String(err)}`,
+        { title: '重启失败', variant: 'danger' },
+      )
     } finally {
       setBusy(false)
     }

@@ -19,8 +19,9 @@ export default function ActivityBar() {
   const notifyPerm = useStore((s) => s.notifyPerm)
 
   const items: Item[] = [
-    { id: 'explorer', icon: '📁', label: '项目' },
     { id: 'scm', icon: '📂', label: '源代码更改' },
+    { id: 'docs', icon: '📘', label: 'Dev Docs' },
+    { id: 'perf', icon: '📊', label: '性能' },
     {
       id: 'logs',
       icon: '📋',
@@ -45,7 +46,7 @@ export default function ActivityBar() {
   }
 
   return (
-    <nav className="h-full w-11 shrink-0 flex flex-col items-center py-1 border-r border-border/60 fluent-mica">
+    <nav className="h-full w-full shrink-0 flex flex-col items-center py-1 border-r border-border/60 fluent-mica">
       <div className="flex flex-col gap-0.5 flex-1">
         {items.map((it) => {
           const active = activity === it.id && !sidebarCollapsed
