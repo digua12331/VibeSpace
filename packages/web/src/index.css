@@ -188,11 +188,3 @@ input:focus, button:focus, textarea:focus {
   user-select: none;
 }
 
-/* Diff-view host — matches surrounding dark surface. */
-.diff-view-host {
-  background: #0d1117;
-  border-radius: 6px;
-  overflow: auto;
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
-  font-size: 12.5px;
-}
