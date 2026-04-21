@@ -522,7 +522,10 @@ export async function getDiff(
     args.push(from, to, "--", relPosix);
   }
 
-  const patch = await g.raw(args);
+  const rawPatch = await g.raw(args);
+  // Normalize to LF so browser-side diff viewers don't get fooled by a
+  // trailing \r on every line (which happens on Windows when git emits CRLF).
+  const patch = rawPatch.replace(/\r\n?/g, "\n");
   const isBinary = /Binary files .* differ/.test(patch);
   return { path: relPosix, from, to, patch, isBinary };
 }
