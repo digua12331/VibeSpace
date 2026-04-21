@@ -26,6 +26,7 @@ import { registerCliInstallerRoutes } from "./routes/cli-installer.js";
 import { registerGitRoutes } from "./routes/git.js";
 import { registerDocsRoutes } from "./routes/docs.js";
 import { registerPerfRoutes } from "./routes/perf.js";
+import { registerFsOpsRoutes } from "./routes/fs-ops.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
 const PORT = Number(process.env.AIMON_PORT || 8787);
@@ -45,9 +46,9 @@ async function main(): Promise<void> {
         reaped += 1;
       }
     }
-    if (reaped > 0) console.log(`aimon: reaped ${reaped} orphan session(s) from previous run`);
+    if (reaped > 0) console.log(`VibeSpace: reaped ${reaped} orphan session(s) from previous run`);
   } catch (err) {
-    console.warn("aimon: orphan reap failed:", (err as Error).message);
+    console.warn("VibeSpace: orphan reap failed:", (err as Error).message);
   }
 
   try {
@@ -128,12 +129,13 @@ async function main(): Promise<void> {
   await registerGitRoutes(app);
   await registerDocsRoutes(app);
   await registerPerfRoutes(app);
+  await registerFsOpsRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });
-  console.log(`aimon backend v${SERVER_VERSION} listening on http://${HOST}:${PORT}`);
-  console.log(`aimon db: ${getDbPath()}`);
-  console.log(`aimon projects.json: ${getProjectsJsonPath()}`);
+  console.log(`VibeSpace backend v${SERVER_VERSION} listening on http://${HOST}:${PORT}`);
+  console.log(`VibeSpace db: ${getDbPath()}`);
+  console.log(`VibeSpace projects.json: ${getProjectsJsonPath()}`);
 
   let shuttingDown = false;
   const shutdown = async (sig: string): Promise<void> => {

@@ -4,6 +4,8 @@ import { pushLog } from '../logs'
 import { useStore, type SelectedChange } from '../store'
 import type { ChangeEntry, ChangeStatus, ChangesResponse } from '../types'
 import { alertDialog, confirmDialog } from './dialog/DialogHost'
+import { openContextMenu } from './ContextMenu'
+import { buildFileContextItems, type FileContextSession } from './fileContextMenu'
 
 interface Props {
   projectId: string
@@ -42,6 +44,9 @@ export default function ChangesList({ projectId }: Props) {
   const selected = useStore((s) => s.selectedChange)
   const selectChange = useStore((s) => s.selectChange)
   const openFile = useStore((s) => s.openFile)
+  const sessions = useStore((s) => s.sessions)
+  const liveStatus = useStore((s) => s.liveStatus)
+  const bumpFilesRefresh = useStore((s) => s.bumpFilesRefresh)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -59,6 +64,39 @@ export default function ChangesList({ projectId }: Props) {
   useEffect(() => {
     void load()
   }, [load])
+
+  function aliveSessions(): FileContextSession[] {
+    return sessions
+      .filter((s) => {
+        if (s.projectId !== projectId) return false
+        const st = liveStatus[s.id] ?? s.status
+        return st !== 'stopped' && st !== 'crashed'
+      })
+      .map((s) => ({ id: s.id, agent: s.agent }))
+  }
+
+  function onRowContextMenu(e: React.MouseEvent, path: string): void {
+    e.preventDefault()
+    e.stopPropagation()
+    openContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: buildFileContextItems({
+        projectId,
+        path,
+        kind: 'file',
+        sessions: aliveSessions(),
+        onAfterDelete: () => {
+          void load()
+          bumpFilesRefresh()
+        },
+        onAfterGitignore: () => {
+          void load()
+          bumpFilesRefresh()
+        },
+      }),
+    })
+  }
 
   function selectWorkingFile(entry: ChangeEntry, kind: Kind): void {
     const sel: SelectedChange = {
@@ -270,6 +308,7 @@ export default function ChangesList({ projectId }: Props) {
               busy={busy != null}
               kind="staged"
               onClick={() => selectWorkingFile(e, 'staged')}
+              onContextMenu={(ev) => onRowContextMenu(ev, e.path)}
               onUnstage={() => void onUnstage([e.path])}
             />
           ))}
@@ -303,6 +342,7 @@ export default function ChangesList({ projectId }: Props) {
               busy={busy != null}
               kind="unstaged"
               onClick={() => selectWorkingFile(e, 'unstaged')}
+              onContextMenu={(ev) => onRowContextMenu(ev, e.path)}
               onStage={() => void onStage([e.path])}
               onDiscard={() => void onDiscard([e.path], [])}
             />
@@ -337,6 +377,7 @@ export default function ChangesList({ projectId }: Props) {
               busy={busy != null}
               kind="untracked"
               onClick={() => selectWorkingFile(e, 'untracked')}
+              onContextMenu={(ev) => onRowContextMenu(ev, e.path)}
               onStage={() => void onStage([e.path])}
               onDiscard={() => void onDiscard([], [e.path])}
             />
@@ -408,6 +449,7 @@ function FileRow({
   busy,
   kind,
   onClick,
+  onContextMenu,
   onStage,
   onUnstage,
   onDiscard,
@@ -417,6 +459,7 @@ function FileRow({
   busy: boolean
   kind: Kind
   onClick: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
   onStage?: () => void
   onUnstage?: () => void
   onDiscard?: () => void
@@ -424,6 +467,7 @@ function FileRow({
   return (
     <div
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={`group flex items-center w-full gap-2 px-3 py-1 text-[12.5px] cursor-pointer ${
         active
           ? 'bg-accent/15 border-l-2 border-l-accent'

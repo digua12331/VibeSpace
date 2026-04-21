@@ -1,4 +1,4 @@
-# aimon
+# VibeSpace
 
 **English** · [简体中文](./README.zh-CN.md)
 
@@ -13,10 +13,10 @@ input, and fires a browser notification the moment one needs attention.
 ## What's different from an editor-embedded agent
 
 Most AI coding surfaces today (VS Code extensions, Cursor, Windsurf, Claude
-Code's own in-terminal UI) bind the agent to a single editor window. aimon
+Code's own in-terminal UI) bind the agent to a single editor window. VibeSpace
 comes at the problem from the opposite direction:
 
-| | Editor-embedded agent | aimon |
+| | Editor-embedded agent | VibeSpace |
 |---|---|---|
 | **Parallelism** | 1 agent per editor tab, no cross-window view | N sessions in one browser panel, any mix of agents |
 | **Lifecycle awareness** | "terminal is open somewhere" | explicit states: `starting / running / working / waiting_input / idle / stopped / crashed`, per session |
@@ -258,7 +258,7 @@ Server → client:
 ## Repository layout
 
 ```
-aimon/
+VibeSpace/
 ├── package.json                    workspaces, dev:all, smoke:* scripts
 ├── pnpm-workspace.yaml
 ├── CLAUDE.md                       Dev Docs workflow rules for AI sessions

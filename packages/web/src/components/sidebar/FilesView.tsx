@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as api from '../../api'
 import { useStore } from '../../store'
 import type { ProjectFileEntry, ProjectFileGitStatus, ProjectFilesResult } from '../../types'
+import { openContextMenu } from '../ContextMenu'
+import { buildFileContextItems, type FileContextSession } from '../fileContextMenu'
 
 interface ViewState {
   data: ProjectFilesResult | null
@@ -52,11 +54,18 @@ interface DirNode {
   children: TreeNode[]
   /** Count of descendant files whose git status isn't "clean". */
   dirtyCount: number
+  /** Individual skipped dir (dim, non-clickable). */
+  isHeavy?: boolean
+  /** Synthetic root-level group that holds all heavy dirs; collapsible. */
+  isHeavyGroup?: boolean
 }
 
 type TreeNode = FileNode | DirNode
 
-function buildTree(entries: ProjectFileEntry[]): DirNode {
+/** Stable path for the synthetic "已跳过文件夹" root group. */
+const HEAVY_GROUP_PATH = '__heavy_group__'
+
+function buildTree(entries: ProjectFileEntry[], heavyDirs: string[]): DirNode {
   const root: DirNode = { kind: 'dir', name: '', path: '', children: [], dirtyCount: 0 }
   const dirByPath = new Map<string, DirNode>([['', root]])
 
@@ -98,6 +107,31 @@ function buildTree(entries: ProjectFileEntry[]): DirNode {
   }
   sortChildren(root)
 
+  // Prepend a collapsible group that holds all skipped heavy dirs. Keeping
+  // them in one bucket at the top avoids scattering dim placeholders through
+  // the tree, and leaves the group collapsed by default so node_modules &
+  // friends aren't in the way until explicitly asked for.
+  if (heavyDirs.length > 0) {
+    const group: DirNode = {
+      kind: 'dir',
+      name: '已跳过文件夹',
+      path: HEAVY_GROUP_PATH,
+      dirtyCount: 0,
+      isHeavyGroup: true,
+      children: [...heavyDirs].sort().map((hd) => ({
+        kind: 'dir' as const,
+        // Show the full relative path so multiple node_modules (monorepo)
+        // can be told apart at a glance.
+        name: hd,
+        path: hd,
+        children: [],
+        dirtyCount: 0,
+        isHeavy: true,
+      })),
+    }
+    root.children.unshift(group)
+  }
+
   return root
 }
 
@@ -133,6 +167,10 @@ export default function FilesView() {
   const projectId = useStore((s) => s.selectedProjectId)
   const projects = useStore((s) => s.projects)
   const openFile = useStore((s) => s.openFile)
+  const sessions = useStore((s) => s.sessions)
+  const liveStatus = useStore((s) => s.liveStatus)
+  const filesRefreshTick = useStore((s) => s.filesRefreshTick)
+  const bumpFilesRefresh = useStore((s) => s.bumpFilesRefresh)
 
   const project = projects.find((p) => p.id === projectId) ?? null
 
@@ -158,7 +196,9 @@ export default function FilesView() {
 
   useEffect(() => {
     void load()
-  }, [load])
+    // filesRefreshTick lets external actions (delete / gitignore-add) force a
+    // re-scan without plumbing a callback chain.
+  }, [load, filesRefreshTick])
 
   // Load persisted expanded state per project, and reset query when switching.
   useEffect(() => {
@@ -187,8 +227,40 @@ export default function FilesView() {
     [query],
   )
 
+  const aliveSessions = useCallback((): FileContextSession[] => {
+    if (!projectId) return []
+    return sessions
+      .filter((s) => {
+        if (s.projectId !== projectId) return false
+        const st = liveStatus[s.id] ?? s.status
+        return st !== 'stopped' && st !== 'crashed'
+      })
+      .map((s) => ({ id: s.id, agent: s.agent }))
+  }, [sessions, liveStatus, projectId])
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, path: string, kind: 'file' | 'dir') => {
+      if (!projectId) return
+      e.preventDefault()
+      e.stopPropagation()
+      openContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        items: buildFileContextItems({
+          projectId,
+          path,
+          kind,
+          sessions: aliveSessions(),
+          onAfterDelete: () => bumpFilesRefresh(),
+          onAfterGitignore: () => bumpFilesRefresh(),
+        }),
+      })
+    },
+    [projectId, aliveSessions, bumpFilesRefresh],
+  )
+
   const tree = useMemo(
-    () => (state.data ? buildTree(state.data.files) : null),
+    () => (state.data ? buildTree(state.data.files, state.data.heavyDirs) : null),
     [state.data],
   )
 
@@ -255,6 +327,7 @@ export default function FilesView() {
           <SearchResults
             entries={searchResults}
             onOpen={(p) => openFile({ projectId, path: p })}
+            onContextMenu={handleContextMenu}
           />
         )}
 
@@ -264,6 +337,7 @@ export default function FilesView() {
             expanded={expanded}
             onToggle={toggleDir}
             onOpen={(p) => openFile({ projectId, path: p })}
+            onContextMenu={handleContextMenu}
           />
         )}
       </div>
@@ -294,6 +368,14 @@ function StatusLine({
             {data.truncated && (
               <span className="ml-1 text-amber-400">· 截断 @ {data.limit}</span>
             )}
+            {data.heavyDirs.length > 0 && (
+              <span
+                className="ml-1 text-subtle"
+                title={data.heavyDirs.join('\n')}
+              >
+                · 跳过 {data.heavyDirs.length} 个大目录
+              </span>
+            )}
             {!data.gitEnabled && (
               <span className="ml-1 text-subtle">· 非 git 仓库</span>
             )}
@@ -314,16 +396,20 @@ function StatusLine({
 
 // ---------- Tree rendering ----------
 
+type RowContextHandler = (e: React.MouseEvent, path: string, kind: 'file' | 'dir') => void
+
 function TreeBody({
   dir,
   expanded,
   onToggle,
   onOpen,
+  onContextMenu,
 }: {
   dir: DirNode
   expanded: Set<string>
   onToggle: (path: string) => void
   onOpen: (path: string) => void
+  onContextMenu?: RowContextHandler
 }) {
   if (dir.children.length === 0) {
     return <div className="p-4 text-xs text-muted text-center">空目录</div>
@@ -338,6 +424,7 @@ function TreeBody({
           expanded={expanded}
           onToggle={onToggle}
           onOpen={onOpen}
+          onContextMenu={onContextMenu}
         />
       ))}
     </ul>
@@ -350,23 +437,88 @@ function TreeRow({
   expanded,
   onToggle,
   onOpen,
+  onContextMenu,
 }: {
   node: TreeNode
   depth: number
   expanded: Set<string>
   onToggle: (path: string) => void
   onOpen: (path: string) => void
+  onContextMenu?: RowContextHandler
 }) {
   // 12px per depth level, plus a fixed 8px gutter on the left.
   const indent = { paddingLeft: `${8 + depth * 12}px` }
 
   if (node.kind === 'dir') {
+    if (node.isHeavyGroup) {
+      const isOpen = expanded.has(node.path)
+      return (
+        <li>
+          <button
+            type="button"
+            onClick={() => onToggle(node.path)}
+            title="这些目录因文件过多被跳过，不扫描其内容"
+            style={indent}
+            className="w-full flex items-center gap-1.5 pr-2 py-[3px] text-[12.5px] text-left text-subtle italic hover:bg-white/[0.05] transition-colors"
+          >
+            <span className="w-3 shrink-0 text-[10px] text-center">
+              {isOpen ? '▾' : '▸'}
+            </span>
+            <span className="shrink-0 opacity-60">⋯</span>
+            <span className="truncate">
+              已跳过文件夹 ({node.children.length})
+            </span>
+          </button>
+          {isOpen && (
+            <ul>
+              {node.children.map((c) => (
+                <TreeRow
+                  key={c.path}
+                  node={c}
+                  depth={depth + 1}
+                  expanded={expanded}
+                  onToggle={onToggle}
+                  onOpen={onOpen}
+                  onContextMenu={onContextMenu}
+                />
+              ))}
+            </ul>
+          )}
+        </li>
+      )
+    }
+
+    if (node.isHeavy) {
+      return (
+        <li>
+          <div
+            title={`${node.path} — 内容未加载（大文件目录已跳过）`}
+            style={indent}
+            aria-disabled="true"
+            className="w-full flex items-center gap-1.5 pr-2 py-[3px] text-[12.5px] text-left opacity-40 cursor-not-allowed select-none"
+          >
+            <span className="w-3 shrink-0 text-[10px] text-muted text-center">
+              ⋯
+            </span>
+            <span className="shrink-0">📁</span>
+            <span className="truncate text-fg/70 font-mono">{node.name}</span>
+            <span className="ml-auto shrink-0 text-[10px] text-subtle italic">
+              已跳过
+            </span>
+          </div>
+        </li>
+      )
+    }
+
     const isOpen = expanded.has(node.path)
     return (
       <li>
         <button
           type="button"
           onClick={() => onToggle(node.path)}
+          onContextMenu={
+            onContextMenu ? (e) => onContextMenu(e, node.path, 'dir') : undefined
+          }
           title={node.path}
           style={indent}
           className="w-full flex items-center gap-1.5 pr-2 py-[3px] text-[12.5px] text-left hover:bg-white/[0.05] transition-colors"
@@ -407,6 +559,9 @@ function TreeRow({
       <button
         type="button"
         onClick={() => onOpen(node.path)}
+        onContextMenu={
+          onContextMenu ? (e) => onContextMenu(e, node.path, 'file') : undefined
+        }
         title={node.path + (meta ? ` — ${meta.label}` : '')}
         style={indent}
         className="w-full flex items-center gap-1.5 pr-2 py-[3px] text-[12.5px] text-left hover:bg-white/[0.05] transition-colors"
@@ -437,9 +592,11 @@ function TreeRow({
 function SearchResults({
   entries,
   onOpen,
+  onContextMenu,
 }: {
   entries: ProjectFileEntry[]
   onOpen: (path: string) => void
+  onContextMenu?: RowContextHandler
 }) {
   if (entries.length === 0) {
     return <div className="p-4 text-xs text-muted text-center">没有匹配的文件</div>
@@ -456,6 +613,9 @@ function SearchResults({
             <button
               type="button"
               onClick={() => onOpen(f.path)}
+              onContextMenu={
+                onContextMenu ? (e) => onContextMenu(e, f.path, 'file') : undefined
+              }
               title={f.path + (meta ? ` — ${meta.label}` : '')}
               className="w-full flex items-center gap-2 px-3 py-[3px] text-[12.5px] text-left hover:bg-white/[0.05] transition-colors"
             >

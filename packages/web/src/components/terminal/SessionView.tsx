@@ -83,6 +83,32 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     termRef.current = term
     fitRef.current = fit
 
+    // Explicit paste handling. Xterm's default paste relies on the browser
+    // firing a `paste` event on the hidden helper textarea, which is flaky
+    // across focus states and browsers. We intercept Ctrl+V / Cmd+V and
+    // read the clipboard ourselves, then feed through `term.paste()` so
+    // bracketed-paste mode is honoured.
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.type !== 'keydown') return true
+      const isPasteCombo =
+        (ev.ctrlKey || ev.metaKey) && !ev.altKey &&
+        (ev.key === 'v' || ev.key === 'V')
+      if (isPasteCombo) {
+        ev.preventDefault()
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) term.paste(text)
+          })
+          .catch(() => {
+            // Clipboard blocked (no secure context / permission denied).
+            // Silent — user can fall back to the "type to send" input below.
+          })
+        return false
+      }
+      return true
+    })
+
     const dataDisposable = term.onData((d) => {
       aimonWS.sendInput(session.id, d)
     })
@@ -293,6 +319,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
 
       <div
         ref={termHostRef}
+        onContextMenu={(e) => {
+          // Right-click = paste from clipboard, Windows Terminal / VS Code style.
+          e.preventDefault()
+          navigator.clipboard
+            .readText()
+            .then((text) => {
+              if (text && termRef.current) termRef.current.paste(text)
+            })
+            .catch(() => { /* clipboard blocked — silent */ })
+        }}
         className={`flex-1 min-h-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
       />
 

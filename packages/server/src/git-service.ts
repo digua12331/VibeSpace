@@ -206,7 +206,7 @@ export function safeResolve(projectPath: string, input: string): string {
   return abs;
 }
 
-function toRepoRelative(projectPath: string, abs: string): string {
+export function toRepoRelative(projectPath: string, abs: string): string {
   return relativePath(resolvePath(projectPath), abs).split(sep).join("/");
 }
 
@@ -547,7 +547,7 @@ function resolveRepoPaths(projectPath: string, paths: string[]): string[] {
   });
 }
 
-function bustStatusCache(projectPath: string): void {
+export function bustStatusCache(projectPath: string): void {
   const cacheKey = `${projectPath}\u0000status`;
   statusCache.delete(cacheKey);
 }
@@ -715,6 +715,13 @@ export interface ProjectFilesResult {
   /** True if project is a git repo (and `git` fields are populated). */
   gitEnabled: boolean;
   files: ProjectFileEntry[];
+  /**
+   * Directories whose contents were intentionally skipped (e.g. node_modules).
+   * Forward-slash relative paths. The UI shows them as dim, non-clickable
+   * placeholder nodes so the user knows they exist without paying the scan
+   * cost. Always present (possibly empty).
+   */
+  heavyDirs: string[];
   /** Total entries encountered before truncation (== files.length when not truncated). */
   total: number;
   truncated: boolean;
@@ -725,14 +732,27 @@ export interface ProjectFilesResult {
 const PROJECT_FILES_DEFAULT_LIMIT = 20000;
 const PROJECT_FILES_MAX_LIMIT = 50000;
 
+// Directories we never descend into — listing them all produces tens of
+// thousands of uninteresting files that blow past the limit and drown the
+// tree. The UI still shows them as "placeholder" nodes so the user can
+// see they exist; they just can't be expanded.
+const HEAVY_DIR_NAMES = new Set([
+  "node_modules",
+  ".pnpm",
+  "__pycache__",
+  ".venv",
+  "venv",
+]);
+
 async function walkProjectFiles(
   root: string,
   limit: number,
-): Promise<{ paths: string[]; truncated: boolean; total: number }> {
+): Promise<{ paths: string[]; heavyDirs: string[]; truncated: boolean; total: number }> {
   const out: string[] = [];
+  const heavyDirs: string[] = [];
   let truncated = false;
   let total = 0;
-  // Iterative BFS to keep stack depth bounded on deep node_modules trees.
+  // Iterative BFS to keep stack depth bounded on deep trees.
   const stack: string[] = [root];
   while (stack.length > 0) {
     const dir = stack.pop() as string;
@@ -744,9 +764,13 @@ async function walkProjectFiles(
     }
     for (const ent of entries) {
       const abs = joinPath(dir, ent.name);
-      // Never descend into git internals (root repo or submodules).
       if (ent.isDirectory()) {
+        // Never descend into git internals (root repo or submodules).
         if (ent.name === ".git") continue;
+        if (HEAVY_DIR_NAMES.has(ent.name)) {
+          heavyDirs.push(relativePath(root, abs).split(sep).join("/"));
+          continue;
+        }
         stack.push(abs);
         continue;
       }
@@ -760,7 +784,7 @@ async function walkProjectFiles(
       out.push(rel);
     }
   }
-  return { paths: out, truncated, total };
+  return { paths: out, heavyDirs, truncated, total };
 }
 
 function classifyGitStatus(
@@ -800,7 +824,7 @@ export async function listProjectFiles(
     Math.min(opts.limit ?? PROJECT_FILES_DEFAULT_LIMIT, PROJECT_FILES_MAX_LIMIT),
   );
 
-  const { paths, truncated, total } = await walkProjectFiles(absRoot, limit);
+  const { paths, heavyDirs, truncated, total } = await walkProjectFiles(absRoot, limit);
 
   const gitEnabled = await isGitRepo(absRoot);
   const statusByPath = new Map<string, { git: ProjectFileGitStatus; dirty: boolean; staged: boolean }>();
@@ -849,6 +873,7 @@ export async function listProjectFiles(
   return {
     gitEnabled,
     files,
+    heavyDirs: heavyDirs.sort(),
     total: total + deletedExtras.length,
     truncated,
     limit,

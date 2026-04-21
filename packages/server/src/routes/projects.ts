@@ -13,13 +13,11 @@ import {
   updateProjectLayout,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
-import { KARPATHY_GUIDELINES } from "../karpathy-guidelines.js";
 import { DEV_DOCS_GUIDELINES } from "../dev-docs-guidelines.js";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   path: z.string().min(1),
-  applyKarpathyGuidelines: z.boolean().optional(),
   applyDevDocsGuidelines: z.boolean().optional(),
 });
 
@@ -54,14 +52,6 @@ function appendToClaudeMd(
     : body;
   writeFileSync(target, payload, "utf8");
   return true;
-}
-
-function appendKarpathyGuidelines(projectPath: string): boolean {
-  return appendToClaudeMd(
-    projectPath,
-    KARPATHY_GUIDELINES,
-    KARPATHY_GUIDELINES.trimEnd(),
-  );
 }
 
 function appendDevDocsGuidelines(projectPath: string): boolean {
@@ -99,12 +89,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
     }
-    const {
-      name,
-      path,
-      applyKarpathyGuidelines,
-      applyDevDocsGuidelines,
-    } = parsed.data;
+    const { name, path, applyDevDocsGuidelines } = parsed.data;
 
     // Validate path exists & is directory
     try {
@@ -118,16 +103,6 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
 
     try {
       const proj = createProject({ id: nanoid(12), name, path });
-      if (applyKarpathyGuidelines) {
-        try {
-          appendKarpathyGuidelines(path);
-        } catch (err) {
-          app.log.warn(
-            { err, path },
-            "failed to append Karpathy guidelines to CLAUDE.md",
-          );
-        }
-      }
       if (applyDevDocsGuidelines) {
         try {
           appendDevDocsGuidelines(path);

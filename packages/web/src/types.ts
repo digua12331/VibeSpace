@@ -353,6 +353,12 @@ export interface ProjectFileEntry {
 export interface ProjectFilesResult {
   gitEnabled: boolean
   files: ProjectFileEntry[]
+  /**
+   * Directories whose contents were intentionally skipped by the server
+   * (node_modules, .pnpm, …). The UI renders them as dim, non-clickable
+   * placeholder nodes so the user knows they exist.
+   */
+  heavyDirs: string[]
   total: number
   truncated: boolean
   limit: number

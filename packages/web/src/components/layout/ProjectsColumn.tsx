@@ -153,7 +153,7 @@ export default function ProjectsColumn({
               title="查看此项目的代码更改"
               className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-6 h-6 inline-flex items-center justify-center rounded text-[13px] text-muted hover:text-fg hover:bg-white/[0.08]"
             >
-              📂
+              🌿
             </button>
             <span className="text-xs text-subtle shrink-0 tabular-nums min-w-[16px] text-right">
               {countFor(p.id)}
@@ -185,7 +185,7 @@ export default function ProjectsColumn({
             }}
             className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
           >
-            📂 代码更改
+            🌿 代码更改
           </button>
           <button
             role="menuitem"

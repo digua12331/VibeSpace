@@ -165,6 +165,10 @@ interface State {
   setActiveSession: (projectId: string, sessionId: string) => void
   setActiveTabKind: (k: 'file' | 'session' | null) => void
 
+  /** Incremented whenever the file listing (FilesView) should re-fetch. */
+  filesRefreshTick: number
+  bumpFilesRefresh: () => void
+
   /** ----- Dev Docs ----- */
   docsTasks: Record<string, DocTaskSummary[]>
   docsLoading: Record<string, boolean>
@@ -197,7 +201,7 @@ function initialPerm(): NotificationPermissionState {
   return Notification.permission as NotificationPermissionState
 }
 
-const ORIGINAL_TITLE = typeof document === 'undefined' ? 'aimon' : document.title || 'aimon'
+const ORIGINAL_TITLE = typeof document === 'undefined' ? 'VibeSpace' : document.title || 'VibeSpace'
 let titleFlashTimer: ReturnType<typeof setInterval> | null = null
 let titleFlipped = false
 
@@ -318,6 +322,10 @@ export const useStore = create<State>((set, get) => ({
   setActiveFile: (key) =>
     set({ activeFileKey: key, activeTabKind: key ? 'file' : null }),
   setActiveTabKind: (k) => set({ activeTabKind: k }),
+
+  filesRefreshTick: 0,
+  bumpFilesRefresh: () =>
+    set((st) => ({ filesRefreshTick: st.filesRefreshTick + 1 })),
 
   setActiveSession: (projectId, sessionId) => {
     set((st) => ({

@@ -13,7 +13,7 @@ let _nextId = 1
 export function pushLog(entry: Omit<LogEntry, 'id' | 'ts'>): void {
   const full: LogEntry = { id: _nextId++, ts: Date.now(), ...entry }
   useStore.getState().appendLog(full)
-  const line = `[aimon:${entry.scope}] ${entry.msg}`
+  const line = `[VibeSpace:${entry.scope}] ${entry.msg}`
   if (entry.level === 'error') console.error(line, entry.meta ?? '')
   else if (entry.level === 'warn') console.warn(line, entry.meta ?? '')
   else console.log(line, entry.meta ?? '')

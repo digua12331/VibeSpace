@@ -6,7 +6,6 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const refreshProjects = useStore((s) => s.refreshProjects)
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
-  const [applyKarpathy, setApplyKarpathy] = useState(true)
   const [applyDevDocs, setApplyDevDocs] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -31,7 +30,6 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
       await api.createProject({
         name: name.trim(),
         path: path.trim(),
-        applyKarpathyGuidelines: applyKarpathy,
         applyDevDocsGuidelines: applyDevDocs,
       })
       await refreshProjects()
@@ -72,20 +70,6 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             className="w-full px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm font-mono transition-colors"
             placeholder="D:\\projects\\my-app"
           />
-        </label>
-        <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={applyKarpathy}
-            onChange={(e) => setApplyKarpathy(e.target.checked)}
-            className="mt-0.5 accent-accent"
-          />
-          <span className="text-xs text-fg/85 leading-snug">
-            追加 Karpathy 通用编码准则到项目的 <code className="font-mono">CLAUDE.md</code>
-            <span className="block text-[11px] text-muted mt-0.5">
-              基于 andrej-karpathy-skills，已存在文件会以分隔符追加到末尾。
-            </span>
-          </span>
         </label>
         <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
           <input

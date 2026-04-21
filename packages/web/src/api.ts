@@ -74,7 +74,6 @@ export function listProjects(): Promise<Project[]> {
 export function createProject(input: {
   name: string
   path: string
-  applyKarpathyGuidelines?: boolean
   applyDevDocsGuidelines?: boolean
 }): Promise<Project> {
   return request<Project>('/api/projects', jsonInit('POST', input))
@@ -337,5 +336,35 @@ export function archiveDocsTask(
 export function getProjectPerf(projectId: string): Promise<ProjectPerf> {
   return request<ProjectPerf>(
     `/api/projects/${encodeURIComponent(projectId)}/metrics`,
+  )
+}
+
+// ---------- FS operations (context menu) ----------
+
+export function openInFolder(
+  projectId: string,
+  path: string,
+): Promise<{ ok: boolean }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/fs/open-folder`,
+    jsonInit('POST', { path }),
+  )
+}
+
+export function gitignoreAdd(
+  projectId: string,
+  path: string,
+): Promise<{ added: boolean; line: string }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/fs/gitignore-add`,
+    jsonInit('POST', { path }),
+  )
+}
+
+export function deleteEntry(projectId: string, path: string): Promise<void> {
+  const qs = new URLSearchParams({ path })
+  return request<void>(
+    `/api/projects/${encodeURIComponent(projectId)}/fs/entry?${qs}`,
+    { method: 'DELETE' },
   )
 }

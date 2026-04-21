@@ -18,10 +18,12 @@ export default function ActivityBar() {
   const notifyCount = useStore((s) => s.notifyingSessions.size)
   const notifyPerm = useStore((s) => s.notifyPerm)
 
+  // Icons are chosen so no two items share a silhouette — at 16px each row
+  // has to be readable at a glance.
   const items: Item[] = [
-    { id: 'scm', icon: '📂', label: '源代码更改' },
     { id: 'files', icon: '📁', label: '文件' },
-    { id: 'docs', icon: '📘', label: 'Dev Docs' },
+    { id: 'scm', icon: '🌿', label: '源代码更改' },
+    { id: 'docs', icon: '📝', label: 'Dev Docs' },
     { id: 'perf', icon: '📊', label: '性能' },
     {
       id: 'logs',

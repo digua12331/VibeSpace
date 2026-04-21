@@ -10,6 +10,7 @@ import ProjectsColumn from './ProjectsColumn'
 import EditorArea from '../editor/EditorArea'
 import NewProjectDialog from '../NewProjectDialog'
 import DialogHost, { confirmDialog } from '../dialog/DialogHost'
+import ContextMenu from '../ContextMenu'
 
 export default function Workbench() {
   const wsState = useStore((s) => s.wsState)
@@ -211,6 +212,7 @@ export default function Workbench() {
 
       {newProjectOpen && <NewProjectDialog onClose={() => setNewProjectOpen(false)} />}
       <DialogHost />
+      <ContextMenu />
     </div>
   )
 }
