@@ -25,7 +25,7 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'docs' | 'perf' | 'logs' | 'inbox'
+export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox'
 
 export interface EditorTab {
   /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}` */
@@ -282,10 +282,13 @@ export const useStore = create<State>((set, get) => ({
   openFile: (t) => {
     const key = editorTabKey(t.projectId, t.path, t)
     set((st) => {
-      const exists = st.openFiles.some((x) => x.key === key)
-      const tab: EditorTab = { ...t, key }
+      const existing = st.openFiles.find((x) => x.key === key)
+      // Only one file tab is kept at a time: clicking a different file
+      // replaces the current preview tab in place (like VS Code's single
+      // preview slot without the pinning UI).
+      const tab: EditorTab = existing ?? { ...t, key }
       return {
-        openFiles: exists ? st.openFiles : [...st.openFiles, tab],
+        openFiles: [tab],
         activeFileKey: key,
         activeTabKind: 'file',
       }
@@ -341,7 +344,36 @@ export const useStore = create<State>((set, get) => ({
   setNotifyPerm: (p) => set({ notifyPerm: p }),
   selectProject: (id) => {
     writeSelectedProject(id)
-    set({ selectedProjectId: id })
+    set((st) => {
+      // File tabs are single-instance and tied to a specific project; once the
+      // user switches to a different project, any open file tab belonging to
+      // the previous project is stale and should be closed. When id is null
+      // ("全部 sessions"), leave the current file tab alone — the user has
+      // not committed to a specific project context.
+      const nextOpenFiles =
+        id != null ? st.openFiles.filter((f) => f.projectId === id) : st.openFiles
+      const fileDropped = nextOpenFiles.length !== st.openFiles.length
+      const nextActiveFileKey = fileDropped
+        ? (nextOpenFiles[0]?.key ?? null)
+        : st.activeFileKey
+      // If the active tab kind was 'file' and we just dropped the file, fall
+      // back so the EditorArea doesn't render stale state.
+      const nextActiveTabKind =
+        fileDropped && nextActiveFileKey == null && st.activeTabKind === 'file'
+          ? null
+          : st.activeTabKind
+      // Also drop any selectedChange referring to the old project — it would
+      // otherwise keep highlighting a row in the new ChangesList by accident.
+      const nextSelectedChange =
+        id != null && st.selectedChange ? null : st.selectedChange
+      return {
+        selectedProjectId: id,
+        openFiles: nextOpenFiles,
+        activeFileKey: nextActiveFileKey,
+        activeTabKind: nextActiveTabKind,
+        selectedChange: nextSelectedChange,
+      }
+    })
   },
 
   refreshProjects: async () => {

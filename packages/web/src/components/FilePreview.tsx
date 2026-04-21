@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as api from '../api'
 import type { DiffResult, FileContent, GitRef } from '../types'
 import CodeView from './CodeView'
@@ -42,6 +42,14 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Fire the "no diff → fall back to source/preview" auto-switch at most
+  // once per distinct file, so a user who deliberately re-clicks the Diff
+  // tab on an empty-diff file isn't immediately kicked away.
+  const didAutoFallbackRef = useRef(false)
+  useEffect(() => {
+    didAutoFallbackRef.current = false
+  }, [path, from, to])
+
   useEffect(() => {
     let cancelled = false
     setError(null)
@@ -49,7 +57,17 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
     const wantDiff = tab === 'diff' && Boolean(from || to)
     const p = wantDiff
       ? api.getProjectDiff(projectId, path, { from, to }).then((d) => {
-          if (!cancelled) setDiff(d)
+          if (cancelled) return
+          setDiff(d)
+          // If the user landed on the diff tab by default but there's nothing
+          // to diff (empty patch or context-only), fall back to a viewer tab
+          // so the pane isn't a useless "no differences" placeholder. Once
+          // per file — a later manual Diff click stays on the empty state.
+          const hasRealChange = /(^|\n)[+-](?![+-])/.test(d.patch)
+          if (!hasRealChange && !didAutoFallbackRef.current) {
+            didAutoFallbackRef.current = true
+            setTab(canMarkdown ? 'preview' : 'source')
+          }
         })
       : api.getProjectFile(projectId, path, ref).then((f) => {
           if (!cancelled) setFile(f)
@@ -62,7 +80,7 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
     return () => {
       cancelled = true
     }
-  }, [projectId, path, ref, from, to, tab])
+  }, [projectId, path, ref, from, to, tab, canMarkdown])
 
   const showDiffTab = Boolean(from || to)
 

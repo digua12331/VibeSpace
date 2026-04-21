@@ -1,10 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import type { DocFileKind, DocTaskSummary } from '../../types'
 
 const EMPTY_TASKS: DocTaskSummary[] = []
+
+/**
+ * Display order + labels for the three Dev Docs files. The `order` prefix is
+ * shown to the user so scanning a task's children is a glance rather than a
+ * read. Keys match server-side kinds.
+ */
+const DOC_ROWS: Array<{ kind: DocFileKind; order: string; label: string }> = [
+  { kind: 'plan', order: '01_plan', label: '做什么 / 怎么做' },
+  { kind: 'context', order: '02_context', label: '关键文件 / 决策' },
+  { kind: 'tasks', order: '03_tasks', label: '任务清单' },
+]
 
 function formatTimeAgo(ts: number): string {
   if (!ts) return ''
@@ -41,21 +52,30 @@ function StatusPill({ task }: { task: DocTaskSummary }) {
 }
 
 interface FileRowProps {
-  kind: DocFileKind
+  order: string
   label: string
-  icon: string
+  extra?: string
   onOpen: () => void
+  fileName: string
 }
 
-function FileRow({ kind, label, icon, onOpen }: FileRowProps) {
+function FileRow({ order, label, extra, onOpen, fileName }: FileRowProps) {
   return (
     <button
       onClick={onOpen}
       className="fluent-btn w-full text-left pl-8 pr-3 py-1 text-[12.5px] rounded hover:bg-white/[0.06] flex items-center gap-2"
-      title={`打开 ${kind}.md`}
+      title={`打开 ${fileName}`}
     >
-      <span className="opacity-70">{icon}</span>
+      <span className="font-mono text-subtle tabular-nums shrink-0">
+        {order}
+      </span>
+      <span className="text-subtle">:</span>
       <span className="flex-1 truncate">{label}</span>
+      {extra && (
+        <span className="text-[10px] text-subtle tabular-nums shrink-0">
+          {extra}
+        </span>
+      )}
     </button>
   )
 }
@@ -79,6 +99,9 @@ export default function DocsView() {
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [applyingRules, setApplyingRules] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!projectId) return
@@ -86,6 +109,28 @@ export default function DocsView() {
       /* error already recorded in store */
     })
   }, [projectId, refreshDocs])
+
+  // Reset the search UI when the project changes so the query from project A
+  // doesn't linger after the user picks project B.
+  useEffect(() => {
+    setQuery('')
+    setSearchOpen(false)
+  }, [projectId])
+
+  // Auto-focus the input the instant the search bar opens.
+  useEffect(() => {
+    if (searchOpen) {
+      // Defer to next frame so the input has been committed to the DOM.
+      const id = requestAnimationFrame(() => searchInputRef.current?.focus())
+      return () => cancelAnimationFrame(id)
+    }
+  }, [searchOpen])
+
+  const filteredTasks = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return tasks
+    return tasks.filter((t) => t.name.toLowerCase().includes(q))
+  }, [tasks, query])
 
   if (!projectId) {
     return (
@@ -144,6 +189,16 @@ export default function DocsView() {
     setExpanded((st) => ({ ...st, [name]: !st[name] }))
   }
 
+  function toggleSearch() {
+    setSearchOpen((v) => {
+      const next = !v
+      if (!next) setQuery('')
+      return next
+    })
+  }
+
+  const hasQuery = query.trim().length > 0
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {project && (
@@ -153,6 +208,15 @@ export default function DocsView() {
         >
           <span className="truncate">{project.name}</span>
           <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={toggleSearch}
+              title="搜索任务"
+              className={`fluent-btn w-6 h-6 inline-flex items-center justify-center rounded hover:bg-white/[0.08] ${
+                searchOpen ? 'text-accent bg-white/[0.06]' : 'text-muted hover:text-fg'
+              }`}
+            >
+              🔍
+            </button>
             <button
               onClick={() => void onApplyRules()}
               disabled={applyingRules}
@@ -169,6 +233,33 @@ export default function DocsView() {
               ⟳
             </button>
           </div>
+        </div>
+      )}
+
+      {searchOpen && (
+        <div className="px-2 py-1.5 border-b border-border/40 flex items-center gap-1.5">
+          <input
+            ref={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setQuery('')
+                setSearchOpen(false)
+              }
+            }}
+            placeholder="搜索任务名…"
+            className="flex-1 px-2 py-1 text-[12px] bg-white/[0.04] border border-border rounded focus:border-accent focus:bg-white/[0.06] transition-colors"
+          />
+          {hasQuery && (
+            <button
+              onClick={() => setQuery('')}
+              title="清空"
+              className="fluent-btn w-5 h-5 inline-flex items-center justify-center rounded text-muted hover:text-fg hover:bg-white/[0.08]"
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
 
@@ -199,7 +290,12 @@ export default function DocsView() {
             </div>
           </div>
         )}
-        {tasks.map((t) => {
+        {!loading && tasks.length > 0 && filteredTasks.length === 0 && hasQuery && (
+          <div className="px-3 py-6 text-xs text-muted text-center">
+            没有匹配"{query.trim()}"的任务。
+          </div>
+        )}
+        {filteredTasks.map((t) => {
           const open = !!expanded[t.name]
           return (
             <div key={t.name} className="text-sm">
@@ -233,24 +329,20 @@ export default function DocsView() {
               </div>
               {open && (
                 <div className="mt-0.5 mb-1 space-y-0.5">
-                  <FileRow
-                    kind="plan"
-                    label="plan.md · 做什么 / 怎么做"
-                    icon="📄"
-                    onOpen={() => openDoc(t.name, 'plan')}
-                  />
-                  <FileRow
-                    kind="tasks"
-                    label={`tasks.md · 清单 ${t.total > 0 ? `(${t.checked}/${t.total})` : ''}`}
-                    icon="☑"
-                    onOpen={() => openDoc(t.name, 'tasks')}
-                  />
-                  <FileRow
-                    kind="context"
-                    label="context.md · 关键文件 / 决策"
-                    icon="📎"
-                    onOpen={() => openDoc(t.name, 'context')}
-                  />
+                  {DOC_ROWS.map((row) => (
+                    <FileRow
+                      key={row.kind}
+                      order={row.order}
+                      label={row.label}
+                      fileName={`${t.name}-${row.kind}.md`}
+                      extra={
+                        row.kind === 'tasks' && t.total > 0
+                          ? `${t.checked}/${t.total}`
+                          : undefined
+                      }
+                      onOpen={() => openDoc(t.name, row.kind)}
+                    />
+                  ))}
                 </div>
               )}
             </div>

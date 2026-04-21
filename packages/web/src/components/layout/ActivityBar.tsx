@@ -20,6 +20,7 @@ export default function ActivityBar() {
 
   const items: Item[] = [
     { id: 'scm', icon: '📂', label: '源代码更改' },
+    { id: 'files', icon: '📁', label: '文件' },
     { id: 'docs', icon: '📘', label: 'Dev Docs' },
     { id: 'perf', icon: '📊', label: '性能' },
     {

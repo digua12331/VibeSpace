@@ -79,7 +79,7 @@ export default function ProjectsColumn({
     e.preventDefault()
     e.stopPropagation()
     const MENU_W = 180
-    const MENU_H = 100
+    const MENU_H = 140
     const x = Math.min(e.clientX, window.innerWidth - MENU_W - 4)
     const y = Math.min(e.clientY, window.innerHeight - MENU_H - 4)
     setMenu({ projectId: id, projectName: name, x, y })
@@ -88,6 +88,11 @@ export default function ProjectsColumn({
   function openScmFor(pid: string) {
     select(pid)
     setActivity('scm')
+  }
+
+  function openFilesFor(pid: string) {
+    select(pid)
+    setActivity('files')
   }
 
   return (
@@ -181,6 +186,17 @@ export default function ProjectsColumn({
             className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
           >
             📂 代码更改
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              const { projectId } = menu
+              setMenu(null)
+              openFilesFor(projectId)
+            }}
+            className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
+          >
+            📁 文件
           </button>
           <button
             role="menuitem"

@@ -19,6 +19,7 @@ import type {
   InstallJob,
   PermissionCatalog,
   Project,
+  ProjectFilesResult,
   ProjectPerf,
   Session,
 } from './types'
@@ -207,6 +208,18 @@ export function getProjectDiff(
   if (opts.to) qs.set('to', opts.to)
   return request<DiffResult>(
     `/api/projects/${encodeURIComponent(projectId)}/diff?${qs}`,
+  )
+}
+
+export function listProjectFiles(
+  projectId: string,
+  opts: { limit?: number } = {},
+): Promise<ProjectFilesResult> {
+  const qs = new URLSearchParams()
+  if (opts.limit != null) qs.set('limit', String(opts.limit))
+  const suffix = qs.toString() ? `?${qs}` : ''
+  return request<ProjectFilesResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/files${suffix}`,
   )
 }
 

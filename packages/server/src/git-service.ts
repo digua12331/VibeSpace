@@ -1,6 +1,11 @@
 import { existsSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { resolve as resolvePath, relative as relativePath, sep } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import {
+  join as joinPath,
+  resolve as resolvePath,
+  relative as relativePath,
+  sep,
+} from "node:path";
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from "simple-git";
 
 // ---------- Types ----------
@@ -681,6 +686,173 @@ export async function listBranches(
     });
   }
   return rows;
+}
+
+// ---------- Project file tree (filesystem walk + git status overlay) ----------
+
+export type ProjectFileGitStatus =
+  | "clean"
+  | "modified"
+  | "staged"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked"
+  | "conflicted";
+
+export interface ProjectFileEntry {
+  /** Forward-slash relative path from the project root. */
+  path: string;
+  /** Null when the project is not a git repo. */
+  git: ProjectFileGitStatus | null;
+  /** True if the working-tree copy differs from its staged copy. */
+  dirty: boolean;
+  /** True if any version of this path is staged in the index. */
+  staged: boolean;
+}
+
+export interface ProjectFilesResult {
+  /** True if project is a git repo (and `git` fields are populated). */
+  gitEnabled: boolean;
+  files: ProjectFileEntry[];
+  /** Total entries encountered before truncation (== files.length when not truncated). */
+  total: number;
+  truncated: boolean;
+  /** The per-request cap that was in effect. */
+  limit: number;
+}
+
+const PROJECT_FILES_DEFAULT_LIMIT = 20000;
+const PROJECT_FILES_MAX_LIMIT = 50000;
+
+async function walkProjectFiles(
+  root: string,
+  limit: number,
+): Promise<{ paths: string[]; truncated: boolean; total: number }> {
+  const out: string[] = [];
+  let truncated = false;
+  let total = 0;
+  // Iterative BFS to keep stack depth bounded on deep node_modules trees.
+  const stack: string[] = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop() as string;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      continue; // permission denied, race with deletion, etc.
+    }
+    for (const ent of entries) {
+      const abs = joinPath(dir, ent.name);
+      // Never descend into git internals (root repo or submodules).
+      if (ent.isDirectory()) {
+        if (ent.name === ".git") continue;
+        stack.push(abs);
+        continue;
+      }
+      if (!ent.isFile() && !ent.isSymbolicLink()) continue;
+      total++;
+      if (out.length >= limit) {
+        truncated = true;
+        continue;
+      }
+      const rel = relativePath(root, abs).split(sep).join("/");
+      out.push(rel);
+    }
+  }
+  return { paths: out, truncated, total };
+}
+
+function classifyGitStatus(
+  idxRaw: string,
+  wtRaw: string,
+): { git: ProjectFileGitStatus; dirty: boolean; staged: boolean } {
+  const idx = idxRaw === " " ? "" : idxRaw;
+  const wt = wtRaw === " " ? "" : wtRaw;
+  const staged = idx !== "" && idx !== "?";
+  const dirty = wt !== "" && wt !== "?";
+  // Conflicts: U in either column, or AA/DD combos.
+  if (idx === "U" || wt === "U" || (idx === "A" && wt === "A") || (idx === "D" && wt === "D")) {
+    return { git: "conflicted", dirty, staged };
+  }
+  if (idx === "?" && wt === "?") {
+    return { git: "untracked", dirty: false, staged: false };
+  }
+  // Worktree takes precedence for "what does the user see right now".
+  if (wt === "D" || idx === "D") return { git: "deleted", dirty, staged };
+  if (wt === "M" || idx === "M") return { git: "modified", dirty, staged };
+  if (idx === "A") return { git: "added", dirty, staged };
+  if (idx === "R" || wt === "R") return { git: "renamed", dirty, staged };
+  if (staged) return { git: "staged", dirty, staged };
+  return { git: "modified", dirty, staged };
+}
+
+export async function listProjectFiles(
+  projectPath: string,
+  opts: { limit?: number } = {},
+): Promise<ProjectFilesResult> {
+  const absRoot = resolvePath(projectPath);
+  if (!existsSync(absRoot)) {
+    throw new GitServiceError("path_not_found", `project path not found: ${projectPath}`, 404);
+  }
+  const limit = Math.max(
+    1,
+    Math.min(opts.limit ?? PROJECT_FILES_DEFAULT_LIMIT, PROJECT_FILES_MAX_LIMIT),
+  );
+
+  const { paths, truncated, total } = await walkProjectFiles(absRoot, limit);
+
+  const gitEnabled = await isGitRepo(absRoot);
+  const statusByPath = new Map<string, { git: ProjectFileGitStatus; dirty: boolean; staged: boolean }>();
+  const deletedExtras: string[] = [];
+
+  if (gitEnabled) {
+    try {
+      const s = await gitFor(absRoot).status();
+      for (const f of s.files) {
+        const idx = f.index ?? " ";
+        const wt = f.working_dir ?? " ";
+        const info = classifyGitStatus(idx, wt);
+        statusByPath.set(f.path, info);
+        // `git status` reports deletions even though the file no longer
+        // exists on disk. Surface them at the top so the user can see
+        // what's gone.
+        if (info.git === "deleted" && !paths.includes(f.path)) {
+          deletedExtras.push(f.path);
+        }
+      }
+    } catch {
+      // If `git status` blows up (corrupted repo etc.) we still return the
+      // filesystem listing rather than failing the whole endpoint.
+    }
+  }
+
+  const files: ProjectFileEntry[] = paths.map((p) => {
+    const st = statusByPath.get(p);
+    if (st) return { path: p, git: st.git, dirty: st.dirty, staged: st.staged };
+    return {
+      path: p,
+      git: gitEnabled ? "clean" : null,
+      dirty: false,
+      staged: false,
+    };
+  });
+
+  for (const p of deletedExtras) {
+    const st = statusByPath.get(p);
+    if (!st) continue;
+    files.push({ path: p, git: st.git, dirty: st.dirty, staged: st.staged });
+  }
+
+  files.sort((a, b) => a.path.localeCompare(b.path));
+
+  return {
+    gitEnabled,
+    files,
+    total: total + deletedExtras.length,
+    truncated,
+    limit,
+  };
 }
 
 // ---------- Commit graph ----------

@@ -3,10 +3,12 @@ import ScmView from '../sidebar/ScmView'
 import LogsView from '../sidebar/LogsView'
 import InboxView from '../sidebar/InboxView'
 import DocsView from '../sidebar/DocsView'
+import FilesView from '../sidebar/FilesView'
 import PerfView from '../sidebar/PerfView'
 
 const TITLES: Record<string, string> = {
   scm: '源代码更改',
+  files: '文件',
   docs: 'Dev Docs',
   perf: '性能',
   logs: '日志',
@@ -20,6 +22,9 @@ export default function PrimarySidebar() {
   switch (activity) {
     case 'scm':
       body = <ScmView />
+      break
+    case 'files':
+      body = <FilesView />
       break
     case 'docs':
       body = <DocsView />

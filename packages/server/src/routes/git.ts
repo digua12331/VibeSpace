@@ -12,6 +12,7 @@ import {
   isGitRepo,
   listBranches,
   listCommits,
+  listProjectFiles,
   readFileAtRef,
   stagePaths,
   unstagePaths,
@@ -42,6 +43,10 @@ const CommitsQuery = z.object({
 const GraphQuery = z.object({
   limit: z.coerce.number().int().min(1).max(1000).optional(),
   all: z.coerce.boolean().optional(),
+});
+
+const FilesQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50000).optional(),
 });
 
 const PathArray = z.array(z.string().min(1).max(4096)).min(1).max(500);
@@ -165,6 +170,24 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
       try {
         if (!(await isGitRepo(proj.path))) return reply.send([]);
         return reply.send(await listBranches(proj.path));
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /files ----------
+  app.get<{ Params: { id: string }; Querystring: unknown }>(
+    "/api/projects/:id/files",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = FilesQuery.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_query", detail: parsed.error.issues });
+      }
+      try {
+        return reply.send(await listProjectFiles(proj.path, parsed.data));
       } catch (err) {
         return sendGitError(reply, err);
       }

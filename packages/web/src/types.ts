@@ -331,6 +331,33 @@ export interface DocFileContent {
   updatedAt: number
 }
 
+// ---------- Project files ----------
+
+export type ProjectFileGitStatus =
+  | 'clean'
+  | 'modified'
+  | 'staged'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'untracked'
+  | 'conflicted'
+
+export interface ProjectFileEntry {
+  path: string
+  git: ProjectFileGitStatus | null
+  dirty: boolean
+  staged: boolean
+}
+
+export interface ProjectFilesResult {
+  gitEnabled: boolean
+  files: ProjectFileEntry[]
+  total: number
+  truncated: boolean
+  limit: number
+}
+
 // ---------- Perf ----------
 
 export interface SessionPerfSample {
