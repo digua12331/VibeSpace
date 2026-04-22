@@ -53,23 +53,30 @@ async function main(): Promise<void> {
     console.warn("VibeSpace: orphan reap failed:", (err as Error).message);
   }
 
-  try {
-    const r = installClaudeHooks();
-    if (r.status === "failed") {
-      console.warn(`aimon hook install: WARN ${r.error ?? "unknown"} (path=${r.settingsPath})`);
-    } else {
-      console.log(
-        `aimon hook install: ${r.status} (path=${r.settingsPath}, changed=[${r.changed.join(",")}])`,
-      );
+  if (process.env.AIMON_SKIP_HOOK_INSTALL) {
+    console.log("aimon hook install: skipped (AIMON_SKIP_HOOK_INSTALL=1)");
+  } else {
+    try {
+      const r = installClaudeHooks();
+      if (r.status === "failed") {
+        console.warn(`aimon hook install: WARN ${r.error ?? "unknown"} (path=${r.settingsPath})`);
+      } else {
+        console.log(
+          `aimon hook install: ${r.status} (path=${r.settingsPath}, changed=[${r.changed.join(",")}])`,
+        );
+      }
+    } catch (err) {
+      console.warn("aimon hook install: WARN", (err as Error).message);
     }
-  } catch (err) {
-    console.warn("aimon hook install: WARN", (err as Error).message);
   }
 
   const app = Fastify({ logger: { level: "info" } });
 
+  const corsOrigins = (process.env.AIMON_WEB_ORIGIN
+    ? process.env.AIMON_WEB_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["http://127.0.0.1:8788", "http://localhost:8788"]);
   await app.register(fastifyCors, {
-    origin: ["http://127.0.0.1:8788", "http://localhost:8788"],
+    origin: corsOrigins,
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   });

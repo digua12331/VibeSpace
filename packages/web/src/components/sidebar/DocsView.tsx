@@ -170,6 +170,7 @@ export default function DocsView() {
   }
 
   async function onArchive(task: string) {
+    if (!projectId) return
     const ok = await confirmDialog(
       `归档任务 "${task}"? 该任务目录会被移动到 dev/archive/ 下。`,
       { title: '归档任务', confirmLabel: '归档' },

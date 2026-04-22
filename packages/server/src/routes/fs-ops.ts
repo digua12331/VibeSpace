@@ -205,4 +205,82 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // ---------- POST /fs/open-vscode ----------
+  // `code` on Windows is a `.cmd` wrapper, so spawn must go through cmd.exe.
+  // We race a 400ms timer against the child's `error` event to surface
+  // ENOENT ("code not on PATH") to the caller, instead of the usual
+  // fire-and-forget pattern used by revealInSystemExplorer.
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/fs/open-vscode",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      if (!existsSync(proj.path)) {
+        return reply.code(404).send({ error: "path_not_found" });
+      }
+      const child = spawn("cmd.exe", ["/c", "code", proj.path], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      const launched = await new Promise<{ ok: true } | { ok: false; message: string }>(
+        (resolvePromise) => {
+          const done = (v: { ok: true } | { ok: false; message: string }) => {
+            clearTimeout(timer);
+            child.removeAllListeners("error");
+            resolvePromise(v);
+          };
+          const timer = setTimeout(() => done({ ok: true }), 400);
+          child.once("error", (e) => done({ ok: false, message: e.message }));
+        },
+      );
+      if (launched.ok) {
+        try { child.unref(); } catch { /* ignore */ }
+        return reply.send({ ok: true });
+      }
+      return reply
+        .code(500)
+        .send({ error: "vscode_launch_failed", message: launched.message });
+    },
+  );
+
+  // ---------- POST /fs/exec-bat ----------
+  // Launch a .bat/.cmd in a new visible cmd window, same as double-clicking
+  // it in Explorer. `start ""` uses an empty title so paths with spaces
+  // don't get consumed as the window title. `/D <dir>` sets CWD to the
+  // batch file's directory (matches double-click semantics).
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/fs/exec-bat",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = PathBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      try {
+        const abs = safeResolve(proj.path, parsed.data.path);
+        if (!/\.(bat|cmd)$/i.test(abs)) {
+          return reply.code(400).send({ error: "not_a_batch_file" });
+        }
+        if (!existsSync(abs)) {
+          return reply.code(404).send({ error: "path_not_found" });
+        }
+        if (!statSync(abs).isFile()) {
+          return reply.code(400).send({ error: "not_a_file" });
+        }
+        const child = spawn(
+          "cmd.exe",
+          ["/c", "start", "", "/D", dirname(abs), abs],
+          { detached: true, stdio: "ignore", windowsHide: false },
+        );
+        child.on("error", () => { /* swallow */ });
+        try { child.unref(); } catch { /* ignore */ }
+        return reply.send({ ok: true });
+      } catch (err) {
+        return sendErr(reply, err);
+      }
+    },
+  );
 }

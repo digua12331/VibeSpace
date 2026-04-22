@@ -321,6 +321,69 @@ pnpm smoke:web           # serves dist + verifies static assets
 pnpm smoke:git           # changes / diff / stage / unstage / commit flow
 ```
 
+## Dual-instance mode (stable + dev)
+
+If you use VibeSpace every day to manage your other projects **and** iterate on
+VibeSpace itself, run two copies side-by-side so an in-progress change never
+takes down your working control tower.
+
+**Initial setup** (once):
+
+```sh
+git clone f:/KB/AIkanban-main f:/KB/AIkanban-stable
+cd f:\KB\AIkanban-stable
+pnpm install
+pnpm --filter @aimon/server rebuild @homebridge/node-pty-prebuilt-multiarch better-sqlite3
+pnpm build:stable
+```
+
+**Run stable** (your daily driver, 8787 / 8788, title `VibeSpace-稳定`):
+
+```sh
+cd f:\KB\AIkanban-stable
+pnpm start:stable
+```
+
+Stable runs **build artifacts** (`node dist/index.js` + `vite preview`), so
+file changes in the repo do not trigger a restart. Sessions stay alive until
+you restart manually.
+
+**Run dev** (this repo, 9787 / 9788, title `VibeSpace-开发`):
+
+```sh
+cd f:\KB\AIkanban-main
+pnpm dev:alt
+```
+
+Dev runs `tsx watch` + `vite dev` on alternate ports and **skips the global
+Claude hook install**, so stable keeps exclusive ownership of
+`~/.claude/settings.json`. You can keep both instances open in two browser
+tabs.
+
+**Claude status badges still work on the dev side**: the hook script in
+`~/.claude/settings.json` points to stable's copy, but it reads
+`process.env.AIMON_BACKEND` (injected by the PTY that spawned the child), so
+claude sessions launched from the dev UI post hook events back to the dev
+server at 9787.
+
+**Sync dev → stable** (from the dev dir, commit first):
+
+```sh
+sync-to-stable.bat
+```
+
+The script: aborts if the dev tree has uncommitted changes; `git fetch` +
+`git reset --hard origin/main` on stable; runs `pnpm install` + native rebuild
+only if `pnpm-lock.yaml` changed; then `pnpm build:stable`. It **does not
+restart stable** — the old process keeps running the old bundle until you
+Ctrl+C it and rerun `pnpm start:stable`. Pick that moment when stable is idle.
+
+**Do not edit files inside `f:\KB\AIkanban-stable`.** The next sync will
+`git reset --hard` and silently erase local modifications. Use the stable UI
+to open `f:\KB\AIkanban-main` as a project and have claude/codex sessions
+edit the dev codebase there; test the change by running `pnpm dev:alt` in the
+dev dir and opening the second browser tab.
+
 ## Roadmap
 
 - LAN-share the panel with a token-based auth header (today: 127.0.0.1 only).

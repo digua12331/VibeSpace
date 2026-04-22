@@ -201,7 +201,10 @@ function initialPerm(): NotificationPermissionState {
   return Notification.permission as NotificationPermissionState
 }
 
-const ORIGINAL_TITLE = typeof document === 'undefined' ? 'VibeSpace' : document.title || 'VibeSpace'
+const INSTANCE_LABEL = (import.meta.env.VITE_AIMON_INSTANCE_LABEL as string | undefined)?.trim()
+const BASE_TITLE = INSTANCE_LABEL ? `VibeSpace-${INSTANCE_LABEL}` : 'VibeSpace'
+const ORIGINAL_TITLE = BASE_TITLE
+if (typeof document !== 'undefined') document.title = ORIGINAL_TITLE
 let titleFlashTimer: ReturnType<typeof setInterval> | null = null
 let titleFlipped = false
 

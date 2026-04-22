@@ -54,10 +54,11 @@ const InstallBody = z.object({ cliId: z.string().min(1) });
 
 // Must stay in sync with the cors origin list in index.ts — SSE bypasses
 // @fastify/cors, so this route sets the header itself.
-const ALLOWED_ORIGINS = new Set<string>([
-  "http://127.0.0.1:8788",
-  "http://localhost:8788",
-]);
+const ALLOWED_ORIGINS = new Set<string>(
+  process.env.AIMON_WEB_ORIGIN
+    ? process.env.AIMON_WEB_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["http://127.0.0.1:8788", "http://localhost:8788"],
+);
 
 export async function registerCliInstallerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/cli-installer/catalog", async () => {

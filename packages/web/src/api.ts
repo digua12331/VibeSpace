@@ -369,6 +369,23 @@ export function deleteEntry(projectId: string, path: string): Promise<void> {
   )
 }
 
+export function openInVscode(projectId: string): Promise<{ ok: boolean }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/fs/open-vscode`,
+    { method: 'POST' },
+  )
+}
+
+export function execBatFile(
+  projectId: string,
+  path: string,
+): Promise<{ ok: boolean }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/fs/exec-bat`,
+    jsonInit('POST', { path }),
+  )
+}
+
 // ---------- Paste image ----------
 
 export interface PastedImageResult {

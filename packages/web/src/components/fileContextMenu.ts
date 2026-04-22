@@ -61,6 +61,7 @@ function shortTail(id: string): string {
 export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] {
   const { projectId, path, kind, sessions } = opts
   const kindLabel = kind === 'dir' ? '目录' : '文件'
+  const isBatch = kind === 'file' && /\.(bat|cmd)$/i.test(path)
 
   const sendItem: ContextMenuItem =
     sessions.length === 0
@@ -91,6 +92,23 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
             })),
           }
 
+  const execItem: ContextMenuItem | null = isBatch
+    ? {
+        label: '执行',
+        icon: '▶',
+        onSelect: async () => {
+          try {
+            await api.execBatFile(projectId, path)
+          } catch (e: unknown) {
+            await alertDialog(
+              e instanceof Error ? e.message : String(e),
+              { title: '执行失败', variant: 'danger' },
+            )
+          }
+        },
+      }
+    : null
+
   return [
     sendItem,
     { label: '复制路径', icon: '📋', onSelect: () => void copyToClipboard(path) },
@@ -108,6 +126,7 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
         }
       },
     },
+    ...(execItem ? [execItem] : []),
     {
       label: '添加到 .gitignore',
       icon: '🚫',

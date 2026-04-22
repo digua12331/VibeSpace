@@ -200,6 +200,24 @@ export default function ProjectsColumn({
           </button>
           <button
             role="menuitem"
+            onClick={async () => {
+              const { projectId } = menu
+              setMenu(null)
+              try {
+                await api.openInVscode(projectId)
+              } catch (e: unknown) {
+                await alertDialog(
+                  e instanceof Error ? e.message : String(e),
+                  { title: '启动 VSCode 失败', variant: 'danger' },
+                )
+              }
+            }}
+            className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
+          >
+            🧩 用 VSCode 打开
+          </button>
+          <button
+            role="menuitem"
             onClick={() => {
               const { projectId } = menu
               setMenu(null)

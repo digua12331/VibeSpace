@@ -22,7 +22,7 @@ type EditorState =
   | { mode: 'create' }
   | { mode: 'edit'; prompt: UserPrompt }
 
-function previewLines(content: string, lines = 2): string {
+function previewLines(content: string): string {
   const src = content.replace(/\s+/g, ' ').trim()
   // Simple truncation — CSS `line-clamp` handles the visual cap, but we still
   // keep a hard char ceiling so the DOM doesn't carry multi-KB strings per row.
