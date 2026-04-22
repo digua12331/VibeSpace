@@ -11,6 +11,7 @@ import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { formatForSession } from '../fileContextMenu'
+import PromptLibraryDialog from '../PromptLibraryDialog'
 import {
   BUTTON_COLOR_CLASSES,
   getCustomButtons,
@@ -131,6 +132,7 @@ interface Props {
 export default function SessionView({ session, active, onClose, onRestart }: Props) {
   const projects = useStore((s) => s.projects)
   const [showPerm, setShowPerm] = useState(false)
+  const [promptLibOpen, setPromptLibOpen] = useState(false)
   const liveStatus = useStore((s) => s.liveStatus[session.id])
   const isNotifying = useStore((s) => s.notifyingSessions.has(session.id))
   const clearNotify = useStore((s) => s.clearNotify)
@@ -358,6 +360,13 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
           >
             ⚙ 设置
           </button>
+          <button
+            onClick={() => setPromptLibOpen(true)}
+            title="提示词库"
+            className="fluent-btn px-2 py-0.5 text-xs rounded border border-border text-muted hover:text-fg hover:bg-white/[0.05]"
+          >
+            📝 提示词
+          </button>
           {isDead ? (
             showExitInfo && (
               <>
@@ -447,6 +456,15 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       {showPerm && project && (
         <PermissionsDrawer project={project} onClose={() => setShowPerm(false)} />
       )}
+
+      <PromptLibraryDialog
+        open={promptLibOpen}
+        onClose={() => setPromptLibOpen(false)}
+        onSend={(text) => {
+          aimonWS.sendInput(session.id, text)
+          setPromptLibOpen(false)
+        }}
+      />
 
       {confirmClose && (
         <div
