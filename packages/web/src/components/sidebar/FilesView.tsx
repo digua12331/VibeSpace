@@ -544,6 +544,7 @@ function TreeRow({
                 expanded={expanded}
                 onToggle={onToggle}
                 onOpen={onOpen}
+                onContextMenu={onContextMenu}
               />
             ))}
           </ul>

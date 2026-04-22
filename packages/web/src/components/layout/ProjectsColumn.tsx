@@ -27,6 +27,27 @@ export default function ProjectsColumn({
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [permProjectId, setPermProjectId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [changeCount, setChangeCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!menu) {
+      setChangeCount(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const r = await api.getProjectChanges(menu.projectId)
+        if (cancelled) return
+        setChangeCount(r.enabled ? r.staged.length + r.unstaged.length : null)
+      } catch {
+        if (!cancelled) setChangeCount(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [menu])
 
   useEffect(() => {
     if (!menu) return
@@ -80,8 +101,19 @@ export default function ProjectsColumn({
     e.stopPropagation()
     const MENU_W = 180
     const MENU_H = 140
-    const x = Math.min(e.clientX, window.innerWidth - MENU_W - 4)
-    const y = Math.min(e.clientY, window.innerHeight - MENU_H - 4)
+    const EDGE_PAD = 4
+    // Anchor the menu's left edge to the project row's left edge. The
+    // projects column is narrow, so opening to the right of the row would
+    // spill into the next column; starting at the row's left keeps the whole
+    // menu within (or immediately adjacent to) the projects column.
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    let x = rect.left + 30
+    if (x + MENU_W + EDGE_PAD > vw) x = Math.max(EDGE_PAD, vw - MENU_W - EDGE_PAD)
+    if (x < EDGE_PAD) x = EDGE_PAD
+    let y = rect.top + 30
+    if (y + MENU_H + EDGE_PAD > vh) y = Math.max(EDGE_PAD, vh - MENU_H - EDGE_PAD)
     setMenu({ projectId: id, projectName: name, x, y })
   }
 
@@ -183,9 +215,14 @@ export default function ProjectsColumn({
               setMenu(null)
               openScmFor(projectId)
             }}
-            className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
+            className="fluent-btn flex items-center w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
           >
-            🌿 代码更改
+            <span className="flex-1">🌿 代码更改</span>
+            {changeCount != null && changeCount > 0 && (
+              <span className="ml-2 shrink-0 rounded-full bg-rose-500 text-white text-[10px] leading-none tabular-nums font-medium px-1.5 py-0.5">
+                {changeCount > 99 ? '99+' : changeCount}
+              </span>
+            )}
           </button>
           <button
             role="menuitem"
