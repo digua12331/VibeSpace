@@ -13,7 +13,10 @@ import {
   updateProjectLayout,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
-import { DEV_DOCS_GUIDELINES } from "../dev-docs-guidelines.js";
+import {
+  DEV_DOCS_GUIDELINES,
+  ISSUES_ARCHIVE_SECTION,
+} from "../dev-docs-guidelines.js";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
@@ -54,12 +57,72 @@ function appendToClaudeMd(
   return true;
 }
 
+const MAIN_GUIDELINES_ANCHOR = "# Dev Docs 工作流";
+const ISSUES_SECTION_ANCHOR = "## Issues 档案";
+
+/**
+ * Insert `section` into the main guidelines block when the block exists but is
+ * missing that section. "The block" is the chunk of CLAUDE.md starting at
+ * `mainAnchor` and ending at the **first `---` on its own line after the main
+ * anchor** (the same separator `appendToClaudeMd` adds between appended bodies)
+ * or end-of-file, whichever comes first. The section is appended to the end of
+ * that block with a blank-line separator, preserving any user-authored content
+ * in between.
+ *
+ * Returns `true` if a write happened, `false` if the section was already there
+ * or the main block is missing entirely.
+ */
+function insertSectionBeforeSeparator(
+  projectPath: string,
+  section: string,
+  sectionAnchor: string,
+  mainAnchor: string,
+): boolean {
+  const target = join(projectPath, "CLAUDE.md");
+  let existing: string;
+  try {
+    existing = readFileSync(target, "utf8");
+  } catch {
+    return false;
+  }
+  const mainIdx = existing.indexOf(mainAnchor);
+  if (mainIdx < 0) return false;
+
+  // Locate the end of the main block: the first standalone `---` separator
+  // after the main anchor, or EOF.
+  const afterMain = existing.slice(mainIdx);
+  const sepMatch = /\n---\s*\n/.exec(afterMain);
+  const blockEndRel = sepMatch ? sepMatch.index + 1 : afterMain.length;
+  const block = afterMain.slice(0, blockEndRel);
+
+  if (block.includes(sectionAnchor)) return false;
+
+  // Trim trailing whitespace of the block, then re-attach with one blank line
+  // before the inserted section so headings aren't glued together.
+  const blockTrimmed = block.replace(/\s+$/, "");
+  const rebuiltBlock = `${blockTrimmed}\n\n${section.trimEnd()}\n`;
+  const rebuilt =
+    existing.slice(0, mainIdx) +
+    rebuiltBlock +
+    afterMain.slice(blockEndRel);
+  writeFileSync(target, rebuilt, "utf8");
+  return true;
+}
+
 function appendDevDocsGuidelines(projectPath: string): boolean {
   // Stable anchor so re-applying is a no-op even if user edits surrounding text.
-  return appendToClaudeMd(
+  const wroteFull = appendToClaudeMd(
     projectPath,
     DEV_DOCS_GUIDELINES,
-    "# Dev Docs 工作流",
+    MAIN_GUIDELINES_ANCHOR,
+  );
+  if (wroteFull) return true;
+  // Main block was already present — upgrade by inserting any missing sections.
+  return insertSectionBeforeSeparator(
+    projectPath,
+    ISSUES_ARCHIVE_SECTION,
+    ISSUES_SECTION_ANCHOR,
+    MAIN_GUIDELINES_ANCHOR,
   );
 }
 

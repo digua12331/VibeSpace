@@ -315,7 +315,7 @@ export interface CliConfigSavePayload {
 // ---------- Dev Docs ----------
 
 export type DocFileKind = 'plan' | 'context' | 'tasks'
-export type DocTaskStatus = 'todo' | 'doing' | 'done'
+export type DocTaskStatus = 'todo' | 'doing' | 'done' | 'blocked'
 
 export interface DocTaskSummary {
   name: string
@@ -328,6 +328,23 @@ export interface DocTaskSummary {
 export interface DocFileContent {
   path: string
   content: string
+  updatedAt: number
+}
+
+// ---------- Issues 档案 ----------
+
+export interface IssueItem {
+  /** 1-based line number in dev/issues.md. */
+  line: number
+  text: string
+  done: boolean
+}
+
+export interface IssuesPayload {
+  /** Project-relative POSIX path, e.g. "dev/issues.md". */
+  path: string
+  content: string
+  items: IssueItem[]
   updatedAt: number
 }
 

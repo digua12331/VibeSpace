@@ -1,5 +1,15 @@
-# dual-instance-iteration · Plan (v3)
+# dual-instance-iteration · Plan (v5)
 
+> **v5 变更**（T11 实跑后追加）：
+> - sync-to-stable.bat 改为拉**最新 `stable-*` tag**（按 creatordate 排序），无 tag 时 fallback `origin/main`
+> - init-stable.bat 同策略：clone 完 checkout 最新 `stable-*` tag，无则留在 cloned HEAD
+> - 两 bat 加 `where git` / `where pnpm` 预检
+> - 日常 tag workflow：dev 目录 `git tag stable-YYYY-MM-DD` → 双击 sync bat
+>
+> **v4 变更**（Tasks 阶段 T9 完成后追加）：
+> - 新增 `init-stable.bat`：用户要求一键初始化 stable 目录。翻转原 Non-Goal "不自动创建 stable 目录"
+> - 对应新增 T11 任务项
+>
 > **v3 变更**（来自 Context 阶段的发现）：
 > - `dev:alt` 脚本补 `AIMON_BACKEND_URL=http://127.0.0.1:9787`（否则 dev 副本里的 PTY 子进程会把 hook 回调打到 stable）
 > - 翻转风险 B 的结论：dev 副本**通过 stable 安装的 hook 脚本转发事件回到 dev 自身**，状态徽标正常工作（不再是"已接受的代价"）
@@ -55,7 +65,7 @@
 
 ## 非目标 (Non-Goals)
 
-- **不自动创建 stable 目录**：用户首次初始化时自己跑 `git clone f:/KB/AIkanban-main f:/KB/AIkanban-stable`。README 里给出命令即可。
+- ~~不自动创建 stable 目录~~ → **v4 翻转**：提供 `init-stable.bat` 一键完成 clone + install + rebuild + build。
 - **不在 dev 副本独立安装 Claude hook**：stable 已装的 hook 脚本会读子进程 env `AIMON_BACKEND`，dev 副本里的 claude 子进程继承的 `AIMON_BACKEND=9787`，事件会正确回到 dev 自身的 `/api/hooks/claude`，徽标正常；不搞"多实例 hook 路由"一类的复杂方案。
 - **不动 DB schema、WS 协议、HTTP 路由**：本任务只涉及启动时配置读取 + web title + sync bat。
 - **不做 LAN 分享、auth、token**。

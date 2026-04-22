@@ -13,6 +13,7 @@ import type {
   DocFileContent,
   DocFileKind,
   DocTaskSummary,
+  IssuesPayload,
   FileContent,
   GitRef,
   GraphCommit,
@@ -328,6 +329,14 @@ export function archiveDocsTask(
   return request(
     `/api/projects/${encodeURIComponent(projectId)}/docs/${encodeURIComponent(name)}/archive`,
     { method: 'POST' },
+  )
+}
+
+// ---------- Issues 档案 ----------
+
+export function listIssues(projectId: string): Promise<IssuesPayload> {
+  return request<IssuesPayload>(
+    `/api/projects/${encodeURIComponent(projectId)}/issues`,
   )
 }
 

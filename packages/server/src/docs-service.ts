@@ -6,11 +6,26 @@ export type DocFileKind = "plan" | "context" | "tasks";
 
 export interface DocTaskSummary {
   name: string;
-  status: "todo" | "doing" | "done";
+  status: "todo" | "doing" | "done" | "blocked";
   checked: number;
   total: number;
   updatedAt: number;
 }
+
+type TaskStepStatus = "todo" | "doing" | "done" | "blocked";
+interface TaskStep {
+  status: TaskStepStatus;
+}
+interface TasksJson {
+  steps: TaskStep[];
+}
+
+const VALID_STEP_STATUS: ReadonlySet<TaskStepStatus> = new Set([
+  "todo",
+  "doing",
+  "done",
+  "blocked",
+]);
 
 export class DocsServiceError extends Error {
   code: string;
@@ -61,6 +76,10 @@ function fileName(task: string, kind: DocFileKind): string {
 
 function filePath(projectPath: string, task: string, kind: DocFileKind): string {
   return join(taskDir(projectPath, task), fileName(task, kind));
+}
+
+function tasksJsonPath(projectPath: string, task: string): string {
+  return join(taskDir(projectPath, task), `${task}-tasks.json`);
 }
 
 /**
@@ -138,6 +157,74 @@ function deriveStatus(checked: number, total: number): DocTaskSummary["status"] 
   return "doing";
 }
 
+/**
+ * Reads <task>-tasks.json and returns a mtime + normalized steps if the file
+ * exists and parses into the schema. Any failure (missing / unreadable / bad
+ * JSON / wrong shape / empty steps) returns null — caller falls back to
+ * md parsing. An unknown step `status` value is silently coerced to "todo"
+ * rather than rejecting the whole file, so a single typo doesn't invalidate
+ * the rest of the summary.
+ */
+async function readTasksJson(
+  projectPath: string,
+  task: string,
+): Promise<{ json: TasksJson; mtimeMs: number } | null> {
+  const p = tasksJsonPath(projectPath, task);
+  let raw: string;
+  let mtimeMs: number;
+  try {
+    raw = await readFile(p, "utf8");
+    mtimeMs = (await stat(p)).mtimeMs;
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const stepsRaw = (parsed as { steps?: unknown }).steps;
+  if (!Array.isArray(stepsRaw) || stepsRaw.length === 0) return null;
+  const steps: TaskStep[] = [];
+  for (const s of stepsRaw) {
+    if (!s || typeof s !== "object") continue;
+    const rawStatus = (s as { status?: unknown }).status;
+    const status: TaskStepStatus =
+      typeof rawStatus === "string" && VALID_STEP_STATUS.has(rawStatus as TaskStepStatus)
+        ? (rawStatus as TaskStepStatus)
+        : "todo";
+    steps.push({ status });
+  }
+  if (steps.length === 0) return null;
+  return { json: { steps }, mtimeMs };
+}
+
+function summarizeFromJson(json: TasksJson): {
+  checked: number;
+  total: number;
+  status: DocTaskSummary["status"];
+} {
+  const total = json.steps.length;
+  let checked = 0;
+  let hasBlocked = false;
+  let hasDoing = false;
+  let hasTodo = false;
+  for (const s of json.steps) {
+    if (s.status === "done") checked += 1;
+    else if (s.status === "blocked") hasBlocked = true;
+    else if (s.status === "doing") hasDoing = true;
+    else hasTodo = true;
+  }
+  let status: DocTaskSummary["status"];
+  if (hasBlocked) status = "blocked";
+  else if (total > 0 && checked === total) status = "done";
+  else if (hasDoing || (checked > 0 && hasTodo)) status = "doing";
+  else status = "todo";
+  return { checked, total, status };
+}
+
 async function summarizeTask(
   projectPath: string,
   name: string,
@@ -149,27 +236,44 @@ async function summarizeTask(
   } catch {
     return null;
   }
+
   const tasksFile = filePath(projectPath, name, "tasks");
   let md = "";
-  let updatedAt = 0;
+  let mdMtime = 0;
   try {
     md = await readFile(tasksFile, "utf8");
-    updatedAt = (await stat(tasksFile)).mtimeMs;
+    mdMtime = (await stat(tasksFile)).mtimeMs;
   } catch {
-    // No tasks.md yet — count as todo, use dir mtime
     try {
-      updatedAt = (await stat(dir)).mtimeMs;
+      mdMtime = (await stat(dir)).mtimeMs;
     } catch {
-      updatedAt = Date.now();
+      mdMtime = Date.now();
     }
   }
+
+  // Prefer tasks.json: it's the only source that can express "blocked". If
+  // it's missing / malformed / empty, fall back to parsing md checkboxes.
+  // Take max(mdMtime, jsonMtime) so an out-of-order write doesn't make the
+  // task sink in the recency-sorted list.
+  const jsonRead = await readTasksJson(projectPath, name);
+  if (jsonRead) {
+    const { checked, total, status } = summarizeFromJson(jsonRead.json);
+    return {
+      name,
+      status,
+      checked,
+      total,
+      updatedAt: Math.round(Math.max(mdMtime, jsonRead.mtimeMs)),
+    };
+  }
+
   const { checked, total } = countCheckboxes(md);
   return {
     name,
     status: deriveStatus(checked, total),
     checked,
     total,
-    updatedAt: Math.round(updatedAt),
+    updatedAt: Math.round(mdMtime),
   };
 }
 

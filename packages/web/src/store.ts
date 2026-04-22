@@ -5,6 +5,7 @@ import { isPageFocused, notifyWaitingInput, type NotificationPermissionState } f
 import type {
   DocTaskSummary,
   GitRef,
+  IssuesPayload,
   LogEntry,
   Project,
   Session,
@@ -177,6 +178,12 @@ interface State {
   createDocsTask: (projectId: string, name: string) => Promise<DocTaskSummary>
   archiveDocsTask: (projectId: string, name: string) => Promise<void>
 
+  /** ----- Issues 档案 ----- */
+  issuesData: Record<string, IssuesPayload | undefined>
+  issuesLoading: Record<string, boolean>
+  issuesError: Record<string, string | null>
+  refreshIssues: (projectId: string) => Promise<void>
+
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
   setNotifyPerm: (p: NotificationPermissionState) => void
@@ -268,6 +275,10 @@ export const useStore = create<State>((set, get) => ({
   docsTasks: {},
   docsLoading: {},
   docsError: {},
+
+  issuesData: {},
+  issuesLoading: {},
+  issuesError: {},
 
   setActivity: (a) => {
     set((st) => (st.activity === a ? st : { activity: a }))
@@ -567,6 +578,27 @@ export const useStore = create<State>((set, get) => ({
         },
       }
     })
+  },
+
+  refreshIssues: async (projectId) => {
+    set((st) => ({
+      issuesLoading: { ...st.issuesLoading, [projectId]: true },
+      issuesError: { ...st.issuesError, [projectId]: null },
+    }))
+    try {
+      const payload = await api.listIssues(projectId)
+      set((st) => ({
+        issuesData: { ...st.issuesData, [projectId]: payload },
+        issuesLoading: { ...st.issuesLoading, [projectId]: false },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        issuesLoading: { ...st.issuesLoading, [projectId]: false },
+        issuesError: { ...st.issuesError, [projectId]: msg },
+      }))
+      throw e
+    }
   },
 }))
 

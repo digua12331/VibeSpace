@@ -327,7 +327,18 @@ If you use VibeSpace every day to manage your other projects **and** iterate on
 VibeSpace itself, run two copies side-by-side so an in-progress change never
 takes down your working control tower.
 
-**Initial setup** (once):
+**Initial setup** (once) — from the dev dir, just run:
+
+```sh
+init-stable.bat
+```
+
+It refuses to overwrite an existing `f:\KB\AIkanban-stable`, clones this repo
+there, checks out the latest `stable-*` tag if one exists (otherwise stays
+on the cloned HEAD), runs `pnpm install`, rebuilds native modules
+(`better-sqlite3`, `node-pty`), and finally `pnpm build:stable`.
+
+Manual equivalent, if you prefer:
 
 ```sh
 git clone f:/KB/AIkanban-main f:/KB/AIkanban-stable
@@ -369,14 +380,28 @@ server at 9787.
 **Sync dev → stable** (from the dev dir, commit first):
 
 ```sh
+REM in the dev dir, tag the commit you consider release-ready:
+git tag stable-2026-04-22
+REM then:
 sync-to-stable.bat
 ```
 
-The script: aborts if the dev tree has uncommitted changes; `git fetch` +
-`git reset --hard origin/main` on stable; runs `pnpm install` + native rebuild
-only if `pnpm-lock.yaml` changed; then `pnpm build:stable`. It **does not
+The sync script picks the **latest `stable-*` tag** in dev (by creator date)
+and `git reset --hard`es stable to that tag. If no `stable-*` tag exists yet,
+it falls back to `origin/main` HEAD so the loop still works from day one.
+Tag naming is free-form as long as it starts with `stable-` — dates
+(`stable-2026-04-22`), semver (`stable-v1.2.0`), or feature names
+(`stable-feat-login`) all work.
+
+The script also: aborts if the dev tree has uncommitted changes; only runs
+`pnpm install` + native rebuild if `pnpm-lock.yaml` changed between stable's
+current HEAD and the target tag; then `pnpm build:stable`. It **does not
 restart stable** — the old process keeps running the old bundle until you
 Ctrl+C it and rerun `pnpm start:stable`. Pick that moment when stable is idle.
+
+Tags live in the dev repo's `.git` only (stable's `origin` is the local dev
+dir), so you never need to `git push` to a remote — `git fetch origin --tags`
+inside stable picks them up.
 
 **Do not edit files inside `f:\KB\AIkanban-stable`.** The next sync will
 `git reset --hard` and silently erase local modifications. Use the stable UI

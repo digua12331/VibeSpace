@@ -26,6 +26,7 @@ import { registerCliConfigRoutes } from "./routes/cli-configs.js";
 import { registerCliInstallerRoutes } from "./routes/cli-installer.js";
 import { registerGitRoutes } from "./routes/git.js";
 import { registerDocsRoutes } from "./routes/docs.js";
+import { registerIssuesRoutes } from "./routes/issues.js";
 import { registerPerfRoutes } from "./routes/perf.js";
 import { registerFsOpsRoutes } from "./routes/fs-ops.js";
 import { registerPasteImageRoutes } from "./routes/paste-image.js";
@@ -140,6 +141,7 @@ async function main(): Promise<void> {
   await registerCliInstallerRoutes(app);
   await registerGitRoutes(app);
   await registerDocsRoutes(app);
+  await registerIssuesRoutes(app);
   await registerPerfRoutes(app);
   await registerFsOpsRoutes(app);
   await registerPasteImageRoutes(app);

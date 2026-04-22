@@ -49,6 +49,12 @@
     - 工作区里还有非本任务范围的未提交改动（`fs-ops.ts`、`api.ts`、`fileContextMenu.ts`、`ProjectsColumn.tsx`），可能是触发条件之一
     - 决定：**另起任务 `fix-persistence-cascade` 单独处理**，不纳入本任务
 
+## 工程化追加（v4）
+
+- [x] **T11 · `init-stable.bat` 一键初始化 stable + tag workflow** — 根目录新建；步骤：`where git/pnpm` 预检 → 检查 `STABLE_DIR` 不存在 → 检查 dev 是 git repo → `git clone "%DEV_DIR%" "%STABLE_DIR%"` → pushd stable → checkout 最新 `stable-*` tag（无则留 HEAD）→ `pnpm install` → `pnpm --filter @aimon/server rebuild ...` → `pnpm build:stable` → 打印 ref + 下一步指引。任一步 errorlevel 非 0 跳 `:fail`。
+  - sync-to-stable.bat 同步升级为 tag-driven：`git fetch origin --tags --prune` → 找最新 `stable-*` tag（无则 `origin/main`）→ `git reset --hard <target>` → `pnpm-lock.yaml` 变了才 install/rebuild → `pnpm build:stable`。
+  - verify: (a) stable 已存在时跑 init bat，在 "STABLE_DIR already exists" 分支退出 ✓；(b) dev dirty 时跑 sync bat，在 "unstaged changes" 分支退出 ✓；(c) 用户实跑完整 init：stable 已到达 dev HEAD、build:stable 成功、web dist 含 `稳定` 字符 ✓；真实 tag 切换留到首次打 `stable-*` tag 后首次 sync 时验。
+
 ## 延后验收（依赖 stable 目录已存在）
 
 - [ ] **T10 · 跨实例 hook smoke（完整 e2e）** — 由用户在 `f:\KB\AIkanban-stable` `git clone` 就绪后触发；我侧仅负责记录操作步骤：

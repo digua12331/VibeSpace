@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
-import type { DocFileKind, DocTaskSummary } from '../../types'
+import type { DocFileKind, DocTaskSummary, IssueItem } from '../../types'
 
 const EMPTY_TASKS: DocTaskSummary[] = []
+const EMPTY_ISSUES: IssueItem[] = []
+
+type DocsViewMode = 'tasks' | 'issues'
 
 /**
  * Display order + labels for the three Dev Docs files. The `order` prefix is
@@ -34,6 +37,13 @@ function StatusPill({ task }: { task: DocTaskSummary }) {
     return (
       <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-emerald-600/40 bg-emerald-500/10 text-emerald-300">
         ✓ 完成
+      </span>
+    )
+  }
+  if (task.status === 'blocked') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-rose-600/40 bg-rose-500/15 text-rose-200 tabular-nums">
+        阻塞 {task.checked}/{task.total}
       </span>
     )
   }
@@ -97,8 +107,23 @@ export default function DocsView() {
   const archiveDocsTask = useStore((s) => s.archiveDocsTask)
   const openFile = useStore((s) => s.openFile)
 
+  const issuesPayload = useStore((s) =>
+    projectId ? s.issuesData[projectId] : undefined,
+  )
+  const issuesLoading = useStore((s) =>
+    projectId ? s.issuesLoading[projectId] === true : false,
+  )
+  const issuesError = useStore((s) =>
+    projectId ? s.issuesError[projectId] ?? null : null,
+  )
+  const refreshIssues = useStore((s) => s.refreshIssues)
+  const addSession = useStore((s) => s.addSession)
+  const setActiveSession = useStore((s) => s.setActiveSession)
+
+  const [view, setView] = useState<DocsViewMode>('tasks')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [applyingRules, setApplyingRules] = useState(false)
+  const [dispatching, setDispatching] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -110,11 +135,20 @@ export default function DocsView() {
     })
   }, [projectId, refreshDocs])
 
+  useEffect(() => {
+    if (!projectId) return
+    if (view !== 'issues') return
+    refreshIssues(projectId).catch(() => {
+      /* error already recorded in store */
+    })
+  }, [projectId, view, refreshIssues])
+
   // Reset the search UI when the project changes so the query from project A
   // doesn't linger after the user picks project B.
   useEffect(() => {
     setQuery('')
     setSearchOpen(false)
+    setView('tasks')
   }, [projectId])
 
   // Auto-focus the input the instant the search bar opens.
@@ -131,6 +165,9 @@ export default function DocsView() {
     if (!q) return tasks
     return tasks.filter((t) => t.name.toLowerCase().includes(q))
   }, [tasks, query])
+
+  const issues = issuesPayload?.items ?? EMPTY_ISSUES
+  const openIssues = useMemo(() => issues.filter((it) => !it.done), [issues])
 
   if (!projectId) {
     return (
@@ -198,6 +235,76 @@ export default function DocsView() {
     })
   }
 
+  function openIssuesFile() {
+    if (!projectId) return
+    openFile({ projectId, path: 'dev/issues.md' })
+  }
+
+  function buildSingleIssuePrompt(text: string): string {
+    return [
+      '请处理 dev/issues.md 里的这条问题：',
+      '',
+      text,
+      '',
+      '处理完成后：在 dev/issues.md 里把这条的 [ ] 改成 [x]，然后简述改动。',
+    ].join('\n')
+  }
+
+  function buildAllIssuesPrompt(items: IssueItem[]): string {
+    const lines = [
+      '请依次处理 dev/issues.md 里以下未处理的问题，每处理完一条就把对应行的 [ ] 改成 [x]：',
+      '',
+    ]
+    items.forEach((it, i) => {
+      lines.push(`${i + 1}. ${it.text}`)
+    })
+    return lines.join('\n')
+  }
+
+  async function dispatchClaude(prompt: string, successTitle: string) {
+    if (!projectId || dispatching) return
+    setDispatching(true)
+    try {
+      const session = await api.createSession({ projectId, agent: 'claude' })
+      addSession(session)
+      setActiveSession(projectId, session.id)
+      let clipboardOk = false
+      try {
+        await navigator.clipboard.writeText(prompt)
+        clipboardOk = true
+      } catch {
+        /* fall through to dialog fallback */
+      }
+      if (clipboardOk) {
+        await alertDialog(
+          '已新建 Claude 终端并聚焦。请在终端里按 Ctrl+V 粘贴、再按回车发送。',
+          { title: successTitle },
+        )
+      } else {
+        await alertDialog(
+          `已新建 Claude 终端，但自动复制到剪贴板失败。请手动复制下面的 prompt：\n\n${prompt}`,
+          { title: successTitle },
+        )
+      }
+    } catch (e: unknown) {
+      await alertDialog(
+        e instanceof Error ? e.message : String(e),
+        { title: '派单失败', variant: 'danger' },
+      )
+    } finally {
+      setDispatching(false)
+    }
+  }
+
+  async function onDispatchIssue(issue: IssueItem) {
+    await dispatchClaude(buildSingleIssuePrompt(issue.text), '已派 Claude 处理此问题')
+  }
+
+  async function onDispatchAllIssues() {
+    if (openIssues.length === 0) return
+    await dispatchClaude(buildAllIssuesPrompt(openIssues), '已派 Claude 处理全部未处理问题')
+  }
+
   const hasQuery = query.trim().length > 0
 
   return (
@@ -209,15 +316,27 @@ export default function DocsView() {
         >
           <span className="truncate">{project.name}</span>
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={toggleSearch}
-              title="搜索任务"
-              className={`fluent-btn w-6 h-6 inline-flex items-center justify-center rounded hover:bg-white/[0.08] ${
-                searchOpen ? 'text-accent bg-white/[0.06]' : 'text-muted hover:text-fg'
-              }`}
-            >
-              🔍
-            </button>
+            {view === 'tasks' && (
+              <button
+                onClick={toggleSearch}
+                title="搜索任务"
+                className={`fluent-btn w-6 h-6 inline-flex items-center justify-center rounded hover:bg-white/[0.08] ${
+                  searchOpen ? 'text-accent bg-white/[0.06]' : 'text-muted hover:text-fg'
+                }`}
+              >
+                🔍
+              </button>
+            )}
+            {view === 'issues' && openIssues.length > 0 && (
+              <button
+                onClick={() => void onDispatchAllIssues()}
+                disabled={dispatching}
+                title={`新建 Claude 终端并把全部 ${openIssues.length} 条未处理问题拼成列表放进剪贴板`}
+                className="fluent-btn h-6 px-2 inline-flex items-center justify-center rounded text-[11px] text-muted hover:text-fg hover:bg-white/[0.08] disabled:opacity-50"
+              >
+                {dispatching ? '…' : `🤖 派全部 (${openIssues.length})`}
+              </button>
+            )}
             <button
               onClick={() => void onApplyRules()}
               disabled={applyingRules}
@@ -227,7 +346,10 @@ export default function DocsView() {
               {applyingRules ? '…' : '⚙'}
             </button>
             <button
-              onClick={() => void refreshDocs(projectId)}
+              onClick={() => {
+                if (view === 'tasks') void refreshDocs(projectId)
+                else void refreshIssues(projectId)
+              }}
               title="刷新"
               className="fluent-btn w-6 h-6 inline-flex items-center justify-center rounded text-muted hover:text-fg hover:bg-white/[0.08]"
             >
@@ -237,7 +359,30 @@ export default function DocsView() {
         </div>
       )}
 
-      {searchOpen && (
+      <div className="px-2 py-1.5 border-b border-border/40 flex items-center gap-1">
+        <button
+          onClick={() => setView('tasks')}
+          className={`fluent-btn flex-1 h-7 inline-flex items-center justify-center rounded text-[12px] transition-colors ${
+            view === 'tasks'
+              ? 'bg-white/[0.08] text-fg'
+              : 'text-muted hover:text-fg hover:bg-white/[0.04]'
+          }`}
+        >
+          任务
+        </button>
+        <button
+          onClick={() => setView('issues')}
+          className={`fluent-btn flex-1 h-7 inline-flex items-center justify-center rounded text-[12px] transition-colors ${
+            view === 'issues'
+              ? 'bg-white/[0.08] text-fg'
+              : 'text-muted hover:text-fg hover:bg-white/[0.04]'
+          }`}
+        >
+          问题{openIssues.length > 0 ? ` (${openIssues.length})` : ''}
+        </button>
+      </div>
+
+      {view === 'tasks' && searchOpen && (
         <div className="px-2 py-1.5 border-b border-border/40 flex items-center gap-1.5">
           <input
             ref={searchInputRef}
@@ -264,6 +409,7 @@ export default function DocsView() {
         </div>
       )}
 
+      {view === 'tasks' && (
       <div className="flex-1 min-h-0 overflow-auto p-2 space-y-0.5">
         {loading && tasks.length === 0 && (
           <div className="px-3 py-6 text-xs text-muted text-center">加载中…</div>
@@ -350,6 +496,78 @@ export default function DocsView() {
           )
         })}
       </div>
+      )}
+
+      {view === 'issues' && (
+        <div className="flex-1 min-h-0 overflow-auto p-2 space-y-0.5">
+          {issuesLoading && issues.length === 0 && (
+            <div className="px-3 py-6 text-xs text-muted text-center">加载中…</div>
+          )}
+          {issuesError && (
+            <div className="mx-1 mb-2 px-3 py-2 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
+              {issuesError}
+            </div>
+          )}
+          {!issuesLoading && issues.length === 0 && !issuesError && (
+            <div className="px-3 py-6 text-xs text-muted">
+              <div className="text-center mb-3">还没有问题。</div>
+              <div className="text-left leading-relaxed">
+                AI 在执行其它任务时发现无关死代码/问题，会自动追加到项目根下的
+                <code className="mx-0.5 font-mono">dev/issues.md</code>。
+                你也可以
+                <button
+                  onClick={openIssuesFile}
+                  className="mx-0.5 underline text-fg hover:text-accent"
+                >
+                  打开 issues.md
+                </button>
+                手动维护。
+              </div>
+            </div>
+          )}
+          {issues.map((it) => (
+            <div
+              key={`${it.line}-${it.text}`}
+              className="group flex items-center gap-1.5 pl-1 pr-2 py-1 rounded hover:bg-white/[0.04] text-sm"
+              title={it.text}
+            >
+              <span
+                className={`inline-flex w-4 h-4 items-center justify-center rounded border text-[10px] shrink-0 ${
+                  it.done
+                    ? 'border-emerald-600/40 bg-emerald-500/10 text-emerald-300'
+                    : 'border-border bg-white/[0.04] text-muted'
+                }`}
+              >
+                {it.done ? '✓' : ''}
+              </span>
+              <span
+                className={`flex-1 truncate ${
+                  it.done ? 'text-subtle line-through' : 'text-fg'
+                }`}
+              >
+                {it.text}
+              </span>
+              <button
+                onClick={openIssuesFile}
+                title="打开 dev/issues.md"
+                className="opacity-0 group-hover:opacity-100 w-5 h-5 inline-flex items-center justify-center rounded text-muted hover:text-fg hover:bg-white/[0.08]"
+              >
+                📄
+              </button>
+              {!it.done && (
+                <button
+                  onClick={() => void onDispatchIssue(it)}
+                  disabled={dispatching}
+                  title="新建一个 Claude 终端并把这条问题放到剪贴板"
+                  className="opacity-0 group-hover:opacity-100 w-5 h-5 inline-flex items-center justify-center rounded text-muted hover:text-fg hover:bg-white/[0.08] disabled:opacity-50"
+                >
+                  🤖
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
