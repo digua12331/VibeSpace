@@ -28,7 +28,7 @@ const SHELL_AGENTS: AgentKind[] = ['shell', 'cmd', 'pwsh']
  * AI agents accept `@<path>` as a file reference; shells don't, so we quote
  * the path to survive spaces.
  */
-function formatForSession(agent: AgentKind, path: string, kind: 'file' | 'dir'): string {
+export function formatForSession(agent: AgentKind, path: string, kind: 'file' | 'dir'): string {
   const tail = kind === 'dir' ? `${path}/` : path
   if (SHELL_AGENTS.includes(agent)) return `"${tail}" `
   return `@${tail} `

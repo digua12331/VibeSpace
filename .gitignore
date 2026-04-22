@@ -8,3 +8,4 @@ packages/server/data/
 .env
 .env.local
 *.log
+.vibespace/

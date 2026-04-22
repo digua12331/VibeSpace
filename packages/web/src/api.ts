@@ -368,3 +368,54 @@ export function deleteEntry(projectId: string, path: string): Promise<void> {
     { method: 'DELETE' },
   )
 }
+
+// ---------- Paste image ----------
+
+export interface PastedImageResult {
+  relPath: string
+  absPath: string
+  bytes: number
+  mime: string
+}
+
+/**
+ * Upload a pasted image blob to the project. Uses multipart/form-data directly
+ * (not the JSON-centric `request` helper) so the browser can generate the
+ * boundary automatically. Throws a decorated Error on non-2xx like `request`.
+ */
+export async function uploadPastedImage(
+  projectId: string,
+  sessionId: string,
+  blob: Blob,
+  mime: string,
+): Promise<PastedImageResult> {
+  const form = new FormData()
+  // @fastify/multipart uses the field name `file` by convention when there's
+  // only one file; we give the part a deterministic name so the server sees a
+  // predictable filename during debugging.
+  const ext = mime.split('/')[1] ?? 'bin'
+  form.append('file', blob, `paste.${ext}`)
+  form.append('sessionId', sessionId)
+
+  const res = await fetch(
+    `${BASE}/api/projects/${encodeURIComponent(projectId)}/paste-image`,
+    { method: 'POST', body: form },
+  )
+  if (!res.ok) {
+    let detail: string | undefined
+    let errorCode: string | undefined
+    try {
+      const body = (await res.json()) as { error?: string; message?: string }
+      errorCode = body.error ?? body.message
+    } catch {
+      try { detail = await res.text() } catch { /* ignore */ }
+    }
+    const err = new Error(
+      `${res.status} ${res.statusText}${errorCode ? `: ${errorCode}` : ''}${detail ? ` - ${detail}` : ''}`,
+    ) as Error & { status: number; code?: string }
+    err.status = res.status
+    err.code = errorCode
+    throw err
+  }
+  return (await res.json()) as PastedImageResult
+}

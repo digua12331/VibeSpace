@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { aimonWS } from '../../ws'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
+import { formatForSession } from '../fileContextMenu'
 import {
   BUTTON_COLOR_CLASSES,
   getCustomButtons,
@@ -16,6 +19,89 @@ import {
   type CustomButton,
 } from '../../customButtons'
 import type { AgentKind, Session } from '../../types'
+
+const PASTE_IMAGE_MIMES = new Set<string>([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+])
+const PASTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
+async function findImageInClipboard(
+  items: ClipboardItem[],
+): Promise<{ blob: Blob; mime: string } | null> {
+  for (const item of items) {
+    for (const type of item.types) {
+      if (PASTE_IMAGE_MIMES.has(type)) {
+        try {
+          const blob = await item.getType(type)
+          return { blob, mime: type }
+        } catch {
+          // Move on to next item — getType can throw for stale ClipboardItems.
+        }
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Unified paste handler — image first, text fallback. Extracted out of the
+ * useEffect body so the logic doesn't inflate the terminal setup block.
+ */
+async function handleClipboardPaste(
+  session: Session,
+  term: Terminal,
+): Promise<void> {
+  // Step 1: try to locate an image on the clipboard.
+  let items: ClipboardItem[] | null = null
+  try {
+    items = await navigator.clipboard.read()
+  } catch {
+    // Permission denied / non-secure context — no way to even check for
+    // images. Fall through to the legacy text path below.
+  }
+
+  if (items) {
+    const hit = await findImageInClipboard(items)
+    if (hit) {
+      if (hit.blob.size > PASTE_IMAGE_MAX_BYTES) {
+        await alertDialog(
+          `图片超过 5 MB 上限（实际 ${(hit.blob.size / 1024 / 1024).toFixed(1)} MB）。Claude 视觉 API 单图 ≤ 5 MB。`,
+          { title: '图片过大', variant: 'danger' },
+        )
+        return
+      }
+      try {
+        const r = await api.uploadPastedImage(
+          session.projectId,
+          session.id,
+          hit.blob,
+          hit.mime,
+        )
+        aimonWS.sendInput(
+          session.id,
+          formatForSession(session.agent, r.relPath, 'file'),
+        )
+      } catch (e: unknown) {
+        await alertDialog(
+          `上传图片失败: ${e instanceof Error ? e.message : String(e)}`,
+          { title: '粘贴失败', variant: 'danger' },
+        )
+      }
+      return
+    }
+  }
+
+  // Step 2: no image detected — legacy text paste.
+  try {
+    const text = await navigator.clipboard.readText()
+    if (text) term.paste(text)
+  } catch {
+    // Clipboard blocked — silent; user can use the "type to send" input.
+  }
+}
 
 function agentIcon(a: AgentKind): string {
   switch (a) {
@@ -78,7 +164,27 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.loadAddon(new WebLinksAddon())
+
+    // Unicode 11 widths — must load before first render so CJK + emoji
+    // occupy the correct cell count (default `6` truncates wide chars).
+    term.loadAddon(new Unicode11Addon())
+    term.unicode.activeVersion = '11'
+
     term.open(host)
+
+    // WebGL renderer loads after `open()` because it needs the host element
+    // in the DOM to grab a canvas. If the browser loses GPU context
+    // (e.g. tab backgrounded for long, driver reset), fall back by disposing
+    // the addon — xterm reverts to the DOM renderer automatically.
+    try {
+      const webgl = new WebglAddon()
+      webgl.onContextLoss(() => webgl.dispose())
+      term.loadAddon(webgl)
+    } catch {
+      // Some headless / old browsers can't create a WebGL context; silently
+      // stay on DOM renderer.
+    }
+
     try { fit.fit() } catch { /* ignore */ }
     termRef.current = term
     fitRef.current = fit
@@ -86,8 +192,9 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     // Explicit paste handling. Xterm's default paste relies on the browser
     // firing a `paste` event on the hidden helper textarea, which is flaky
     // across focus states and browsers. We intercept Ctrl+V / Cmd+V and
-    // read the clipboard ourselves, then feed through `term.paste()` so
-    // bracketed-paste mode is honoured.
+    // read the clipboard ourselves. If an image is present we upload it to
+    // the server and feed the AI agent a file reference; otherwise we fall
+    // back to the existing text-paste behaviour.
     term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown') return true
       const isPasteCombo =
@@ -95,15 +202,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         (ev.key === 'v' || ev.key === 'V')
       if (isPasteCombo) {
         ev.preventDefault()
-        navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text) term.paste(text)
-          })
-          .catch(() => {
-            // Clipboard blocked (no secure context / permission denied).
-            // Silent — user can fall back to the "type to send" input below.
-          })
+        void handleClipboardPaste(session, term)
         return false
       }
       return true

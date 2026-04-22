@@ -86,7 +86,7 @@ function revealInSystemExplorer(abs: string): void {
  * Append a single entry to `<projectPath>/.gitignore`, de-duplicating by
  * exact-line match. Returns `true` when a line was actually written.
  */
-async function appendGitignoreEntry(
+export async function appendGitignoreEntry(
   projectPath: string,
   entry: string,
 ): Promise<boolean> {

@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import fastifyCors from "@fastify/cors";
+import fastifyMultipart from "@fastify/multipart";
 import fastifyWebsocket from "@fastify/websocket";
 import {
   closeDb,
@@ -27,6 +28,7 @@ import { registerGitRoutes } from "./routes/git.js";
 import { registerDocsRoutes } from "./routes/docs.js";
 import { registerPerfRoutes } from "./routes/perf.js";
 import { registerFsOpsRoutes } from "./routes/fs-ops.js";
+import { registerPasteImageRoutes } from "./routes/paste-image.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
 const PORT = Number(process.env.AIMON_PORT || 8787);
@@ -70,6 +72,9 @@ async function main(): Promise<void> {
     origin: ["http://127.0.0.1:8788", "http://localhost:8788"],
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+  });
+  await app.register(fastifyMultipart, {
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   });
   await app.register(fastifyWebsocket);
 
@@ -130,6 +135,7 @@ async function main(): Promise<void> {
   await registerDocsRoutes(app);
   await registerPerfRoutes(app);
   await registerFsOpsRoutes(app);
+  await registerPasteImageRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });
