@@ -40,7 +40,15 @@
       "Bash(pnpm *)",
       "Bash(curl *)",
       "Bash(where codex *)",
-      "Bash(taskkill //F //IM node.exe //T)"
+      "Bash(taskkill //F //IM node.exe //T)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?\\)$\")",
+      "Bash(grep -E \"\\\\.\\(ts|tsx|js\\)$\")",
+      "Bash(grep -E \"\\\\.\\(ts|tsx|js|mjs\\)$\")",
+      "Bash(codex --help)",
+      "Bash(codex exec *)",
+      "Bash(git add *)"
     ]
   }
 }

@@ -120,6 +120,13 @@ function migrate(db: Database.Database): void {
       payload TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_events_session ON session_events(session_id, id);
+    CREATE TABLE IF NOT EXISTS session_scopes (
+      session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      readwrite_json TEXT NOT NULL DEFAULT '[]',
+      readonly_json TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL
+    );
   `);
 
   // Drop the legacy CHECK(agent IN ('claude','codex')) from pre-shell builds
@@ -217,6 +224,12 @@ export interface Session {
   startedAt: number;
   endedAt: number | null;
   exitCode: number | null;
+}
+
+export interface SessionScope {
+  enabled: boolean;
+  readwrite: string[];
+  readonly: string[];
 }
 
 interface ProjectRow {
@@ -388,4 +401,62 @@ export function appendEvent(input: {
   db.prepare(
     "INSERT INTO session_events (session_id, ts, kind, payload) VALUES (?, ?, ?, ?)",
   ).run(input.sessionId, Date.now(), input.kind, JSON.stringify(input.payload ?? null));
+}
+
+// ---------- Session scope CRUD ----------
+
+interface SessionScopeRow {
+  session_id: string;
+  enabled: number;
+  readwrite_json: string;
+  readonly_json: string;
+  created_at: number;
+}
+
+function parseJsonArray(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw);
+    if (!Array.isArray(v)) return [];
+    return v.filter((x): x is string => typeof x === "string");
+  } catch {
+    return [];
+  }
+}
+
+export function getSessionScope(sessionId: string): SessionScope | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT session_id, enabled, readwrite_json, readonly_json, created_at FROM session_scopes WHERE session_id = ?",
+    )
+    .get(sessionId) as SessionScopeRow | undefined;
+  if (!row) return null;
+  return {
+    enabled: row.enabled === 1,
+    readwrite: parseJsonArray(row.readwrite_json),
+    readonly: parseJsonArray(row.readonly_json),
+  };
+}
+
+export function setSessionScope(input: {
+  sessionId: string;
+  enabled: boolean;
+  readwrite: string[];
+  readonly: string[];
+}): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO session_scopes (session_id, enabled, readwrite_json, readonly_json, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(session_id) DO UPDATE SET
+       enabled = excluded.enabled,
+       readwrite_json = excluded.readwrite_json,
+       readonly_json = excluded.readonly_json`,
+  ).run(
+    input.sessionId,
+    input.enabled ? 1 : 0,
+    JSON.stringify(input.readwrite),
+    JSON.stringify(input.readonly),
+    Date.now(),
+  );
 }

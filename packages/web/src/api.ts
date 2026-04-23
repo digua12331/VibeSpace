@@ -23,6 +23,7 @@ import type {
   ProjectFilesResult,
   ProjectPerf,
   Session,
+  SessionScope,
 } from './types'
 
 const BASE: string =
@@ -98,7 +99,11 @@ export function listSessions(projectId?: string): Promise<Session[]> {
   return request<Session[]>(`/api/sessions${qs}`)
 }
 
-export function createSession(input: { projectId: string; agent: AgentKind }): Promise<Session> {
+export function createSession(input: {
+  projectId: string
+  agent: AgentKind
+  scope?: SessionScope
+}): Promise<Session> {
   return request<Session>('/api/sessions', jsonInit('POST', input))
 }
 
@@ -382,16 +387,6 @@ export function openInVscode(projectId: string): Promise<{ ok: boolean }> {
   return request(
     `/api/projects/${encodeURIComponent(projectId)}/fs/open-vscode`,
     { method: 'POST' },
-  )
-}
-
-export function execBatFile(
-  projectId: string,
-  path: string,
-): Promise<{ ok: boolean }> {
-  return request(
-    `/api/projects/${encodeURIComponent(projectId)}/fs/exec-bat`,
-    jsonInit('POST', { path }),
   )
 }
 

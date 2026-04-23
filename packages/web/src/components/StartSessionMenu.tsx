@@ -3,8 +3,21 @@ import * as api from '../api'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
 import { pushLog } from '../logs'
-import type { AgentKind, CliEntry, CliStatusResponse, Session } from '../types'
+import type { AgentKind, CliEntry, CliStatusResponse, Session, SessionScope } from '../types'
 import CliInstallerDialog from './CliInstallerDialog'
+
+function parseGlobs(raw: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const line of raw.split(/\r?\n/)) {
+    const s = line.trim()
+    if (!s) continue
+    if (seen.has(s)) continue
+    seen.add(s)
+    out.push(s)
+  }
+  return out
+}
 
 interface AgentRow {
   id: string
@@ -48,6 +61,9 @@ export default function StartSessionMenu({
   const [catalog, setCatalog] = useState<CliEntry[]>([])
   const [status, setStatus] = useState<CliStatusResponse | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [scopeEnabled, setScopeEnabled] = useState(false)
+  const [rwText, setRwText] = useState('')
+  const [roText, setRoText] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   const addSession = useStore((s) => s.addSession)
   const disabled = projectId === null
@@ -95,10 +111,20 @@ export default function StartSessionMenu({
       msg: `请求启动 ${agent} session`,
     })
     try {
-      const s = await api.createSession({ projectId, agent })
-      addSession(s)
+      const scope: SessionScope | undefined = scopeEnabled
+        ? {
+            enabled: true,
+            readwrite: parseGlobs(rwText),
+            readonly: parseGlobs(roText),
+          }
+        : undefined
+      const s = await api.createSession({ projectId, agent, scope })
+      // Backend doesn't echo scope in the wire response; attach it client-side
+      // so the tab badge (T9) shows immediately without waiting for a refresh.
+      const enriched = scope ? { ...s, scope } : s
+      addSession(enriched)
       aimonWS.subscribe([s.id])
-      onStarted?.(s)
+      onStarted?.(enriched)
       pushLog({
         level: 'info',
         scope: 'session',
@@ -160,7 +186,49 @@ export default function StartSessionMenu({
           )}
         </button>
         {open && (
-          <div className="absolute right-0 top-full mt-2 w-60 fluent-acrylic rounded-win shadow-flyout z-20 py-1 animate-fluent-in">
+          <div className="absolute right-0 top-full mt-2 w-72 fluent-acrylic rounded-win shadow-flyout z-20 py-1 animate-fluent-in">
+            <div className="px-3 pt-2 pb-1.5 border-b border-white/[0.06]">
+              <label className="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={scopeEnabled}
+                  onChange={(e) => setScopeEnabled(e.target.checked)}
+                  className="accent-accent"
+                />
+                <span>🛡 启用施工边界</span>
+              </label>
+              {scopeEnabled && (
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <div className="text-[10px] text-subtle mb-0.5">
+                      可写 glob（一行一个）
+                    </div>
+                    <textarea
+                      value={rwText}
+                      onChange={(e) => setRwText(e.target.value)}
+                      placeholder="dev/**&#10;docs/**"
+                      rows={3}
+                      className="w-full text-xs font-mono bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 focus:outline-none focus:border-accent/60"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-subtle mb-0.5">
+                      只读 glob（一行一个）
+                    </div>
+                    <textarea
+                      value={roText}
+                      onChange={(e) => setRoText(e.target.value)}
+                      placeholder="core/**&#10;packages/server/**"
+                      rows={3}
+                      className="w-full text-xs font-mono bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 focus:outline-none focus:border-accent/60"
+                    />
+                  </div>
+                  <p className="text-[10px] text-subtle">
+                    Edit / Write / NotebookEdit 命中只读或两个列表都没命中 → 拦截。
+                  </p>
+                </div>
+              )}
+            </div>
             <div className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-[0.1em] text-subtle">
               AI Agent
             </div>

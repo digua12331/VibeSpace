@@ -1,5 +1,6 @@
 import * as api from '../api'
 import { aimonWS } from '../ws'
+import { useStore } from '../store'
 import type { AgentKind } from '../types'
 import { alertDialog, confirmDialog } from './dialog/DialogHost'
 import type { ContextMenuItem } from './ContextMenu'
@@ -98,7 +99,21 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
         icon: '▶',
         onSelect: async () => {
           try {
-            await api.execBatFile(projectId, path)
+            const s = await api.createSession({ projectId, agent: 'cmd' })
+            const st = useStore.getState()
+            st.addSession(s)
+            st.setActiveSession(projectId, s.id)
+            st.setActiveTabKind('session')
+            aimonWS.subscribe([s.id])
+            // conpty 启动早期可能吞掉前几 byte，给 120ms 兜底
+            await new Promise((r) => setTimeout(r, 120))
+            const winPath = path.replace(/\//g, '\\')
+            const slash = winPath.lastIndexOf('\\')
+            const line =
+              slash >= 0
+                ? `cd /d "${winPath.slice(0, slash)}" && "${winPath.slice(slash + 1)}"\r`
+                : `"${winPath}"\r`
+            aimonWS.sendInput(s.id, line)
           } catch (e: unknown) {
             await alertDialog(
               e instanceof Error ? e.message : String(e),

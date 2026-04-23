@@ -11,6 +11,7 @@ import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { formatForSession } from '../fileContextMenu'
+import { openContextMenu, type ContextMenuItem } from '../ContextMenu'
 import PromptLibraryDialog from '../PromptLibraryDialog'
 import {
   BUTTON_COLOR_CLASSES,
@@ -104,6 +105,38 @@ async function handleClipboardPaste(
   }
 }
 
+async function copySelectionToClipboard(term: Terminal): Promise<void> {
+  const sel = term.getSelection()
+  if (!sel) return
+  try {
+    await navigator.clipboard.writeText(sel)
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = sel
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    try {
+      document.execCommand('copy')
+    } finally {
+      document.body.removeChild(ta)
+    }
+  }
+  term.clearSelection()
+}
+
+function buildTerminalSelectionMenu(
+  selection: string,
+  onCopy: () => void,
+  onAppendToInput: (text: string) => void,
+): ContextMenuItem[] {
+  return [
+    { label: '复制', icon: '📋', onSelect: onCopy },
+    { label: '添加到终端聊天', icon: '➕', onSelect: () => onAppendToInput(selection) },
+  ]
+}
+
 function agentIcon(a: AgentKind): string {
   switch (a) {
     case 'pwsh': return '⚡'
@@ -142,6 +175,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const termHostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [showExitInfo, setShowExitInfo] = useState(true)
@@ -207,6 +241,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         void handleClipboardPaste(session, term)
         return false
       }
+      // Ctrl/Cmd+C: if there's a selection, copy it instead of sending SIGINT.
+      // No selection → let xterm emit 0x03 as usual.
+      const isCopyCombo =
+        (ev.ctrlKey || ev.metaKey) && !ev.altKey && !ev.shiftKey &&
+        (ev.key === 'c' || ev.key === 'C')
+      if (isCopyCombo && term.hasSelection()) {
+        ev.preventDefault()
+        void copySelectionToClipboard(term)
+        return false
+      }
       return true
     })
 
@@ -214,8 +258,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       aimonWS.sendInput(session.id, d)
     })
 
+    // Δh < 4px (under one xterm row) is IME / sub-pixel noise, not a real splitter drag — ignore.
+    let prevW = host.clientWidth
+    let prevH = host.clientHeight
     const ro = new ResizeObserver(() => {
       if (!fitRef.current || !termRef.current) return
+      const w = host.clientWidth
+      const h = host.clientHeight
+      if (Math.abs(w - prevW) < 1 && Math.abs(h - prevH) < 4) return
+      prevW = w
+      prevH = h
       try {
         fitRef.current.fit()
         aimonWS.sendResize(session.id, termRef.current.cols, termRef.current.rows)
@@ -428,8 +480,31 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       <div
         ref={termHostRef}
         onContextMenu={(e) => {
-          // Right-click = paste from clipboard, Windows Terminal / VS Code style.
           e.preventDefault()
+          const term = termRef.current
+          if (term && term.hasSelection()) {
+            const sel = term.getSelection()
+            openContextMenu({
+              x: e.clientX,
+              y: e.clientY,
+              items: buildTerminalSelectionMenu(
+                sel,
+                () => void copySelectionToClipboard(term),
+                (text) => {
+                  setInputValue((prev) => (prev ? prev + ' ' + text : text))
+                  queueMicrotask(() => {
+                    const el = inputRef.current
+                    if (!el) return
+                    el.focus()
+                    const len = el.value.length
+                    el.setSelectionRange(len, len)
+                  })
+                },
+              ),
+            })
+            return
+          }
+          // No selection → legacy right-click = paste from clipboard.
           navigator.clipboard
             .readText()
             .then((text) => {
@@ -440,15 +515,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         className={`flex-1 min-h-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
       />
 
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-border/60 bg-white/[0.02]">
+      <div className="flex items-center gap-2 px-3 h-10 border-t border-border/60 bg-white/[0.02]">
         <span className="text-subtle text-xs">{'>'}</span>
         <input
+          ref={inputRef}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={onInputKey}
           disabled={isDead}
           placeholder={isDead ? '会话已结束' : 'type to send (Enter)'}
-          className="flex-1 bg-transparent text-sm font-mono placeholder:text-subtle disabled:opacity-50"
+          className="flex-1 h-full leading-none bg-transparent text-sm font-mono placeholder:text-subtle disabled:opacity-50"
           onMouseDown={() => setShowExitInfo(true)}
         />
       </div>

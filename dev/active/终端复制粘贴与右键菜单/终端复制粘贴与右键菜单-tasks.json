@@ -1,0 +1,41 @@
+{
+  "task": "终端复制粘贴与右键菜单",
+  "steps": [
+    {
+      "id": 1,
+      "title": "import + inputRef + <input ref>",
+      "verify": "pnpm --filter @aimon/web build 通过；输入框原行为不变",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "copySelectionToClipboard(term) helper",
+      "verify": "tsc 通过；helper 行为在 V1 中间接验证",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "attachCustomKeyEventHandler 加 Ctrl+C 分支",
+      "verify": "V1 / V2 / V3 浏览器验证通过",
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "title": "buildTerminalSelectionMenu 生成菜单项",
+      "verify": "tsc 通过",
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "title": "改写 onContextMenu 分支到菜单 / 老粘贴",
+      "verify": "V4 / V5 / V6 / V7 浏览器验证通过",
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "title": "类型检查 + 浏览器走一遍验收",
+      "verify": "V8 build 绿；V1-V7 全过",
+      "status": "done"
+    }
+  ]
+}

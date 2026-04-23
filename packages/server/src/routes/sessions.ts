@@ -7,11 +7,14 @@ import {
   endSession,
   getProject,
   getSession,
+  getSessionScope,
   listSessions,
   listSessionsByProject,
+  setSessionScope,
   updateSessionPid,
   type Agent,
   type Session,
+  type SessionScope,
   type SessionStatus,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
@@ -19,6 +22,49 @@ import { statusManager } from "../status.js";
 import { getCliEntry } from "../cli-catalog.js";
 
 const BUILTIN = new Set<string>(BUILTIN_SHELL_AGENTS);
+
+const GlobListSchema = z
+  .array(z.string())
+  .max(200)
+  .default([])
+  .transform((arr) => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of arr) {
+      const s = raw.trim();
+      if (!s) continue;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+    }
+    return out;
+  });
+
+const ScopeSchema = z
+  .object({
+    enabled: z.boolean(),
+    readwrite: GlobListSchema,
+    readonly: GlobListSchema,
+  })
+  .superRefine((val, ctx) => {
+    const bad = (list: string[], field: string) => {
+      for (const g of list) {
+        if (g.startsWith("/") || /^[A-Za-z]:[\\/]/.test(g) || g.includes("..")) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `invalid glob in ${field}: ${g}`,
+            path: [field],
+          });
+          return;
+        }
+      }
+    };
+    bad(val.readwrite, "readwrite");
+    bad(val.readonly, "readonly");
+  });
+
+type ScopeInput = z.infer<typeof ScopeSchema>;
+
 const CreateSessionSchema = z.object({
   projectId: z.string().min(1),
   agent: z
@@ -27,6 +73,7 @@ const CreateSessionSchema = z.object({
     .refine((id) => BUILTIN.has(id) || !!getCliEntry(id), {
       message: "unknown agent",
     }),
+  scope: ScopeSchema.optional(),
 });
 
 const ListQuerySchema = z.object({
@@ -48,9 +95,10 @@ interface WireSession {
   started_at: number;
   ended_at: number | null;
   exit_code: number | null;
+  scope?: SessionScope;
 }
-function serialize(s: Session): WireSession {
-  return {
+function serialize(s: Session, scope?: SessionScope): WireSession {
+  const base: WireSession = {
     id: s.id,
     projectId: s.projectId,
     agent: s.agent,
@@ -60,6 +108,13 @@ function serialize(s: Session): WireSession {
     ended_at: s.endedAt,
     exit_code: s.exitCode,
   };
+  if (scope) base.scope = scope;
+  return base;
+}
+
+function attachScope(s: Session): WireSession {
+  const scope = getSessionScope(s.id);
+  return serialize(s, scope ?? undefined);
 }
 
 export async function registerSessionRoutes(app: FastifyInstance): Promise<void> {
@@ -70,7 +125,7 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
     }
     const { projectId } = parsed.data;
     const rows = projectId ? listSessionsByProject(projectId) : listSessions();
-    return rows.map(decorateStatus).map(serialize);
+    return rows.map(decorateStatus).map(attachScope);
   });
 
   app.post("/api/sessions", async (req, reply) => {
@@ -78,7 +133,7 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
     }
-    return startSession(parsed.data.projectId, parsed.data.agent, reply);
+    return startSession(parsed.data.projectId, parsed.data.agent, reply, parsed.data.scope);
   });
 
   app.delete<{ Params: { id: string } }>(
@@ -114,6 +169,7 @@ async function startSession(
   projectId: string,
   agent: Agent,
   reply: import("fastify").FastifyReply,
+  scope?: ScopeInput,
 ): Promise<unknown> {
   const proj = getProject(projectId);
   if (!proj) return reply.code(404).send({ error: "project_not_found" });
@@ -128,6 +184,20 @@ async function startSession(
   });
   statusManager.onSpawn(sessionId);
 
+  // Persist scope before spawn so the hook can enforce from the first tool use.
+  if (scope) {
+    try {
+      setSessionScope({
+        sessionId,
+        enabled: scope.enabled,
+        readwrite: scope.readwrite,
+        readonly: scope.readonly,
+      });
+    } catch {
+      /* non-fatal: session runs unrestricted */
+    }
+  }
+
   let pid: number;
   try {
     const r = ptyManager.spawn({ sessionId, agent, cwd: proj.path });
@@ -140,6 +210,15 @@ async function startSession(
   updateSessionPid(sessionId, pid);
 
   return reply.code(201).send(
-    serialize({ ...created, pid, status: "starting" as SessionStatus }),
+    serialize(
+      { ...created, pid, status: "starting" as SessionStatus },
+      scope
+        ? {
+            enabled: scope.enabled,
+            readwrite: scope.readwrite,
+            readonly: scope.readonly,
+          }
+        : undefined,
+    ),
   );
 }

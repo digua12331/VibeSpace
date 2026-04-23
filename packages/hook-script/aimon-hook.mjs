@@ -4,8 +4,11 @@
 // Behaviour:
 //   - If AIMON_SESSION_ID is not set in env: exit 0 silently (the user is
 //     running claude outside of aimon — we MUST NOT slow them down).
-//   - Otherwise read stdin (JSON or empty), POST to ${AIMON_BACKEND}/api/hooks/claude.
-//   - Any error (timeout / refused / parse) is swallowed. Always exit 0.
+//   - For PreToolUse: wait for the POST response so the backend's scope check
+//     can return `decision: "block"` which we relay on stdout for Claude.
+//   - Other events keep the original fire-and-forget behaviour.
+//   - Any network error / timeout / parse failure → fail-open (exit 0, no
+//     stdout output) so the AI session never gets stuck on our infra.
 
 import http from "node:http";
 import https from "node:https";
@@ -14,7 +17,6 @@ import { URL } from "node:url";
 const TIMEOUT_MS = 1500;
 
 function done() {
-  // Always 0 — we cannot block claude on our backend.
   process.exit(0);
 }
 
@@ -23,9 +25,31 @@ if (!sessionId) done();
 
 const backend = process.env.AIMON_BACKEND || "http://127.0.0.1:8787";
 const event = process.argv[2] || "Unknown";
+const waitForResponse = event === "PreToolUse";
 
 let stdinChunks = [];
 let stdinDone = false;
+
+function relayDecision(respBodyBuf) {
+  if (!waitForResponse) return;
+  const raw = Buffer.concat(respBodyBuf).toString("utf8").trim();
+  if (!raw) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    parsed.decision === "block"
+  ) {
+    // Claude requires decision/reason on stdout as a single JSON blob.
+    const payload = { decision: "block", reason: String(parsed.reason ?? "blocked") };
+    process.stdout.write(JSON.stringify(payload));
+  }
+}
 
 function send() {
   if (stdinDone) return;
@@ -42,6 +66,8 @@ function send() {
   let url;
   try { url = new URL("/api/hooks/claude", backend); } catch { return done(); }
   const lib = url.protocol === "https:" ? https : http;
+
+  const respBody = [];
   const req = lib.request(
     {
       hostname: url.hostname,
@@ -55,8 +81,15 @@ function send() {
       timeout: TIMEOUT_MS,
     },
     (res) => {
-      res.on("data", () => {});
-      res.on("end", done);
+      if (waitForResponse) {
+        res.on("data", (c) => respBody.push(c));
+      } else {
+        res.on("data", () => {});
+      }
+      res.on("end", () => {
+        relayDecision(respBody);
+        done();
+      });
       res.on("error", done);
     },
   );

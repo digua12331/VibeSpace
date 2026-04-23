@@ -77,6 +77,12 @@ export interface Project {
   layout?: ProjectLayout
 }
 
+export interface SessionScope {
+  enabled: boolean
+  readwrite: string[]
+  readonly: string[]
+}
+
 export interface Session {
   id: string
   projectId: string
@@ -88,6 +94,8 @@ export interface Session {
   /** epoch ms; null while still alive */
   ended_at: number | null
   exit_code: number | null
+  /** Omitted when no scope was configured at session start. */
+  scope?: SessionScope
 }
 
 export type ClientMsg =

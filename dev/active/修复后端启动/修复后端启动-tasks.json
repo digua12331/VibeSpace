@@ -1,0 +1,14 @@
+{
+  "task": "修复后端启动",
+  "steps": [
+    { "id": 1, "title": "预清理残留 node 进程", "verify": "tasklist 不再出现 AIkanban-main/stable 下的 node", "status": "done" },
+    { "id": 2, "title": "改写 main 的 start.bat", "verify": "文件包含身份判断、PowerShell kill tree、端口分支", "status": "done" },
+    { "id": 3, "title": "干跑身份识别阶段", "verify": "echo 出正确的 identity / backend / web 端口", "status": "done" },
+    { "id": 4, "title": "正式启动 main 验证 9787/9788", "verify": "netstat 看到 LISTENING; /health 返回 2xx", "status": "done" },
+    { "id": 5, "title": "复制 start.bat 到 stable", "verify": "两边 md5 相同", "status": "done" },
+    { "id": 6, "title": "双端共存验证", "verify": "四端口同时 LISTENING；前端无红条", "status": "done" },
+    { "id": 7, "title": "精准清理验证", "verify": "重启 stable 时 main 的 node PID 集合不变", "status": "done" },
+    { "id": 8, "title": "idempotent 验证", "verify": "重启无 EADDRINUSE", "status": "done" },
+    { "id": 9, "title": "输出 handoff 摘要", "verify": "本轮末尾有摘要段 + commit/sync 指引", "status": "done" }
+  ]
+}

@@ -28,6 +28,23 @@ function agentIcon(a: AgentKind): string {
   }
 }
 
+function scopeBadge(session: Session): { label: string; title: string } | null {
+  const sc = session.scope
+  if (!sc || !sc.enabled) return null
+  const rw = sc.readwrite.length
+  const ro = sc.readonly.length
+  if (rw === 0 && ro === 0) return null
+  const parts: string[] = []
+  if (sc.readwrite.length > 0)
+    parts.push(`可写：\n  ${sc.readwrite.join('\n  ')}`)
+  if (sc.readonly.length > 0)
+    parts.push(`只读：\n  ${sc.readonly.join('\n  ')}`)
+  return {
+    label: `🛡 rw:${rw} ro:${ro}`,
+    title: parts.join('\n'),
+  }
+}
+
 export default function EditorArea() {
   const openFiles = useStore((s) => s.openFiles)
   const activeFileKey = useStore((s) => s.activeFileKey)
@@ -199,6 +216,17 @@ export default function EditorArea() {
               <span className="font-mono truncate max-w-[180px]">
                 {s.agent}·{s.id.slice(-6)}
               </span>
+              {(() => {
+                const b = scopeBadge(s)
+                return b ? (
+                  <span
+                    title={b.title}
+                    className="text-[10px] text-amber-300/90 bg-amber-400/10 border border-amber-400/30 rounded px-1 py-0 leading-4 whitespace-pre"
+                  >
+                    {b.label}
+                  </span>
+                ) : null
+              })()}
               {nagging && (
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
               )}

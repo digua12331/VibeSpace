@@ -245,42 +245,4 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ---------- POST /fs/exec-bat ----------
-  // Launch a .bat/.cmd in a new visible cmd window, same as double-clicking
-  // it in Explorer. `start ""` uses an empty title so paths with spaces
-  // don't get consumed as the window title. `/D <dir>` sets CWD to the
-  // batch file's directory (matches double-click semantics).
-  app.post<{ Params: { id: string }; Body: unknown }>(
-    "/api/projects/:id/fs/exec-bat",
-    async (req, reply) => {
-      const proj = await loadProjectOr404(reply, req.params.id);
-      if (!proj) return;
-      const parsed = PathBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
-      }
-      try {
-        const abs = safeResolve(proj.path, parsed.data.path);
-        if (!/\.(bat|cmd)$/i.test(abs)) {
-          return reply.code(400).send({ error: "not_a_batch_file" });
-        }
-        if (!existsSync(abs)) {
-          return reply.code(404).send({ error: "path_not_found" });
-        }
-        if (!statSync(abs).isFile()) {
-          return reply.code(400).send({ error: "not_a_file" });
-        }
-        const child = spawn(
-          "cmd.exe",
-          ["/c", "start", "", "/D", dirname(abs), abs],
-          { detached: true, stdio: "ignore", windowsHide: false },
-        );
-        child.on("error", () => { /* swallow */ });
-        try { child.unref(); } catch { /* ignore */ }
-        return reply.send({ ok: true });
-      } catch (err) {
-        return sendErr(reply, err);
-      }
-    },
-  );
 }
