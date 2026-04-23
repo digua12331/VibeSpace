@@ -27,9 +27,11 @@ import { registerCliInstallerRoutes } from "./routes/cli-installer.js";
 import { registerGitRoutes } from "./routes/git.js";
 import { registerDocsRoutes } from "./routes/docs.js";
 import { registerIssuesRoutes } from "./routes/issues.js";
+import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerPerfRoutes } from "./routes/perf.js";
 import { registerFsOpsRoutes } from "./routes/fs-ops.js";
 import { registerPasteImageRoutes } from "./routes/paste-image.js";
+import { registerOutputRoutes } from "./routes/output.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
 const PORT = Number(process.env.AIMON_PORT || 8787);
@@ -142,9 +144,11 @@ async function main(): Promise<void> {
   await registerGitRoutes(app);
   await registerDocsRoutes(app);
   await registerIssuesRoutes(app);
+  await registerMemoryRoutes(app);
   await registerPerfRoutes(app);
   await registerFsOpsRoutes(app);
   await registerPasteImageRoutes(app);
+  await registerOutputRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });

@@ -24,6 +24,7 @@ export default function ActivityBar() {
     { id: 'files', icon: '📁', label: '文件' },
     { id: 'scm', icon: '🌿', label: '源代码更改' },
     { id: 'docs', icon: '📝', label: 'Dev Docs' },
+    { id: 'output', icon: '📐', label: '策划方案' },
     { id: 'perf', icon: '📊', label: '性能' },
     {
       id: 'logs',

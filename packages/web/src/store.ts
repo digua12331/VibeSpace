@@ -3,10 +3,14 @@ import * as api from './api'
 import { aimonWS } from './ws'
 import { isPageFocused, notifyWaitingInput, type NotificationPermissionState } from './notify'
 import type {
+  ChecklistDoc,
   DocTaskSummary,
   GitRef,
   IssuesPayload,
+  MemoryPayload,
+  MemoryRollbackSelection,
   LogEntry,
+  OutputFeature,
   Project,
   Session,
   SessionStatus,
@@ -26,10 +30,12 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox'
+export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output'
+
+export type EditorTabKind = 'file' | 'checklist'
 
 export interface EditorTab {
-  /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}` */
+  /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}:${kind}` */
   key: string
   projectId: string
   path: string
@@ -38,12 +44,14 @@ export interface EditorTab {
   to?: GitRef
   commitSha?: string
   status?: string
+  /** Discriminator for EditorArea; default 'file'. */
+  kind?: EditorTabKind
 }
 
 function editorTabKey(
   projectId: string,
   path: string,
-  opts: Pick<EditorTab, 'ref' | 'from' | 'to'>,
+  opts: Pick<EditorTab, 'ref' | 'from' | 'to' | 'kind'>,
 ): string {
   return [
     projectId,
@@ -51,6 +59,7 @@ function editorTabKey(
     opts.ref ?? 'WORKTREE',
     opts.from ?? '',
     opts.to ?? '',
+    opts.kind ?? 'file',
   ].join('\u0000')
 }
 
@@ -184,6 +193,32 @@ interface State {
   issuesError: Record<string, string | null>
   refreshIssues: (projectId: string) => Promise<void>
 
+  /** ----- 记忆（auto / manual / rejected） ----- */
+  memoryData: Record<string, MemoryPayload | undefined>
+  memoryLoading: Record<string, boolean>
+  memoryError: Record<string, string | null>
+  refreshMemory: (projectId: string) => Promise<void>
+  rollbackMemoryItems: (projectId: string, items: MemoryRollbackSelection[]) => Promise<void>
+
+  /** ----- Output (策划方案清单) ----- */
+  outputFeatures: Record<string, OutputFeature[] | undefined>
+  outputLoading: Record<string, boolean>
+  outputError: Record<string, string | null>
+  refreshOutput: (projectId: string) => Promise<void>
+
+  /** keyed by `<projectId>::<feature>` */
+  checklists: Record<string, ChecklistDoc | undefined>
+  checklistsLoading: Record<string, boolean>
+  checklistsError: Record<string, string | null>
+  refreshChecklist: (projectId: string, feature: string) => Promise<void>
+  patchChecklistItem: (
+    projectId: string,
+    feature: string,
+    sectionId: string,
+    itemId: string,
+    patch: Record<string, unknown>,
+  ) => Promise<void>
+
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
   setNotifyPerm: (p: NotificationPermissionState) => void
@@ -280,6 +315,18 @@ export const useStore = create<State>((set, get) => ({
   issuesLoading: {},
   issuesError: {},
 
+  memoryData: {},
+  memoryLoading: {},
+  memoryError: {},
+
+  outputFeatures: {},
+  outputLoading: {},
+  outputError: {},
+
+  checklists: {},
+  checklistsLoading: {},
+  checklistsError: {},
+
   setActivity: (a) => {
     set((st) => (st.activity === a ? st : { activity: a }))
     persistWorkbench(useStore.getState())
@@ -304,7 +351,7 @@ export const useStore = create<State>((set, get) => ({
       // Only one file tab is kept at a time: clicking a different file
       // replaces the current preview tab in place (like VS Code's single
       // preview slot without the pinning UI).
-      const tab: EditorTab = existing ?? { ...t, key }
+      const tab: EditorTab = existing ?? { ...t, key, kind: t.kind ?? 'file' }
       return {
         openFiles: [tab],
         activeFileKey: key,
@@ -596,6 +643,117 @@ export const useStore = create<State>((set, get) => ({
       set((st) => ({
         issuesLoading: { ...st.issuesLoading, [projectId]: false },
         issuesError: { ...st.issuesError, [projectId]: msg },
+      }))
+      throw e
+    }
+  },
+
+  refreshMemory: async (projectId) => {
+    set((st) => ({
+      memoryLoading: { ...st.memoryLoading, [projectId]: true },
+      memoryError: { ...st.memoryError, [projectId]: null },
+    }))
+    try {
+      const payload = await api.getMemory(projectId)
+      set((st) => ({
+        memoryData: { ...st.memoryData, [projectId]: payload },
+        memoryLoading: { ...st.memoryLoading, [projectId]: false },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        memoryLoading: { ...st.memoryLoading, [projectId]: false },
+        memoryError: { ...st.memoryError, [projectId]: msg },
+      }))
+      throw e
+    }
+  },
+
+  rollbackMemoryItems: async (projectId, items) => {
+    if (items.length === 0) return
+    set((st) => ({
+      memoryLoading: { ...st.memoryLoading, [projectId]: true },
+      memoryError: { ...st.memoryError, [projectId]: null },
+    }))
+    try {
+      const payload = await api.rollbackMemory(projectId, items)
+      set((st) => ({
+        memoryData: { ...st.memoryData, [projectId]: payload },
+        memoryLoading: { ...st.memoryLoading, [projectId]: false },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        memoryLoading: { ...st.memoryLoading, [projectId]: false },
+        memoryError: { ...st.memoryError, [projectId]: msg },
+      }))
+      throw e
+    }
+  },
+
+  refreshOutput: async (projectId) => {
+    set((st) => ({
+      outputLoading: { ...st.outputLoading, [projectId]: true },
+      outputError: { ...st.outputError, [projectId]: null },
+    }))
+    try {
+      const r = await api.listOutput(projectId)
+      set((st) => ({
+        outputFeatures: { ...st.outputFeatures, [projectId]: r.features },
+        outputLoading: { ...st.outputLoading, [projectId]: false },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        outputLoading: { ...st.outputLoading, [projectId]: false },
+        outputError: { ...st.outputError, [projectId]: msg },
+      }))
+      throw e
+    }
+  },
+
+  refreshChecklist: async (projectId, feature) => {
+    const key = `${projectId}::${feature}`
+    set((st) => ({
+      checklistsLoading: { ...st.checklistsLoading, [key]: true },
+      checklistsError: { ...st.checklistsError, [key]: null },
+    }))
+    try {
+      const doc = await api.getChecklist(projectId, feature)
+      set((st) => ({
+        checklists: { ...st.checklists, [key]: doc },
+        checklistsLoading: { ...st.checklistsLoading, [key]: false },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        checklistsLoading: { ...st.checklistsLoading, [key]: false },
+        checklistsError: { ...st.checklistsError, [key]: msg },
+      }))
+      throw e
+    }
+  },
+
+  patchChecklistItem: async (projectId, feature, sectionId, itemId, patch) => {
+    const key = `${projectId}::${feature}`
+    set((st) => ({
+      checklistsError: { ...st.checklistsError, [key]: null },
+    }))
+    try {
+      const doc = await api.patchChecklistItem(
+        projectId,
+        feature,
+        sectionId,
+        itemId,
+        patch,
+      )
+      set((st) => ({
+        checklists: { ...st.checklists, [key]: doc },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        checklistsError: { ...st.checklistsError, [key]: msg },
       }))
       throw e
     }

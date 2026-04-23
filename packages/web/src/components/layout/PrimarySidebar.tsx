@@ -4,12 +4,14 @@ import LogsView from '../sidebar/LogsView'
 import InboxView from '../sidebar/InboxView'
 import DocsView from '../sidebar/DocsView'
 import FilesView from '../sidebar/FilesView'
+import OutputView from '../sidebar/OutputView'
 import PerfView from '../sidebar/PerfView'
 
 const TITLES: Record<string, string> = {
   scm: '源代码更改',
   files: '文件',
   docs: 'Dev Docs',
+  output: '策划方案',
   perf: '性能',
   logs: '日志',
   inbox: '通知',
@@ -28,6 +30,9 @@ export default function PrimarySidebar() {
       break
     case 'docs':
       body = <DocsView />
+      break
+    case 'output':
+      body = <OutputView />
       break
     case 'perf':
       body = <PerfView />

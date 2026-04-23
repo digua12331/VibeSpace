@@ -4,6 +4,49 @@ import { relative, isAbsolute, resolve } from "node:path";
 import picomatch from "picomatch";
 import { appendEvent, getProject, getSession, getSessionScope } from "../db.js";
 import { statusManager } from "../status.js";
+import { readMemory, type MemoryEntry } from "../memory-service.js";
+
+/** Cap the injected memory header at ~10KB so it never drowns the system prompt. */
+const MEMORY_HEADER_MAX_BYTES = 10_000;
+/** Cap auto.md lessons to the most recent N. */
+const AUTO_TAIL_COUNT = 30;
+
+function buildMemoryHeader(auto: MemoryEntry[], manual: MemoryEntry[]): string {
+  const autoLessons = auto.filter((e) => e.kind === "lesson").slice(-AUTO_TAIL_COUNT);
+  const manualLines = manual.filter((e) => e.text.trim().length > 0);
+
+  if (autoLessons.length === 0 && manualLines.length === 0) return "";
+
+  const parts: string[] = ["# 项目记忆（自动沉淀 + 手动追记）"];
+  if (autoLessons.length > 0) {
+    parts.push("", `## 最近自动沉淀的经验（auto.md, 最多 ${AUTO_TAIL_COUNT} 条）`);
+    for (const e of autoLessons) parts.push(e.text);
+  }
+  if (manualLines.length > 0) {
+    parts.push("", "## 手动沉淀（manual.md）");
+    for (const e of manualLines) parts.push(e.text);
+  }
+
+  let out = parts.join("\n");
+  if (Buffer.byteLength(out, "utf8") > MEMORY_HEADER_MAX_BYTES) {
+    // Byte-accurate truncate: slice char-by-char until under budget.
+    let limit = out.length;
+    while (limit > 0 && Buffer.byteLength(out.slice(0, limit), "utf8") > MEMORY_HEADER_MAX_BYTES) {
+      limit -= 256;
+    }
+    out = out.slice(0, Math.max(0, limit)) + "\n... (truncated at 10KB)";
+  }
+  return out;
+}
+
+async function buildSessionStartAdditionalContext(sessionId: string): Promise<string> {
+  const session = getSession(sessionId);
+  if (!session) return "";
+  const project = getProject(session.projectId);
+  if (!project) return "";
+  const payload = await readMemory(project.path);
+  return buildMemoryHeader(payload.auto, payload.manual);
+}
 
 const ClaudeHookSchema = z.object({
   sessionId: z.string().min(1),
@@ -121,6 +164,17 @@ export async function registerHookRoutes(app: FastifyInstance): Promise<void> {
         statusManager.handleClaudeHook(sessionId, event, payload);
       } catch (err) {
         app.log.warn({ err, sessionId, event }, "handleClaudeHook failed");
+      }
+
+      if (event === "SessionStart") {
+        try {
+          const additionalContext = await buildSessionStartAdditionalContext(sessionId);
+          if (additionalContext) {
+            return { ok: true, additionalContext };
+          }
+        } catch (err) {
+          app.log.warn({ err, sessionId }, "SessionStart memory lookup failed — fail-open");
+        }
       }
 
       if (event === "PreToolUse") {

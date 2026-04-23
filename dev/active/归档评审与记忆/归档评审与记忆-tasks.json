@@ -11,97 +11,97 @@
       "id": 2,
       "title": "POC: Claude Code SessionStart hook additionalContext 注入",
       "verify": "mini hook stdout 输出 hookSpecificOutput JSON；起 claude 会话让它复述 marker 字样",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 3,
       "title": "新建 dev/memory/ 三个骨架文件",
       "verify": "auto.md / manual.md / rejected.md 存在，首行是中文标题 + 说明",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 4,
       "title": "memory-service.ts：readMemory / appendLessons / rollbackLessons",
       "verify": "tsx 脚本 append 2 条后读回 2 条、rollback 1 条后 auto 剩 1、rejected 有注释行",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 5,
       "title": "routes/memory.ts：GET + POST /rollback，注册到 index.ts",
       "verify": "curl GET 返回三段；curl POST rollback 后再 GET 看到变化、rejected.md 有注释行",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 6,
       "title": "review-runner.ts：读归档目录 → 拼 prompt → spawn codex/gemini 回退链 → 解析 stdout append 到 auto.md / rejected.md",
       "verify": "手造测试归档目录、调 kickoffArchiveReview、5 秒后 auto.md 或 rejected.md 有新行",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 7,
       "title": "routes/docs.ts 的 archive 路由 fire-and-forget 触发 review",
       "verify": "curl archive 端点 HTTP 响应 < 500ms；后台 30 秒内 memory API 看到新条目",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 8,
       "title": "hooks.ts 的 SessionStart 分支返回 additionalContext；aimon-hook.mjs 转写到 stdout JSON",
       "verify": "curl /api/hooks/claude event=SessionStart 返回 additionalContext；模拟 hook stdin 走 aimon-hook.mjs 看到 hookSpecificOutput JSON",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 9,
       "title": "web types.ts：MemoryFileKind / MemoryEntry / MemoryPayload",
       "verify": "T16 类型检查兜底",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 10,
       "title": "web api.ts：getMemory / rollbackMemory",
       "verify": "T16 类型检查兜底",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 11,
       "title": "store.ts：memoryData / refreshMemory / rollbackMemoryItems",
       "verify": "T16 类型检查兜底",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 12,
       "title": "MemoryView.tsx：三段渲染 + checkbox + 撤回按钮",
       "verify": "浏览器空态文案正确；append 一条 auto 后刷新出 checkbox；撤回后挪到 rejected 段",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 13,
       "title": "DocsView.tsx 加 memory tab",
       "verify": "浏览器三个 tab 切换无报错",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 14,
       "title": "归档后 3s 轮询 refreshMemory 2 分钟",
       "verify": "归档一个任务后肉眼观察 memory tab 2 分钟内新增条目",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 15,
       "title": "CLAUDE.md 追加 可持续记忆 段落",
       "verify": "grep '可持续记忆' head CLAUDE.md 命中；既有 跨任务知识沉淀 内容未改",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 16,
       "title": "类型检查通过",
       "verify": "pnpm --filter @aimon/server exec tsc --noEmit 和 pnpm --filter @aimon/web exec tsc --noEmit 都 exit 0",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": 17,
       "title": "端到端手工验收（plan 的 7 条验收标准）",
       "verify": "逐条：memory 文件存在、hook 注入生效（让 claude 复述条目）、UI 三段渲染、归档后 auto/rejected 新增、勾选撤回成功、归档响应 < 500ms、CLAUDE.md 段落正确",
-      "status": "todo"
+      "status": "done"
     }
   ]
 }

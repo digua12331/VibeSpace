@@ -1,0 +1,53 @@
+{
+  "feature": "示例功能",
+  "version": 1,
+  "createdAt": "2026-04-23",
+  "status": "pending",
+  "guide": {
+    "howToConfirm": "无修改回复 '确认'；有修改列 '改 A2: {新答案}' 一次锁定",
+    "afterLock": "主策据此产出 output/示例功能/v0.md"
+  },
+  "statusLegend": {
+    "locked": "已锁定",
+    "pending": "待制作人决定",
+    "modified": "制作人已修改主策建议"
+  },
+  "sections": [
+    {
+      "id": "A",
+      "title": "定位",
+      "type": "decision",
+      "items": [
+        {
+          "id": "A1",
+          "title": "设计目的",
+          "recommend": "为新手玩家提供三日留存钩子",
+          "alternatives": ["对齐竞品挑战模式", "与主线剧情绑定"],
+          "reason": "基于制作人画像的一句话理由",
+          "status": "pending"
+        },
+        {
+          "id": "A2",
+          "title": "目标玩家",
+          "recommend": "休闲玩家",
+          "alternatives": ["硬核玩家", "社交型玩家"],
+          "reason": "样本画像偏向手游通勤场景",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "F",
+      "title": "风险点",
+      "type": "risk",
+      "items": [
+        {
+          "id": "F1",
+          "risk": "奖励通胀可能导致经济失衡",
+          "mitigation": "接入现有价格模型 + 上线前压测",
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}

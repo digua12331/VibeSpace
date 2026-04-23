@@ -10,6 +10,7 @@ import {
   readDocFile,
   type DocFileKind,
 } from "../docs-service.js";
+import { kickoffArchiveReview } from "../review-runner.js";
 
 const FileQuery = z.object({
   kind: z.enum(["plan", "context", "tasks"]),
@@ -115,10 +116,11 @@ export async function registerDocsRoutes(app: FastifyInstance): Promise<void> {
       const proj = await loadProjectOr404(reply, req.params.id);
       if (!proj) return;
       try {
-        const out = await archiveDocsTask(
-          proj.path,
-          decodeURIComponent(req.params.task),
-        );
+        const taskName = decodeURIComponent(req.params.task);
+        const out = await archiveDocsTask(proj.path, taskName);
+        // Fire-and-forget: evaluate lessons from the just-archived task in the
+        // background. Never blocks the archive response.
+        kickoffArchiveReview(proj.path, taskName, out.archivedAs);
         return reply.send(out);
       } catch (err) {
         return sendDocsError(reply, err);

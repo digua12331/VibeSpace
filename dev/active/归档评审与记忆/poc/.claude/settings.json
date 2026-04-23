@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"F:/KB/AIkanban-main/dev/active/归档评审与记忆/poc/hook-poc.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

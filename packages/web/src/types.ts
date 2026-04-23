@@ -356,6 +356,32 @@ export interface IssuesPayload {
   updatedAt: number
 }
 
+// ---------- 记忆（auto / manual / rejected） ----------
+
+export type MemoryFileKind = 'auto' | 'manual' | 'rejected'
+
+export interface MemoryEntry {
+  /** `lesson` = 按 LINE_RE 解析出的结构化条目；`raw` = 标题 / 空行 / 自由文本 */
+  kind: 'lesson' | 'raw'
+  /** 1-based line number inside the source file */
+  line: number
+  text: string
+  date?: string
+  task?: string
+}
+
+export interface MemoryPayload {
+  auto: MemoryEntry[]
+  manual: MemoryEntry[]
+  rejected: MemoryEntry[]
+  updatedAt: number
+}
+
+export interface MemoryRollbackSelection {
+  kind: 'auto' | 'manual'
+  line: number
+}
+
 // ---------- Project files ----------
 
 export type ProjectFileGitStatus =
@@ -387,6 +413,58 @@ export interface ProjectFilesResult {
   total: number
   truncated: boolean
   limit: number
+}
+
+// ---------- Output (策划方案清单) ----------
+
+export type ChecklistStatus = 'pending' | 'locked' | 'modified'
+
+export interface ChecklistItem {
+  id: string
+  title?: string
+  /** decision 类 item */
+  recommend?: string
+  alternatives?: string[]
+  reason?: string
+  /** risk 类 item */
+  risk?: string
+  mitigation?: string
+  /** 共有 */
+  status?: ChecklistStatus
+  /** UI 写入的用户选择：'recommend' | `alt:${index}` | 'custom'（仅 decision 类） */
+  userChoice?: string
+  /** 自定义答案文本（仅当 userChoice==='custom' 时有效） */
+  userAnswer?: string
+  [key: string]: unknown
+}
+
+export interface ChecklistSection {
+  id: string
+  title?: string
+  /** 'decision' | 'risk' 为已知值，其它走兜底块 */
+  type?: string
+  items: ChecklistItem[]
+}
+
+export interface ChecklistDoc {
+  feature: string
+  version?: number
+  createdAt?: string
+  status?: string
+  guide?: Record<string, unknown>
+  statusLegend?: Record<string, string>
+  sections: ChecklistSection[]
+  [key: string]: unknown
+}
+
+export interface OutputFeature {
+  name: string
+  files: string[]
+  hasChecklist: boolean
+}
+
+export interface OutputListResult {
+  features: OutputFeature[]
 }
 
 // ---------- Perf ----------

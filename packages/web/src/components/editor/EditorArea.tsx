@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import FilePreview from '../FilePreview'
+import ChecklistEditor from './ChecklistEditor'
 import StartSessionMenu from '../StartSessionMenu'
 import SessionView from '../terminal/SessionView'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
@@ -274,14 +275,22 @@ export default function EditorArea() {
 
         {activeFile ? (
           <div className="absolute inset-0 flex flex-col bg-bg">
-            <FilePreview
-              key={activeFile.key}
-              projectId={activeFile.projectId}
-              path={activeFile.path}
-              ref={activeFile.ref}
-              from={activeFile.from}
-              to={activeFile.to}
-            />
+            {activeFile.kind === 'checklist' ? (
+              <ChecklistEditor
+                key={activeFile.key}
+                projectId={activeFile.projectId}
+                feature={extractFeature(activeFile.path)}
+              />
+            ) : (
+              <FilePreview
+                key={activeFile.key}
+                projectId={activeFile.projectId}
+                path={activeFile.path}
+                ref={activeFile.ref}
+                from={activeFile.from}
+                to={activeFile.to}
+              />
+            )}
           </div>
         ) : null}
 
@@ -289,6 +298,18 @@ export default function EditorArea() {
       </div>
     </section>
   )
+}
+
+/**
+ * Pull the feature name out of "output/<feature>/checklist.json". Falls back
+ * to the middle path segment so the tab still renders something coherent if
+ * the path shape ever drifts.
+ */
+function extractFeature(path: string): string {
+  const m = /^output\/([^/]+)\/checklist\.json$/.exec(path)
+  if (m) return m[1]
+  const parts = path.split('/')
+  return parts[parts.length - 2] ?? ''
 }
 
 function EmptyState({ projectId }: { projectId: string | null }) {

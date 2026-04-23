@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
+import { openContextMenu, type ContextMenuItem } from '../ContextMenu'
 import type { DocFileKind, DocTaskSummary, IssueItem } from '../../types'
+import { MemoryView } from './MemoryView'
 
 const EMPTY_TASKS: DocTaskSummary[] = []
 const EMPTY_ISSUES: IssueItem[] = []
 
-type DocsViewMode = 'tasks' | 'issues'
+type DocsViewMode = 'tasks' | 'issues' | 'memory'
 
 /**
  * Display order + labels for the three Dev Docs files. The `order` prefix is
@@ -117,10 +119,12 @@ export default function DocsView() {
     projectId ? s.issuesError[projectId] ?? null : null,
   )
   const refreshIssues = useStore((s) => s.refreshIssues)
+  const refreshMemory = useStore((s) => s.refreshMemory)
   const addSession = useStore((s) => s.addSession)
   const setActiveSession = useStore((s) => s.setActiveSession)
 
   const [view, setView] = useState<DocsViewMode>('tasks')
+  const memoryPollRef = useRef<{ id: ReturnType<typeof setTimeout> | null; stopped: boolean }>({ id: null, stopped: false })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [applyingRules, setApplyingRules] = useState(false)
   const [dispatching, setDispatching] = useState(false)
@@ -142,6 +146,21 @@ export default function DocsView() {
       /* error already recorded in store */
     })
   }, [projectId, view, refreshIssues])
+
+  useEffect(() => {
+    if (!projectId) return
+    if (view !== 'memory') return
+    refreshMemory(projectId).catch(() => {
+      /* error already recorded in store */
+    })
+  }, [projectId, view, refreshMemory])
+
+  useEffect(() => {
+    return () => {
+      memoryPollRef.current.stopped = true
+      if (memoryPollRef.current.id) clearTimeout(memoryPollRef.current.id)
+    }
+  }, [projectId])
 
   // Reset the search UI when the project changes so the query from project A
   // doesn't linger after the user picks project B.
@@ -215,12 +234,33 @@ export default function DocsView() {
     if (!ok) return
     try {
       await archiveDocsTask(projectId, task)
+      // Backend kicks off a codex/gemini review in the background. Poll every
+      // 3s for up to 2 min so 「记忆」tab picks up the new auto.md entry (or
+      // the review-failed row in rejected.md) without the user having to
+      // manually refresh.
+      startMemoryPoll(projectId)
     } catch (e: unknown) {
       await alertDialog(
         e instanceof Error ? e.message : String(e),
         { title: '归档失败', variant: 'danger' },
       )
     }
+  }
+
+  function startMemoryPoll(pid: string) {
+    if (memoryPollRef.current.id) clearTimeout(memoryPollRef.current.id)
+    memoryPollRef.current = { id: null, stopped: false }
+    let rounds = 0
+    const tick = () => {
+      if (memoryPollRef.current.stopped) return
+      rounds += 1
+      refreshMemory(pid).catch(() => {
+        /* error already recorded in store */
+      })
+      if (rounds >= 40) return
+      memoryPollRef.current.id = setTimeout(tick, 3000)
+    }
+    memoryPollRef.current.id = setTimeout(tick, 3000)
   }
 
   function toggle(name: string) {
@@ -248,6 +288,10 @@ export default function DocsView() {
       '',
       '处理完成后：在 dev/issues.md 里把这条的 [ ] 改成 [x]，然后简述改动。',
     ].join('\n')
+  }
+
+  function buildContinueTaskPrompt(task: string): string {
+    return `继续 ${task}`
   }
 
   function buildAllIssuesPrompt(items: IssueItem[]): string {
@@ -305,6 +349,25 @@ export default function DocsView() {
     await dispatchClaude(buildAllIssuesPrompt(openIssues), '已派 Claude 处理全部未处理问题')
   }
 
+  function openTaskMenu(task: string, x: number, y: number) {
+    const items: ContextMenuItem[] = [
+      {
+        label: '派 Claude 继续任务',
+        icon: '🤖',
+        disabled: dispatching,
+        onSelect: () =>
+          dispatchClaude(buildContinueTaskPrompt(task), '已派 Claude 继续任务'),
+      },
+      { divider: true, label: '' },
+      {
+        label: '归档',
+        icon: '📦',
+        onSelect: () => onArchive(task),
+      },
+    ]
+    openContextMenu({ x, y, items })
+  }
+
   const hasQuery = query.trim().length > 0
 
   return (
@@ -348,7 +411,8 @@ export default function DocsView() {
             <button
               onClick={() => {
                 if (view === 'tasks') void refreshDocs(projectId)
-                else void refreshIssues(projectId)
+                else if (view === 'issues') void refreshIssues(projectId)
+                else void refreshMemory(projectId)
               }}
               title="刷新"
               className="fluent-btn w-6 h-6 inline-flex items-center justify-center rounded text-muted hover:text-fg hover:bg-white/[0.08]"
@@ -379,6 +443,17 @@ export default function DocsView() {
           }`}
         >
           问题{openIssues.length > 0 ? ` (${openIssues.length})` : ''}
+        </button>
+        <button
+          onClick={() => setView('memory')}
+          className={`fluent-btn flex-1 h-7 inline-flex items-center justify-center rounded text-[12px] transition-colors ${
+            view === 'memory'
+              ? 'bg-white/[0.08] text-fg'
+              : 'text-muted hover:text-fg hover:bg-white/[0.04]'
+          }`}
+          title="归档评审自动沉淀的经验 + 手动长期经验"
+        >
+          记忆
         </button>
       </div>
 
@@ -451,9 +526,9 @@ export default function DocsView() {
                 onClick={() => toggle(t.name)}
                 onContextMenu={(e) => {
                   e.preventDefault()
-                  void onArchive(t.name)
+                  openTaskMenu(t.name, e.clientX, e.clientY)
                 }}
-                title="点击展开，右键归档"
+                title="点击展开，右键菜单（派 Claude 继续 / 归档）"
               >
                 <span className="inline-block w-4 text-center text-[11px] text-muted">
                   {open ? '▾' : '▸'}
@@ -568,6 +643,8 @@ export default function DocsView() {
           ))}
         </div>
       )}
+
+      {view === 'memory' && projectId && <MemoryView projectId={projectId} />}
     </div>
   )
 }

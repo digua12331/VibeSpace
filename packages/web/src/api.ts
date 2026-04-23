@@ -10,10 +10,14 @@ import type {
   CommitResult,
   CommitSummary,
   DiffResult,
+  ChecklistDoc,
   DocFileContent,
   DocFileKind,
   DocTaskSummary,
   IssuesPayload,
+  MemoryPayload,
+  MemoryRollbackSelection,
+  OutputListResult,
   FileContent,
   GitRef,
   GraphCommit,
@@ -342,6 +346,58 @@ export function archiveDocsTask(
 export function listIssues(projectId: string): Promise<IssuesPayload> {
   return request<IssuesPayload>(
     `/api/projects/${encodeURIComponent(projectId)}/issues`,
+  )
+}
+
+// ---------- 记忆 ----------
+
+export function getMemory(projectId: string): Promise<MemoryPayload> {
+  return request<MemoryPayload>(
+    `/api/projects/${encodeURIComponent(projectId)}/memory`,
+  )
+}
+
+export function rollbackMemory(
+  projectId: string,
+  items: MemoryRollbackSelection[],
+): Promise<MemoryPayload> {
+  return request<MemoryPayload>(
+    `/api/projects/${encodeURIComponent(projectId)}/memory/rollback`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items }),
+    },
+  )
+}
+
+// ---------- Output (策划方案清单) ----------
+
+export function listOutput(projectId: string): Promise<OutputListResult> {
+  return request<OutputListResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/output`,
+  )
+}
+
+export function getChecklist(
+  projectId: string,
+  feature: string,
+): Promise<ChecklistDoc> {
+  return request<ChecklistDoc>(
+    `/api/projects/${encodeURIComponent(projectId)}/output/${encodeURIComponent(feature)}/checklist`,
+  )
+}
+
+export function patchChecklistItem(
+  projectId: string,
+  feature: string,
+  sectionId: string,
+  itemId: string,
+  patch: Record<string, unknown>,
+): Promise<ChecklistDoc> {
+  return request<ChecklistDoc>(
+    `/api/projects/${encodeURIComponent(projectId)}/output/${encodeURIComponent(feature)}/checklist`,
+    jsonInit('PATCH', { sectionId, itemId, patch }),
   )
 }
 

@@ -17,6 +17,13 @@ import { URL } from "node:url";
 const TIMEOUT_MS = 1500;
 
 function done() {
+  // Ensure any pending stdout write (e.g. the SessionStart additionalContext
+  // JSON, a few hundred bytes) fully flushes before we exit. On Windows when
+  // stdout is a pipe, process.exit() can truncate buffered output.
+  if (process.stdout.writableLength > 0) {
+    process.stdout.once("drain", () => process.exit(0));
+    return;
+  }
   process.exit(0);
 }
 
@@ -25,7 +32,7 @@ if (!sessionId) done();
 
 const backend = process.env.AIMON_BACKEND || "http://127.0.0.1:8787";
 const event = process.argv[2] || "Unknown";
-const waitForResponse = event === "PreToolUse";
+const waitForResponse = event === "PreToolUse" || event === "SessionStart";
 
 let stdinChunks = [];
 let stdinDone = false;
@@ -33,20 +40,38 @@ let stdinDone = false;
 function relayDecision(respBodyBuf) {
   if (!waitForResponse) return;
   const raw = Buffer.concat(respBodyBuf).toString("utf8").trim();
+  if (process.env.AIMON_HOOK_DEBUG) {
+    process.stderr.write(`[aimon-hook] relay raw len=${raw.length}\n`);
+  }
   if (!raw) return;
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
+    if (process.env.AIMON_HOOK_DEBUG) process.stderr.write(`[aimon-hook] parse fail\n`);
     return;
   }
-  if (
-    parsed &&
-    typeof parsed === "object" &&
-    parsed.decision === "block"
-  ) {
+  if (!parsed || typeof parsed !== "object") return;
+
+  if (event === "PreToolUse" && parsed.decision === "block") {
     // Claude requires decision/reason on stdout as a single JSON blob.
     const payload = { decision: "block", reason: String(parsed.reason ?? "blocked") };
+    process.stdout.write(JSON.stringify(payload));
+    return;
+  }
+
+  if (
+    event === "SessionStart" &&
+    typeof parsed.additionalContext === "string" &&
+    parsed.additionalContext.length > 0
+  ) {
+    // Claude Code honours this shape for SessionStart to prepend system context.
+    const payload = {
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: parsed.additionalContext,
+      },
+    };
     process.stdout.write(JSON.stringify(payload));
   }
 }
@@ -54,6 +79,9 @@ function relayDecision(respBodyBuf) {
 function send() {
   if (stdinDone) return;
   stdinDone = true;
+  if (process.env.AIMON_HOOK_DEBUG) {
+    process.stderr.write(`[aimon-hook] send event=${event} backend=${backend}\n`);
+  }
 
   let payload = null;
   const raw = Buffer.concat(stdinChunks).toString("utf8").trim();
@@ -100,7 +128,12 @@ function send() {
 }
 
 // Hard ceiling so we never exceed ~1.5s.
-setTimeout(done, TIMEOUT_MS).unref();
+setTimeout(() => {
+  if (process.env.AIMON_HOOK_DEBUG) {
+    process.stderr.write(`[aimon-hook] hard-timeout stdinDone=${stdinDone}\n`);
+  }
+  done();
+}, TIMEOUT_MS).unref();
 
 process.stdin.on("data", (c) => stdinChunks.push(c));
 process.stdin.on("end", send);
