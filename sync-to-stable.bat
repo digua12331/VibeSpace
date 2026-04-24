@@ -62,6 +62,40 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM --- Step 2.5: kill residual stable processes holding file locks ---
+REM Without this, pnpm rebuild better-sqlite3 fails with EPERM when stable's
+REM running server still has better_sqlite3.node open. Match by CommandLine
+REM containing the stable dir path so we never hit dev / Claude Code nodes.
+echo [sync] cleaning residual node processes under stable dir ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$root = '%STABLE_DIR%'.TrimEnd('\');" ^
+  "$pattern = [regex]::Escape($root);" ^
+  "$toKill = @{};" ^
+  "$victims = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match $pattern };" ^
+  "foreach ($v in $victims) {" ^
+  "  $cur = $v;" ^
+  "  while ($true) {" ^
+  "    $toKill[[int]$cur.ProcessId] = $true;" ^
+  "    if (-not $cur.ParentProcessId) { break };" ^
+  "    $parent = Get-CimInstance Win32_Process -Filter \"ProcessId=$($cur.ParentProcessId)\" -ErrorAction SilentlyContinue;" ^
+  "    if (-not $parent -or $parent.Name -ne 'node.exe') { break };" ^
+  "    $cur = $parent" ^
+  "  }" ^
+  "};" ^
+  "if ($toKill.Count -gt 0) { Write-Host ('[sync]   killing node PIDs: ' + ($toKill.Keys -join ', ')) };" ^
+  "foreach ($procId in $toKill.Keys) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }"
+
+REM belt-and-suspenders: kill anything listening on stable ports 8787/8788
+for %%P in (8787 8788) do (
+  for /f "tokens=5" %%A in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":%%P "') do (
+    echo [sync]   killing PID %%A on port %%P
+    taskkill /F /PID %%A >nul 2>&1
+  )
+)
+
+REM give Windows time to release file locks before pnpm rebuild touches native binaries
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 1500" >nul 2>&1
+
 REM --- Step 3: fetch from dev (tags included) ---
 echo [sync] fetching origin with tags...
 git fetch origin --tags --prune
