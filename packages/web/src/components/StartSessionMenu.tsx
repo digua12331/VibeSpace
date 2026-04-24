@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
-import { pushLog } from '../logs'
+import { logAction, pushLog } from '../logs'
 import type { AgentKind, CliEntry, CliStatusResponse, Session, SessionScope } from '../types'
 import CliInstallerDialog from './CliInstallerDialog'
 
@@ -104,44 +104,33 @@ export default function StartSessionMenu({
     if (!projectId) return
     setBusy(agent)
     setError(null)
-    pushLog({
-      level: 'info',
-      scope: 'session',
-      projectId,
-      msg: `请求启动 ${agent} session`,
-    })
     try {
-      const scope: SessionScope | undefined = scopeEnabled
-        ? {
-            enabled: true,
-            readwrite: parseGlobs(rwText),
-            readonly: parseGlobs(roText),
-          }
-        : undefined
-      const s = await api.createSession({ projectId, agent, scope })
-      // Backend doesn't echo scope in the wire response; attach it client-side
-      // so the tab badge (T9) shows immediately without waiting for a refresh.
-      const enriched = scope ? { ...s, scope } : s
-      addSession(enriched)
-      aimonWS.subscribe([s.id])
-      onStarted?.(enriched)
-      pushLog({
-        level: 'info',
-        scope: 'session',
-        projectId,
-        sessionId: s.id,
-        msg: `${agent} session 已创建 (pid=${s.pid ?? '?'})`,
-      })
+      await logAction(
+        'session',
+        'start',
+        async () => {
+          const scope: SessionScope | undefined = scopeEnabled
+            ? {
+                enabled: true,
+                readwrite: parseGlobs(rwText),
+                readonly: parseGlobs(roText),
+              }
+            : undefined
+          const s = await api.createSession({ projectId, agent, scope })
+          // Backend doesn't echo scope in the wire response; attach it client-side
+          // so the tab badge (T9) shows immediately without waiting for a refresh.
+          const enriched = scope ? { ...s, scope } : s
+          addSession(enriched)
+          aimonWS.subscribe([s.id])
+          onStarted?.(enriched)
+          return s
+        },
+        { projectId, meta: { agent, scoped: scopeEnabled } },
+      )
       setOpen(false)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg)
-      pushLog({
-        level: 'error',
-        scope: 'session',
-        projectId,
-        msg: `启动 ${agent} 失败: ${msg}`,
-      })
     } finally {
       setBusy(null)
     }

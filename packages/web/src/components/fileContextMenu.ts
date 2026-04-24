@@ -1,4 +1,5 @@
 import * as api from '../api'
+import { logAction } from '../logs'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
 import type { AgentKind } from '../types'
@@ -63,6 +64,7 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
   const { projectId, path, kind, sessions } = opts
   const kindLabel = kind === 'dir' ? '目录' : '文件'
   const isBatch = kind === 'file' && /\.(bat|cmd)$/i.test(path)
+  const isHtml = kind === 'file' && /\.(html?|xhtml)$/i.test(path)
 
   const sendItem: ContextMenuItem =
     sessions.length === 0
@@ -92,6 +94,28 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
               },
             })),
           }
+
+  const browserItem: ContextMenuItem | null = isHtml
+    ? {
+        label: '在浏览器打开',
+        icon: '🌐',
+        onSelect: async () => {
+          try {
+            await logAction(
+              'fs',
+              'open-in-browser',
+              () => api.openInBrowser(projectId, path),
+              { projectId, meta: { path } },
+            )
+          } catch (e: unknown) {
+            await alertDialog(
+              e instanceof Error ? e.message : String(e),
+              { title: '打开失败', variant: 'danger' },
+            )
+          }
+        },
+      }
+    : null
 
   const execItem: ContextMenuItem | null = isBatch
     ? {
@@ -141,6 +165,7 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
         }
       },
     },
+    ...(browserItem ? [browserItem] : []),
     ...(execItem ? [execItem] : []),
     {
       label: '添加到 .gitignore',

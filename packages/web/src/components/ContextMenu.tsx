@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { pushLog } from '../logs'
 
 export interface ContextMenuItem {
   label: string
@@ -31,11 +32,21 @@ function notify() {
 export function openContextMenu(opts: Opts): void {
   sequence += 1
   current = { ...opts, id: sequence }
+  pushLog({
+    level: 'info',
+    scope: 'ctxmenu',
+    msg: `openContextMenu called id=${sequence} items=${opts.items.length} listeners=${listeners.size}`,
+  })
   notify()
 }
 
 export function closeContextMenu(): void {
   if (!current) return
+  pushLog({
+    level: 'info',
+    scope: 'ctxmenu',
+    msg: `closeContextMenu id=${current.id}`,
+  })
   current = null
   notify()
 }
@@ -63,39 +74,83 @@ export default function ContextMenu() {
 
   useEffect(() => {
     const l = (next: PendingMenu | null) => {
+      pushLog({
+        level: 'info',
+        scope: 'ctxmenu',
+        msg: `listener notified -> setMenu(${next ? `id=${next.id} items=${next.items.length}` : 'null'})`,
+      })
       setMenu(next)
       setSubmenuAt(null)
     }
     listeners.add(l)
+    pushLog({
+      level: 'info',
+      scope: 'ctxmenu',
+      msg: `ContextMenu mounted; listeners now=${listeners.size}; current=${current ? `id=${current.id}` : 'null'}`,
+    })
     l(current)
     return () => {
       listeners.delete(l)
+      pushLog({
+        level: 'info',
+        scope: 'ctxmenu',
+        msg: `ContextMenu unmounted; listeners now=${listeners.size}`,
+      })
     }
   }, [])
 
   useEffect(() => {
     if (!menu) return
-    const close = () => closeContextMenu()
+    pushLog({
+      level: 'info',
+      scope: 'ctxmenu',
+      msg: `menu visible id=${menu.id}; attaching close listeners`,
+    })
+    const close = (source: string) => {
+      pushLog({
+        level: 'warn',
+        scope: 'ctxmenu',
+        msg: `close triggered by ${source} (menu id=${menu.id})`,
+      })
+      closeContextMenu()
+    }
+    const onMouseDown = () => close('mousedown')
+    const onContextMenuEvt = () => close('contextmenu')
+    const onResize = () => close('resize')
+    const onBlur = () => close('blur')
+    const onScroll = () => close('scroll')
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        close()
+        close('Escape')
       }
     }
-    // Mousedown catches outside clicks without waiting for a full click cycle.
-    window.addEventListener('mousedown', close)
-    window.addEventListener('contextmenu', close)
-    window.addEventListener('resize', close)
-    window.addEventListener('blur', close)
-    window.addEventListener('scroll', close, true)
+    // Keydown is safe to attach immediately — not related to the opening click.
     window.addEventListener('keydown', onKey)
+    // Defer the pointer-based close listeners by one tick. React 18 flushes the
+    // state update synchronously inside the opening `contextmenu` event, so this
+    // effect runs *before* that same event finishes bubbling to `window`. If we
+    // attached `contextmenu`/`mousedown` now, the very click that opened the
+    // menu would immediately re-trigger them and dismiss the menu.
+    let attached = false
+    const tid = window.setTimeout(() => {
+      window.addEventListener('mousedown', onMouseDown)
+      window.addEventListener('contextmenu', onContextMenuEvt)
+      window.addEventListener('resize', onResize)
+      window.addEventListener('blur', onBlur)
+      window.addEventListener('scroll', onScroll, true)
+      attached = true
+    }, 0)
     return () => {
-      window.removeEventListener('mousedown', close)
-      window.removeEventListener('contextmenu', close)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('blur', close)
-      window.removeEventListener('scroll', close, true)
+      window.clearTimeout(tid)
       window.removeEventListener('keydown', onKey)
+      if (attached) {
+        window.removeEventListener('mousedown', onMouseDown)
+        window.removeEventListener('contextmenu', onContextMenuEvt)
+        window.removeEventListener('resize', onResize)
+        window.removeEventListener('blur', onBlur)
+        window.removeEventListener('scroll', onScroll, true)
+      }
     }
   }, [menu])
 

@@ -5,6 +5,8 @@ import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { openContextMenu, type ContextMenuItem } from '../ContextMenu'
 import type { DocFileKind, DocTaskSummary, IssueItem } from '../../types'
 import { MemoryView } from './MemoryView'
+import { logAction, pushLog } from '../../logs'
+import { dispatchClaude } from '../../dispatchClaude'
 
 const EMPTY_TASKS: DocTaskSummary[] = []
 const EMPTY_ISSUES: IssueItem[] = []
@@ -120,9 +122,6 @@ export default function DocsView() {
   )
   const refreshIssues = useStore((s) => s.refreshIssues)
   const refreshMemory = useStore((s) => s.refreshMemory)
-  const addSession = useStore((s) => s.addSession)
-  const setActiveSession = useStore((s) => s.setActiveSession)
-
   const [view, setView] = useState<DocsViewMode>('tasks')
   const memoryPollRef = useRef<{ id: ReturnType<typeof setTimeout> | null; stopped: boolean }>({ id: null, stopped: false })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -233,7 +232,12 @@ export default function DocsView() {
     )
     if (!ok) return
     try {
-      await archiveDocsTask(projectId, task)
+      await logAction(
+        'docs',
+        'archive',
+        () => archiveDocsTask(projectId, task),
+        { projectId, meta: { task } },
+      )
       // Backend kicks off a codex/gemini review in the background. Poll every
       // 3s for up to 2 min so 「记忆」tab picks up the new auto.md entry (or
       // the review-failed row in rejected.md) without the user having to
@@ -305,48 +309,25 @@ export default function DocsView() {
     return lines.join('\n')
   }
 
-  async function dispatchClaude(prompt: string, successTitle: string) {
+  async function runDispatch(prompt: string, successTitle: string) {
     if (!projectId || dispatching) return
     setDispatching(true)
     try {
-      const session = await api.createSession({ projectId, agent: 'claude' })
-      addSession(session)
-      setActiveSession(projectId, session.id)
-      let clipboardOk = false
-      try {
-        await navigator.clipboard.writeText(prompt)
-        clipboardOk = true
-      } catch {
-        /* fall through to dialog fallback */
-      }
-      if (clipboardOk) {
-        await alertDialog(
-          '已新建 Claude 终端并聚焦。请在终端里按 Ctrl+V 粘贴、再按回车发送。',
-          { title: successTitle },
-        )
-      } else {
-        await alertDialog(
-          `已新建 Claude 终端，但自动复制到剪贴板失败。请手动复制下面的 prompt：\n\n${prompt}`,
-          { title: successTitle },
-        )
-      }
-    } catch (e: unknown) {
-      await alertDialog(
-        e instanceof Error ? e.message : String(e),
-        { title: '派单失败', variant: 'danger' },
-      )
+      await dispatchClaude({ projectId, prompt, successTitle })
+    } catch {
+      /* alertDialog already shown inside dispatchClaude */
     } finally {
       setDispatching(false)
     }
   }
 
   async function onDispatchIssue(issue: IssueItem) {
-    await dispatchClaude(buildSingleIssuePrompt(issue.text), '已派 Claude 处理此问题')
+    await runDispatch(buildSingleIssuePrompt(issue.text), '已派 Claude 处理此问题')
   }
 
   async function onDispatchAllIssues() {
     if (openIssues.length === 0) return
-    await dispatchClaude(buildAllIssuesPrompt(openIssues), '已派 Claude 处理全部未处理问题')
+    await runDispatch(buildAllIssuesPrompt(openIssues), '已派 Claude 处理全部未处理问题')
   }
 
   function openTaskMenu(task: string, x: number, y: number) {
@@ -356,7 +337,7 @@ export default function DocsView() {
         icon: '🤖',
         disabled: dispatching,
         onSelect: () =>
-          dispatchClaude(buildContinueTaskPrompt(task), '已派 Claude 继续任务'),
+          runDispatch(buildContinueTaskPrompt(task), '已派 Claude 继续任务'),
       },
       { divider: true, label: '' },
       {
@@ -365,6 +346,12 @@ export default function DocsView() {
         onSelect: () => onArchive(task),
       },
     ]
+    pushLog({
+      level: 'info',
+      scope: 'docs-ctxmenu',
+      projectId: projectId ?? undefined,
+      msg: `openTaskMenu -> openContextMenu task=${task} xy=${x},${y} items=${items.length}`,
+    })
     openContextMenu({ x, y, items })
   }
 
@@ -525,6 +512,12 @@ export default function DocsView() {
                 className="group flex items-center gap-1.5 pl-1 pr-2 py-1 rounded hover:bg-white/[0.04] cursor-pointer"
                 onClick={() => toggle(t.name)}
                 onContextMenu={(e) => {
+                  pushLog({
+                    level: 'info',
+                    scope: 'docs-ctxmenu',
+                    projectId,
+                    msg: `row onContextMenu fired task=${t.name} target=${(e.target as HTMLElement)?.tagName} xy=${e.clientX},${e.clientY}`,
+                  })
                   e.preventDefault()
                   openTaskMenu(t.name, e.clientX, e.clientY)
                 }}

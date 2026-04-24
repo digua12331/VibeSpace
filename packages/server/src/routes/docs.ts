@@ -11,6 +11,7 @@ import {
   type DocFileKind,
 } from "../docs-service.js";
 import { kickoffArchiveReview } from "../review-runner.js";
+import { serverLog } from "../log-bus.js";
 
 const FileQuery = z.object({
   kind: z.enum(["plan", "context", "tasks"]),
@@ -118,11 +119,24 @@ export async function registerDocsRoutes(app: FastifyInstance): Promise<void> {
       try {
         const taskName = decodeURIComponent(req.params.task);
         const out = await archiveDocsTask(proj.path, taskName);
+        serverLog(
+          "info",
+          "docs",
+          `归档评审 enqueue: ${taskName}`,
+          { projectId: proj.id, meta: { archivedAs: out.archivedAs } },
+        );
         // Fire-and-forget: evaluate lessons from the just-archived task in the
         // background. Never blocks the archive response.
         kickoffArchiveReview(proj.path, taskName, out.archivedAs);
         return reply.send(out);
       } catch (err) {
+        const taskName = decodeURIComponent(req.params.task);
+        serverLog(
+          "error",
+          "docs",
+          `归档失败 ${taskName}: ${(err as Error)?.message ?? String(err)}`,
+          { projectId: proj.id, meta: { task: taskName } },
+        );
         return sendDocsError(reply, err);
       }
     },

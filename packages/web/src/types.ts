@@ -104,6 +104,15 @@ export type ClientMsg =
   | { type: 'input'; sessionId: string; data: string }
   | { type: 'resize'; sessionId: string; cols: number; rows: number }
   | { type: 'replay'; sessionId: string }
+  | {
+      type: 'log-from-client'
+      level: LogLevel
+      scope: string
+      msg: string
+      projectId?: string
+      sessionId?: string
+      meta?: unknown
+    }
 
 export type ServerMsg =
   | { type: 'hello'; serverVersion: string }
@@ -111,6 +120,15 @@ export type ServerMsg =
   | { type: 'status'; sessionId: string; status: SessionStatus; detail?: string }
   | { type: 'exit'; sessionId: string; code: number; signal: number | null }
   | { type: 'replay'; sessionId: string; data: string }
+  | {
+      type: 'log'
+      level: LogLevel
+      scope: string
+      msg: string
+      projectId?: string
+      sessionId?: string
+      meta?: unknown
+    }
 
 export type WSConnState = 'connecting' | 'open' | 'closed'
 
@@ -354,6 +372,29 @@ export interface IssuesPayload {
   content: string
   items: IssueItem[]
   updatedAt: number
+}
+
+// ---------- Comments（md 文件 tab 评论） ----------
+
+export interface CommentAnchor {
+  anchorId: string
+  blockType: string
+  index: number
+  contentHash: string
+  textPreview: string
+}
+
+export interface CommentEntry {
+  id: string
+  anchor: CommentAnchor
+  body: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CommentsList {
+  path: string
+  comments: CommentEntry[]
 }
 
 // ---------- 记忆（auto / manual / rejected） ----------

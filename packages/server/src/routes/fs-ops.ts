@@ -11,6 +11,9 @@ import {
   safeResolve,
   toRepoRelative,
 } from "../git-service.js";
+import { serverLog } from "../log-bus.js";
+
+const HTML_SUFFIX_RE = /\.(html?|xhtml)$/i;
 
 const PathBody = z.object({
   path: z.string().min(1).max(4096),
@@ -74,6 +77,45 @@ function revealInSystemExplorer(abs: string): void {
     // Swallow — request path already returned { ok: true }; surfacing this
     // failure later would require a different contract. Logged by Fastify
     // internally on the child-process level only if something truly breaks.
+  });
+  try {
+    child.unref();
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Hand a file path off to the OS to open with whatever application is
+ * registered for its extension (html → default browser). Fire-and-forget, same
+ * spirit as revealInSystemExplorer.
+ *
+ * - Windows: `cmd.exe /c start "" <abs>` — the empty string is `start`'s
+ *   title placeholder; without it start would eat the first quoted arg.
+ * - macOS:   `open <abs>`   (no -R, so it opens instead of reveals)
+ * - Linux:   `xdg-open <abs>`
+ */
+function openWithDefaultApp(abs: string): void {
+  const platform = process.platform;
+  let cmd: string;
+  let args: string[];
+  if (platform === "win32") {
+    cmd = "cmd.exe";
+    args = ["/c", "start", "", abs];
+  } else if (platform === "darwin") {
+    cmd = "open";
+    args = [abs];
+  } else {
+    cmd = "xdg-open";
+    args = [abs];
+  }
+  const child = spawn(cmd, args, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  child.on("error", () => {
+    // swallow — request already returned { ok: true }
   });
   try {
     child.unref();
@@ -242,6 +284,55 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
       return reply
         .code(500)
         .send({ error: "vscode_launch_failed", message: launched.message });
+    },
+  );
+
+  // ---------- POST /fs/open-in-browser ----------
+  // Hand an .html / .htm / .xhtml file to the OS default app (= default
+  // browser for these types). Fire-and-forget; errors after launch are not
+  // surfaced.
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/fs/open-in-browser",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = PathBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      const relPath = parsed.data.path;
+      if (!HTML_SUFFIX_RE.test(relPath)) {
+        serverLog("warn", "fs", "open-in-browser 拒绝: 非 html 后缀", {
+          projectId: proj.id,
+          meta: { path: relPath },
+        });
+        return reply.code(400).send({ error: "not_a_html_file" });
+      }
+      try {
+        const abs = safeResolve(proj.path, relPath);
+        if (!existsSync(abs)) {
+          serverLog("warn", "fs", "open-in-browser 拒绝: 文件不存在", {
+            projectId: proj.id,
+            meta: { path: relPath },
+          });
+          return reply.code(404).send({ error: "path_not_found" });
+        }
+        openWithDefaultApp(abs);
+        serverLog("info", "fs", "open-in-browser 成功", {
+          projectId: proj.id,
+          meta: { path: relPath },
+        });
+        return reply.send({ ok: true });
+      } catch (err) {
+        serverLog("error", "fs", "open-in-browser 失败", {
+          projectId: proj.id,
+          meta: {
+            path: relPath,
+            error: { message: (err as Error)?.message ?? String(err) },
+          },
+        });
+        return sendErr(reply, err);
+      }
     },
   );
 

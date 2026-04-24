@@ -10,3 +10,6 @@ packages/server/data/
 *.log
 .vibespace/
 .claude/settings.local.json
+dev/
+.claude/
+docs/

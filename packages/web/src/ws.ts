@@ -1,5 +1,5 @@
 import { backendBase } from './api'
-import type { ClientMsg, ServerMsg, WSConnState } from './types'
+import type { ClientMsg, LogLevel, ServerMsg, WSConnState } from './types'
 
 const RECONNECT_DELAYS = [1000, 2000, 5000]
 
@@ -115,6 +115,23 @@ class AimonWS {
 
   requestReplay(id: string): void {
     this.send({ type: 'replay', sessionId: id })
+  }
+
+  /**
+   * Fire-and-forget client log → backend for persistence. Dropped silently
+   * when the socket isn't open (reconnect will not replay the queue, to
+   * avoid a log storm after a long disconnect). Callers should never rely
+   * on delivery for correctness.
+   */
+  sendClientLog(entry: {
+    level: LogLevel
+    scope: string
+    msg: string
+    projectId?: string
+    sessionId?: string
+    meta?: unknown
+  }): void {
+    this.rawSend({ type: 'log-from-client', ...entry })
   }
 
   onMessage(cb: (msg: ServerMsg) => void): () => void {

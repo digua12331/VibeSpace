@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as api from '../api'
 import type { DiffResult, FileContent, GitRef } from '../types'
 import CodeView from './CodeView'
+import CommentsPanel from './CommentsPanel'
 import DiffView from './DiffView'
 import MarkdownView from './MarkdownView'
+import HtmlPreview from './HtmlPreview'
 
 type Tab = 'diff' | 'source' | 'preview'
 
@@ -21,6 +23,10 @@ function isMarkdownPath(p: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(p)
 }
 
+function isHtmlPath(p: string): boolean {
+  return /\.(html?|htm)$/i.test(p)
+}
+
 function prettyBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -29,8 +35,26 @@ function prettyBytes(n: number): string {
 
 export default function FilePreview({ projectId, path, ref, from, to }: Props) {
   const canMarkdown = isMarkdownPath(path)
-  const defaultTab: Tab = from && to ? 'diff' : canMarkdown ? 'preview' : 'source'
+  const isHtml = isHtmlPath(path)
+  const canPreview = canMarkdown || isHtml
+  const defaultTab: Tab = from && to ? 'diff' : canPreview ? 'preview' : 'source'
   const [tab, setTab] = useState<Tab>(defaultTab)
+
+  // Comments state — only meaningful for markdown files.
+  const [anchorCounts, setAnchorCounts] = useState<Record<string, number>>({})
+  const [pendingAdd, setPendingAdd] = useState<
+    { anchorId: string; x: number; y: number } | null
+  >(null)
+  const [panelCollapsed, setPanelCollapsed] = useState(false)
+  const previewRef = useRef<HTMLDivElement | null>(null)
+  // Comments can only be mutated against the current worktree. History refs
+  // and diff views are read-only so we don't pollute historical commits.
+  const commentsWritable = canMarkdown && (!ref || ref === 'WORKTREE') && !from && !to
+  // Reset per-file state when the user switches tabs / ref.
+  useEffect(() => {
+    setPendingAdd(null)
+    setAnchorCounts({})
+  }, [path, projectId])
 
   // When the selected file changes we rehydrate the default tab choice.
   useEffect(() => {
@@ -82,6 +106,68 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
     }
   }, [projectId, path, ref, from, to, tab, canMarkdown])
 
+  // Ensure the md source is available for the comments panel even when the
+  // user is on the Diff tab — anchor resolution / orphan detection needs the
+  // current file content, not a patch.
+  useEffect(() => {
+    if (!canMarkdown) return
+    const wantDiff = tab === 'diff' && Boolean(from || to)
+    if (!wantDiff) return
+    let cancelled = false
+    api.getProjectFile(projectId, path, ref).then((f) => {
+      if (!cancelled) setFile(f)
+    }).catch(() => {
+      /* error surfaced by the primary fetch on tab switch */
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, path, ref, from, to, tab, canMarkdown])
+
+  const onBlockCommentClick = useCallback(
+    (anchorId: string) => {
+      if (!commentsWritable) return
+      // Find the block in the preview container and open the popover anchored
+      // near the 💬 icon's bounding box.
+      const root = previewRef.current
+      const el = root?.querySelector<HTMLElement>(`[data-anchor-id="${CSS.escape(anchorId)}"]`)
+      if (el) {
+        const r = el.getBoundingClientRect()
+        setPendingAdd({ anchorId, x: r.right + 8, y: r.top })
+      } else {
+        setPendingAdd({ anchorId, x: window.innerWidth / 2 - 160, y: 100 })
+      }
+      if (panelCollapsed) setPanelCollapsed(false)
+    },
+    [commentsWritable, panelCollapsed],
+  )
+
+  const onLocate = useCallback(
+    (anchorId: string) => {
+      // Switching to Preview tab so the block is actually in the DOM.
+      if (tab !== 'preview') setTab('preview')
+      // Defer to the next frame — the tab switch may need one paint to mount
+      // MarkdownView.
+      requestAnimationFrame(() => {
+        const el = previewRef.current?.querySelector<HTMLElement>(
+          `[data-anchor-id="${CSS.escape(anchorId)}"]`,
+        )
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          // Flash a subtle highlight so the user sees where they landed.
+          el.animate(
+            [
+              { backgroundColor: 'rgba(251, 191, 36, 0.25)' },
+              { backgroundColor: 'transparent' },
+            ],
+            { duration: 1200, easing: 'ease-out' },
+          )
+        }
+      })
+    },
+    [tab],
+  )
+
   const showDiffTab = Boolean(from || to)
 
   const header = useMemo(
@@ -106,7 +192,7 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
           <TabButton active={tab === 'source'} onClick={() => setTab('source')}>
             Source
           </TabButton>
-          {canMarkdown && (
+          {canPreview && (
             <TabButton active={tab === 'preview'} onClick={() => setTab('preview')}>
               Preview
             </TabButton>
@@ -114,7 +200,7 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
         </div>
       </div>
     ),
-    [path, file, showDiffTab, canMarkdown, tab],
+    [path, file, showDiffTab, canPreview, tab],
   )
 
   let body: React.ReactNode
@@ -140,7 +226,23 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
         </div>
       )
     } else if (tab === 'preview' && canMarkdown) {
-      body = <MarkdownView source={file.content} />
+      body = (
+        <MarkdownView
+          source={file.content}
+          anchorCounts={anchorCounts}
+          onBlockCommentClick={onBlockCommentClick}
+          readOnly={!commentsWritable}
+        />
+      )
+    } else if (tab === 'preview' && isHtml) {
+      body = (
+        <HtmlPreview
+          projectId={projectId}
+          path={path}
+          content={file.content}
+          truncated={file.truncated}
+        />
+      )
     } else {
       body = <CodeView code={file.content} lang={file.language} />
     }
@@ -148,10 +250,39 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
     body = <div className="px-4 py-6 text-sm text-muted">无内容。</div>
   }
 
-  return (
+  const showCommentsPanel = canMarkdown
+  const mdSource = file?.encoding === 'base64' ? '' : file?.content ?? ''
+
+  const mainColumn = (
     <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {header}
-      <div className="flex-1 overflow-auto">{body}</div>
+      <div ref={previewRef} className="flex-1 overflow-auto">
+        {body}
+      </div>
+    </div>
+  )
+
+  if (!showCommentsPanel) {
+    return (
+      <div className="flex-1 flex flex-row min-w-0 min-h-0">{mainColumn}</div>
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-row min-w-0 min-h-0">
+      {mainColumn}
+      <CommentsPanel
+        projectId={projectId}
+        path={path}
+        source={mdSource}
+        readOnly={!commentsWritable}
+        pendingAdd={pendingAdd}
+        onAddConsumed={() => setPendingAdd(null)}
+        onAnchorCountsChange={setAnchorCounts}
+        collapsed={panelCollapsed}
+        onToggleCollapsed={() => setPanelCollapsed((v) => !v)}
+        onLocate={onLocate}
+      />
     </div>
   )
 }

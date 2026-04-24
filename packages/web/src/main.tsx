@@ -3,7 +3,19 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { aimonWS } from './ws'
 import { useStore } from './store'
+import { pushLog, logAction, testBackendLog } from './logs'
 import './index.css'
+
+if (import.meta.env.DEV) {
+  // Long-lived dev namespace. Guarded by Vite's import.meta.env.DEV so Rollup
+  // tree-shakes the whole block out of the production bundle.
+  ;(window as unknown as { __vibe: unknown }).__vibe = {
+    pushLog,
+    logAction,
+    testBackendLog,
+    clearLogs: () => useStore.getState().clearLogs(),
+  }
+}
 
 window.addEventListener('contextmenu', (e) => e.preventDefault())
 
@@ -19,6 +31,17 @@ aimonWS.onMessage((msg) => {
       break
     case 'exit':
       st.markSessionExit(msg.sessionId, msg.code)
+      break
+    case 'log':
+      pushLog({
+        level: msg.level,
+        scope: msg.scope,
+        msg: msg.msg,
+        projectId: msg.projectId,
+        sessionId: msg.sessionId,
+        meta: msg.meta,
+        _fromServer: true,
+      })
       break
     default:
       break

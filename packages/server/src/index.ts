@@ -18,6 +18,7 @@ import { ptyManager } from "./pty-manager.js";
 import { statusManager } from "./status.js";
 import { CodexStatusDetector } from "./codex-status.js";
 import { registerWsHub, SERVER_VERSION } from "./ws-hub.js";
+import { serverLog } from "./log-bus.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
@@ -26,6 +27,7 @@ import { registerCliConfigRoutes } from "./routes/cli-configs.js";
 import { registerCliInstallerRoutes } from "./routes/cli-installer.js";
 import { registerGitRoutes } from "./routes/git.js";
 import { registerDocsRoutes } from "./routes/docs.js";
+import { registerCommentsRoutes } from "./routes/comments.js";
 import { registerIssuesRoutes } from "./routes/issues.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerPerfRoutes } from "./routes/perf.js";
@@ -143,6 +145,7 @@ async function main(): Promise<void> {
   await registerCliInstallerRoutes(app);
   await registerGitRoutes(app);
   await registerDocsRoutes(app);
+  await registerCommentsRoutes(app);
   await registerIssuesRoutes(app);
   await registerMemoryRoutes(app);
   await registerPerfRoutes(app);
@@ -152,7 +155,14 @@ async function main(): Promise<void> {
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });
-  console.log(`VibeSpace backend v${SERVER_VERSION} listening on http://${HOST}:${PORT}`);
+  serverLog(
+    "info",
+    "server",
+    `backend listening on http://${HOST}:${PORT}`,
+    { meta: { version: SERVER_VERSION, host: HOST, port: PORT } },
+  );
+  // Keep these two as plain console.log — they're startup-only path hints
+  // for the operator, not operation events that need to reach LogsView.
   console.log(`VibeSpace db: ${getDbPath()}`);
   console.log(`VibeSpace projects.json: ${getProjectsJsonPath()}`);
 

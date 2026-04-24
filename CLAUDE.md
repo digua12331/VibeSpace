@@ -109,6 +109,60 @@
 - **熔断：同一步骤连续失败 2–3 次就停**：如果 `verify` 没通过、报错没解决，**修改 2 次仍然不过就停手**。不要越改越大、不要为了凑绿灯去动任务范围之外的底层代码或测试用例。停下来，把错误日志、你试过的方案和当前的疑惑打印给用户，等人介入再继续。
 - **静态类型语言必须过类型检查**：如果项目使用 TypeScript / Rust / Go / Kotlin / Swift 等带静态类型的语言，且当前步骤改动了源码，`verify` 至少包含一次**项目层面的类型检查命令**并且结果为成功（具体命令参见项目 README、`package.json` scripts、`Makefile`、`justfile` 或构建配置）。不允许用"人工看过"替代；"单测通过"也不等于类型检查通过。
 
+## 操作日志规则（硬性）
+
+**所有"用户可感知的功能改动"在交付前必须配套操作日志**——前端埋点进 LogsView、后端日志也要能广播到 LogsView 并落盘到 `packages/server/data/logs/YYYY-MM-DD.log`。目的是让你自己和用户能在"浏览器 + 一个文件"里回放整次操作，后续测试/排障不用反复复现。
+
+### 适用范围（什么算"用户可感知的功能"）
+
+**必须埋**：
+- 新增 UI 操作（按钮、菜单项、对话框提交、拖放、快捷键等用户主动触发的行为）
+- 新增 mutation API（写数据库、改文件、起/停进程、调外部 CLI、发网络请求等会改变系统状态的后端路由）
+- 修复影响用户行为的 bug（用户能感知到行为变了，就要埋；否则它不是 bug 而是重构）
+
+**豁免**（不要强行加日志，否则规则会变废纸）：
+- typo / 文档改动 / 注释修改
+- 纯重构、纯样式调整、纯类型修复（行为没变）
+- 内部工具函数、helper、纯函数、格式化器
+- 轮询 / 心跳 / 健康检查 / WS 订阅确认（会日志风暴）
+- 测试代码、mock、fixture
+- 进程启动脚本里的路径打印之类的运维友好输出（保留 `console.log` 即可）
+
+### 起止配对（默认形态）
+
+一次"操作"至少产生两条日志：
+- **开始**：`level=info`，`msg='<action> 开始'`
+- **终点**：成功 `level=info msg='<action> 成功 (Nms)'`；失败 `level=error msg='<action> 失败: <reason>'` + `meta.error = { name, message, stack }`
+
+**不要只记一条**：只有开始没有终点，排障时无法判断操作是"卡住"还是"完成"；只有终点没有开始，无法知道耗时。
+
+### 工具
+
+- 前端 **必须用** `logAction(scope, action, fn, ctx?)`（见 `packages/web/src/logs.ts`）包装 mutation。手动两次 `pushLog` 只在"这次日志跟任何异步调用无关"时用（极少见）。
+- 后端 **必须用** `serverLog(level, scope, msg, extra?)`（见 `packages/server/src/log-bus.ts`）。不要直接 `console.log` 进业务路径——它不会到 LogsView 也不会落盘。
+- `scope` 用小写单词（`project` / `session` / `docs` / `git` / `installer` / `server` / ...），保持与 LogsView 既有使用一致；`action` 用动词（`create` / `start` / `archive` / `delete`）。
+
+### 必填字段 & meta 约束
+
+- 必填：`level` / `scope` / `msg`
+- 能拿到就附：`projectId`、`sessionId`、`meta`
+- `meta` 必须 **JSON-serializable**（`JSON.stringify` 不抛）且 **≤ 2KB**。不要把整份 diff、整棵 AST、DOM 节点塞进去——失败时写关键标识符 + 简短错误，要详细数据时写到专门的调试通道，不要塞进日志。
+
+### 验收方式（`tasks.md` 的 verify 必须包含）
+
+任何"新增 UI 操作"或"新增 mutation API"任务，其 `tasks.md` 对应步骤的 `verify` 必须显式写出：
+- "在浏览器 LogsView 看到 `scope=X action=Y` 的起止配对"
+- 失败分支至少有一次 ERROR 条目被人工触发验证过（如故意断网 / 传非法参数）
+
+没有这条 verify 的步骤不视为完成。
+
+### 日志落盘约定
+
+- 路径：`packages/server/data/logs/YYYY-MM-DD.log`（UTC 切日，JSONL 每行一个 LogEntry）
+- 文件由 `log-bus.ts::appendJsonl` 统一写入；前端日志通过 WS `log-from-client` 回传后端落盘
+- 不做自动清理 / 大小滚动（issues 里有一条"考虑日志保留策略"待决定）
+- LogsView 只显示内存 500 条，不读历史磁盘日志；看历史去 `tail -f` 文件
+
 ## Issues 档案
 
 当你在推进**当前任务**时，顺手发现跟本任务**无关**的可疑问题（死代码、看起来没引用的函数/变量、明显错字、可疑的逻辑、老旧注释、未被删干净的遗留等），**不要改代码**，而是**追加一条**到项目根下的 `dev/issues.md`。这份文件是全局问题池，不跟某个任务绑定。

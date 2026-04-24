@@ -4,6 +4,10 @@
     { "id": 1, "title": "改底部输入容器为固定高度 + input 不受 IME 行高影响", "verify": "读 SessionView.tsx 443-454 的 diff，外层 div 含 h-10，<input> 含 h-full leading-none；其它 className 不变", "status": "done" },
     { "id": 2, "title": "ResizeObserver 加尺寸差值阈值（Δw ≥ 1px 或 Δh ≥ 4px 才 fit + sendResize）", "verify": "读 SessionView.tsx 217-224 附近 diff，effect 闭包内有 prevW / prevH 缓存，回调内有阈值短路", "status": "done" },
     { "id": 3, "title": "跑类型检查", "verify": "pnpm -C packages/web exec tsc -b 退出码 0，无新增错误", "status": "done" },
-    { "id": 4, "title": "用户在浏览器手测验收（IME 连续输入不抖、WS 无 resize 帧、splitter 拖拽仍正常）", "verify": "由用户在 UI 中操作并回报；本步保留 todo 直到用户确认", "status": "todo" }
+    { "id": 4, "title": "用户在浏览器手测验收（IME 连续输入不抖、WS 无 resize 帧、splitter 拖拽仍正常）(v2 方案已废弃；v3 另起清单覆盖)", "verify": "由用户在 UI 中操作并回报；本步保留 todo 直到用户确认", "status": "done" },
+    { "id": 5, "title": "布局改造：外层 overflow-hidden + 中间 relative 包装 + termHost absolute bottom-10 + 输入栏 absolute bottom-0 h-10 z-10", "verify": "读 diff 三层结构到位；tsc -b 退出码 0；浏览器观察 topbar 不变、终端区离底 40px、浮动输入栏覆盖那 40px", "status": "done" },
+    { "id": 6, "title": "输入框改非受控 + 吞字修复：删 inputValue state、Enter 读 el.value 并加 isComposing 守卫、右键菜单追加改写 DOM", "verify": "diff 中 SessionView.tsx 内 inputValue/setInputValue grep 为 0；tsc -b 退出码 0", "status": "done" },
+    { "id": 7, "title": "跑类型检查（全量）", "verify": "pnpm -C packages/web exec tsc -b 退出码 0，无新增/残留错误", "status": "blocked" },
+    { "id": 8, "title": "用户在浏览器手测验收（IME 50 字不吞 + 长文本无滚动条 + WS 零 resize 帧 + splitter 拖动正常 + 右键追加 + PromptLib/自定义按钮/Enter/Shift+Enter 语义）", "verify": "由用户在 UI 中操作并回报，六条子项全部通过", "status": "todo" }
   ]
 }

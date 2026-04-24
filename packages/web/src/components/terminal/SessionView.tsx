@@ -21,6 +21,13 @@ import {
   type CustomButton,
 } from '../../customButtons'
 import type { AgentKind, Session } from '../../types'
+import InputMenu from './InputMenu'
+import { getSlashCommands } from './slashCommands'
+
+type MenuState =
+  | { kind: 'none' }
+  | { kind: 'slash'; trigger: number; filter: string; selected: number }
+  | { kind: 'mention'; trigger: number; filter: string; selected: number }
 
 const PASTE_IMAGE_MIMES = new Set<string>([
   'image/png',
@@ -176,7 +183,8 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const [inputValue, setInputValue] = useState('')
+  const filesRef = useRef<string[] | null>(null)
+  const [menu, setMenu] = useState<MenuState>({ kind: 'none' })
   const [busy, setBusy] = useState(false)
   const [showExitInfo, setShowExitInfo] = useState(true)
   const [confirmClose, setConfirmClose] = useState(false)
@@ -316,7 +324,10 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   // When this tab becomes active after being hidden, xterm's measured
   // dimensions are stale (display toggled). Re-fit on activation.
   useEffect(() => {
-    if (!active) return
+    if (!active) {
+      setMenu({ kind: 'none' })
+      return
+    }
     const raf = requestAnimationFrame(() => {
       try {
         fitRef.current?.fit()
@@ -369,12 +380,209 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     onClose(session.id)
   }
 
+  function fillInput(text: string) {
+    const el = inputRef.current
+    if (!el) return
+    el.value = text
+    el.focus()
+    el.setSelectionRange(text.length, text.length)
+    setMenu({ kind: 'none' })
+  }
+
+  function ensureFilesLoaded() {
+    if (filesRef.current !== null) return
+    filesRef.current = []
+    void (async () => {
+      try {
+        const r = await api.listProjectFiles(session.projectId)
+        filesRef.current = r.files.map((f) => f.path)
+        // Re-trigger detection if mention menu is still open with stale empty list.
+        const el = inputRef.current
+        if (el && document.activeElement === el) {
+          const next = detectTrigger(el)
+          setMenu(next)
+        }
+      } catch {
+        // On failure keep filesRef as [] so mention menu shows "无匹配".
+      }
+    })()
+  }
+
+  function detectTrigger(el: HTMLInputElement): MenuState {
+    const v = el.value
+    const cursor = el.selectionStart ?? v.length
+    // Scan left from cursor to find the most recent trigger char or whitespace.
+    let i = cursor - 1
+    while (i >= 0) {
+      const ch = v[i]
+      if (ch === ' ' || ch === '\t' || ch === '\n') return { kind: 'none' }
+      if (ch === '/') {
+        // Valid slash only when `/` is at start of input or preceded by whitespace.
+        const prev = i > 0 ? v[i - 1] : ''
+        const atBoundary = i === 0 || prev === ' ' || prev === '\t' || prev === '\n'
+        if (!atBoundary) return { kind: 'none' }
+        if (getSlashCommands(session.agent).length === 0) return { kind: 'none' }
+        return {
+          kind: 'slash',
+          trigger: i,
+          filter: v.slice(i, cursor),
+          selected: 0,
+        }
+      }
+      if (ch === '@') {
+        const prev = i > 0 ? v[i - 1] : ''
+        const atBoundary = i === 0 || prev === ' ' || prev === '\t' || prev === '\n'
+        if (!atBoundary) return { kind: 'none' }
+        ensureFilesLoaded()
+        return {
+          kind: 'mention',
+          trigger: i,
+          filter: v.slice(i + 1, cursor),
+          selected: 0,
+        }
+      }
+      i--
+    }
+    return { kind: 'none' }
+  }
+
+  function getMenuItems(state: MenuState): string[] {
+    if (state.kind === 'slash') {
+      const all = getSlashCommands(session.agent)
+      const q = state.filter.toLowerCase()
+      return all.filter((c) => c.toLowerCase().startsWith(q))
+    }
+    if (state.kind === 'mention') {
+      const files = filesRef.current ?? []
+      if (!state.filter) return files.slice(0, 200)
+      const q = state.filter.toLowerCase()
+      return files.filter((p) => p.toLowerCase().includes(q)).slice(0, 200)
+    }
+    return []
+  }
+
+  function pickItem(index: number) {
+    if (index < 0) {
+      setMenu({ kind: 'none' })
+      return
+    }
+    const state = menu
+    if (state.kind === 'none') return
+    const items = getMenuItems(state)
+    if (index >= items.length) return
+    const picked = items[index]
+    const el = inputRef.current
+    if (!el) return
+    const v = el.value
+    const cursorEnd =
+      state.kind === 'slash'
+        ? state.trigger + state.filter.length
+        : state.trigger + 1 + state.filter.length
+    const replacement =
+      state.kind === 'slash'
+        ? picked + ' '
+        : formatForSession(session.agent, picked, 'file')
+    const before = v.slice(0, state.trigger)
+    const after = v.slice(cursorEnd)
+    const next = before + replacement + after
+    el.value = next
+    const pos = (before + replacement).length
+    el.setSelectionRange(pos, pos)
+    el.focus()
+    setMenu({ kind: 'none' })
+  }
+
   function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.nativeEvent.isComposing) return
+    if (menu.kind !== 'none') {
+      const items = getMenuItems(menu)
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMenu({ kind: 'none' })
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        if (items.length === 0) return
+        setMenu({ ...menu, selected: (menu.selected + 1) % items.length })
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        if (items.length === 0) return
+        setMenu({
+          ...menu,
+          selected: (menu.selected - 1 + items.length) % items.length,
+        })
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        e.preventDefault()
+        if (items.length > 0) pickItem(menu.selected)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      aimonWS.sendInput(session.id, inputValue + '\r')
-      setInputValue('')
+      const el = e.currentTarget
+      aimonWS.sendInput(session.id, el.value + '\r')
+      el.value = ''
+      setMenu({ kind: 'none' })
     }
+  }
+
+  function onInputChange(e: React.FormEvent<HTMLInputElement>) {
+    // React's onInput fires after composition end, so `isComposing` is false
+    // here in normal use. Guard anyway for safety.
+    const ne = e.nativeEvent as InputEvent
+    if (ne.isComposing) return
+    const next = detectTrigger(e.currentTarget)
+    setMenu(next)
+  }
+
+  function onInputPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const items = e.clipboardData?.items
+    if (!items) return
+    let imageItem: DataTransferItem | null = null
+    for (const it of items) {
+      if (PASTE_IMAGE_MIMES.has(it.type)) {
+        imageItem = it
+        break
+      }
+    }
+    if (!imageItem) return
+    e.preventDefault()
+    const blob = imageItem.getAsFile()
+    if (!blob) return
+    const el = e.currentTarget
+    const mime = imageItem.type
+    void (async () => {
+      if (blob.size > PASTE_IMAGE_MAX_BYTES) {
+        await alertDialog(
+          `图片超过 5 MB 上限（实际 ${(blob.size / 1024 / 1024).toFixed(1)} MB）。Claude 视觉 API 单图 ≤ 5 MB。`,
+          { title: '图片过大', variant: 'danger' },
+        )
+        return
+      }
+      try {
+        const r = await api.uploadPastedImage(session.projectId, session.id, blob, mime)
+        const ref = formatForSession(session.agent, r.relPath, 'file')
+        const start = el.selectionStart ?? el.value.length
+        const end = el.selectionEnd ?? el.value.length
+        const before = el.value.slice(0, start)
+        const after = el.value.slice(end)
+        const sep = before && !before.endsWith(' ') ? ' ' : ''
+        el.value = before + sep + ref + after
+        const cursor = (before + sep + ref).length
+        el.setSelectionRange(cursor, cursor)
+        el.focus()
+      } catch (err) {
+        await alertDialog(
+          `上传图片失败: ${err instanceof Error ? err.message : String(err)}`,
+          { title: '粘贴失败', variant: 'danger' },
+        )
+      }
+    })()
   }
 
   const isDead = status === 'stopped' || status === 'crashed'
@@ -388,7 +596,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     <div
       id={`session-view-${session.id}`}
       onMouseDown={() => clearNotify(session.id)}
-      className={`absolute inset-0 flex flex-col bg-bg ${ringClass}`}
+      className={`absolute inset-0 flex flex-col bg-bg overflow-hidden ${ringClass}`}
       style={{
         visibility: active ? 'visible' : 'hidden',
         pointerEvents: active ? 'auto' : 'none',
@@ -456,9 +664,9 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
                   return (
                     <button
                       key={b.id}
-                      onClick={() => aimonWS.sendInput(session.id, cmd + '\r')}
+                      onClick={() => fillInput(cmd)}
                       disabled={busy}
-                      title={`发送: ${cmd}`}
+                      title={`填入输入框: ${cmd}`}
                       className={`fluent-btn px-2 py-0.5 text-xs rounded border disabled:opacity-50 ${BUTTON_COLOR_CLASSES[b.color]}`}
                     >
                       {b.text}
@@ -477,56 +685,57 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         </div>
       </div>
 
-      <div
-        ref={termHostRef}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          const term = termRef.current
-          if (term && term.hasSelection()) {
-            const sel = term.getSelection()
-            openContextMenu({
-              x: e.clientX,
-              y: e.clientY,
-              items: buildTerminalSelectionMenu(
-                sel,
-                () => void copySelectionToClipboard(term),
-                (text) => {
-                  setInputValue((prev) => (prev ? prev + ' ' + text : text))
-                  queueMicrotask(() => {
-                    const el = inputRef.current
-                    if (!el) return
-                    el.focus()
-                    const len = el.value.length
-                    el.setSelectionRange(len, len)
-                  })
-                },
-              ),
-            })
-            return
-          }
-          // No selection → legacy right-click = paste from clipboard.
-          navigator.clipboard
-            .readText()
-            .then((text) => {
-              if (text && termRef.current) termRef.current.paste(text)
-            })
-            .catch(() => { /* clipboard blocked — silent */ })
-        }}
-        className={`flex-1 min-h-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
-      />
-
-      <div className="flex items-center gap-2 px-3 h-10 border-t border-border/60 bg-white/[0.02]">
-        <span className="text-subtle text-xs">{'>'}</span>
-        <input
-          ref={inputRef}
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={onInputKey}
-          disabled={isDead}
-          placeholder={isDead ? '会话已结束' : 'type to send (Enter)'}
-          className="flex-1 h-full leading-none bg-transparent text-sm font-mono placeholder:text-subtle disabled:opacity-50"
-          onMouseDown={() => setShowExitInfo(true)}
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        <div
+          ref={termHostRef}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            const term = termRef.current
+            if (term && term.hasSelection()) {
+              const sel = term.getSelection()
+              openContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                items: buildTerminalSelectionMenu(
+                  sel,
+                  () => void copySelectionToClipboard(term),
+                  (text) => {
+                    queueMicrotask(() => {
+                      const el = inputRef.current
+                      if (!el) return
+                      el.value = (el.value ? el.value + ' ' : '') + text
+                      el.focus()
+                      el.setSelectionRange(el.value.length, el.value.length)
+                    })
+                  },
+                ),
+              })
+              return
+            }
+            // No selection → legacy right-click = paste from clipboard.
+            navigator.clipboard
+              .readText()
+              .then((text) => {
+                if (text && termRef.current) termRef.current.paste(text)
+              })
+              .catch(() => { /* clipboard blocked — silent */ })
+          }}
+          className={`absolute top-0 left-0 right-0 bottom-[52px] bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
         />
+
+        <div className="absolute bottom-3 left-3 right-3 h-10 z-10 flex items-center gap-2 px-3 rounded-win border border-border bg-card shadow-flyout">
+          <span className="text-subtle text-xs">{'>'}</span>
+          <input
+            ref={inputRef}
+            onKeyDown={onInputKey}
+            onPaste={onInputPaste}
+            onInput={onInputChange}
+            disabled={isDead}
+            placeholder={isDead ? '会话已结束' : 'type to send (Enter)'}
+            className="flex-1 h-full leading-none bg-transparent text-sm font-mono placeholder:text-subtle disabled:opacity-50 outline-none"
+            onMouseDown={() => setShowExitInfo(true)}
+          />
+        </div>
       </div>
 
       {showPerm && project && (
@@ -537,8 +746,20 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         open={promptLibOpen}
         onClose={() => setPromptLibOpen(false)}
         onSend={(text) => {
-          aimonWS.sendInput(session.id, text)
+          fillInput(text)
           setPromptLibOpen(false)
+        }}
+      />
+
+      <InputMenu
+        open={menu.kind !== 'none'}
+        anchorRef={inputRef}
+        items={menu.kind === 'none' ? [] : getMenuItems(menu)}
+        selectedIndex={menu.kind === 'none' ? 0 : menu.selected}
+        onPick={pickItem}
+        onHover={(idx) => {
+          if (menu.kind === 'none') return
+          setMenu({ ...menu, selected: idx })
         }}
       />
 

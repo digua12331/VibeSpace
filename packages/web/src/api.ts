@@ -6,6 +6,9 @@ import type {
   CliConfigState,
   CliEntry,
   CliStatusResponse,
+  CommentAnchor,
+  CommentEntry,
+  CommentsList,
   CommitDetail,
   CommitResult,
   CommitSummary,
@@ -341,6 +344,54 @@ export function archiveDocsTask(
   )
 }
 
+// ---------- Comments（md 文件 tab 评论） ----------
+
+export function listComments(
+  projectId: string,
+  path: string,
+): Promise<CommentsList> {
+  const qs = new URLSearchParams({ path })
+  return request<CommentsList>(
+    `/api/projects/${encodeURIComponent(projectId)}/comments?${qs}`,
+  )
+}
+
+export function createComment(
+  projectId: string,
+  path: string,
+  anchor: CommentAnchor,
+  body: string,
+): Promise<CommentEntry> {
+  return request<CommentEntry>(
+    `/api/projects/${encodeURIComponent(projectId)}/comments`,
+    jsonInit('POST', { path, anchor, body }),
+  )
+}
+
+export function updateComment(
+  projectId: string,
+  commentId: string,
+  path: string,
+  body: string,
+): Promise<CommentEntry> {
+  return request<CommentEntry>(
+    `/api/projects/${encodeURIComponent(projectId)}/comments/${encodeURIComponent(commentId)}`,
+    jsonInit('PATCH', { path, body }),
+  )
+}
+
+export function deleteComment(
+  projectId: string,
+  commentId: string,
+  path: string,
+): Promise<void> {
+  const qs = new URLSearchParams({ path })
+  return request<void>(
+    `/api/projects/${encodeURIComponent(projectId)}/comments/${encodeURIComponent(commentId)}?${qs}`,
+    { method: 'DELETE' },
+  )
+}
+
 // ---------- Issues 档案 ----------
 
 export function listIssues(projectId: string): Promise<IssuesPayload> {
@@ -443,6 +494,16 @@ export function openInVscode(projectId: string): Promise<{ ok: boolean }> {
   return request(
     `/api/projects/${encodeURIComponent(projectId)}/fs/open-vscode`,
     { method: 'POST' },
+  )
+}
+
+export function openInBrowser(
+  projectId: string,
+  path: string,
+): Promise<{ ok: boolean }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/fs/open-in-browser`,
+    jsonInit('POST', { path }),
   )
 }
 

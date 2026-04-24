@@ -3,12 +3,23 @@ import type { WebSocket } from "ws";
 import { ptyManager } from "./pty-manager.js";
 import { statusManager } from "./status.js";
 import type { SessionStatus } from "./db.js";
+import { persistClientLog, handleClientLogRoundtrip } from "./log-bus.js";
+import type { ClientLogPayload, LogLevel } from "./types/log.js";
 
 export const SERVER_VERSION = "0.1.0";
 
 interface ClientCtx {
   socket: WebSocket;
   subs: Set<string>;
+}
+
+// Module-level client set so non-WS modules (e.g. log-bus) can broadcast.
+// registerWsHub() owns its lifecycle; if not yet registered, broadcast is a no-op.
+const clients = new Set<ClientCtx>();
+
+export function broadcast(msg: Record<string, unknown>): void {
+  const data = JSON.stringify(msg);
+  for (const c of clients) safeSend(c.socket, data);
 }
 
 /**
@@ -20,6 +31,7 @@ interface ClientCtx {
  *     { type: 'input',       sessionId, data }
  *     { type: 'resize',      sessionId, cols, rows }
  *     { type: 'replay',      sessionId }
+ *     { type: 'log-from-client', level, scope, msg, projectId?, sessionId?, meta? }
  *
  *   Server → Client:
  *     { type: 'hello', serverVersion }
@@ -28,10 +40,9 @@ interface ClientCtx {
  *     { type: 'exit',   sessionId, code, signal }
  *     { type: 'replay', sessionId, data }
  *     { type: 'error',  message }
+ *     { type: 'log',    level, scope, msg, projectId?, sessionId?, meta? }
  */
 export function registerWsHub(app: FastifyInstance): void {
-  const clients = new Set<ClientCtx>();
-
   // ---- PTY → broadcast ----
   ptyManager.on("output", (sessionId: string, data: string) => {
     const msg = JSON.stringify({ type: "output", sessionId, data });
@@ -181,6 +192,22 @@ function handleClientMsg(ctx: ClientCtx, msg: unknown): void {
       );
       return;
     }
+    case "log-from-client": {
+      const payload = parseClientLogPayload(msg);
+      if (!payload) {
+        safeSend(
+          ctx.socket,
+          JSON.stringify({
+            type: "error",
+            message: "log-from-client requires {level,scope,msg}",
+          }),
+        );
+        return;
+      }
+      persistClientLog(payload);
+      handleClientLogRoundtrip(payload);
+      return;
+    }
     default:
       safeSend(
         ctx.socket,
@@ -199,4 +226,27 @@ function safeSend(sock: WebSocket, data: string): void {
 
 function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
+}
+
+function parseClientLogPayload(
+  msg: Record<string, unknown>,
+): ClientLogPayload | null {
+  const level = msg.level;
+  const scope = msg.scope;
+  const text = msg.msg;
+  if (
+    (level !== "info" && level !== "warn" && level !== "error") ||
+    typeof scope !== "string" ||
+    typeof text !== "string"
+  ) {
+    return null;
+  }
+  return {
+    level: level as LogLevel,
+    scope,
+    msg: text,
+    projectId: typeof msg.projectId === "string" ? msg.projectId : undefined,
+    sessionId: typeof msg.sessionId === "string" ? msg.sessionId : undefined,
+    meta: msg.meta,
+  };
 }

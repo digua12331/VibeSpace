@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api'
 import { useStore } from '../store'
+import { logAction } from '../logs'
 
 export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const refreshProjects = useStore((s) => s.refreshProjects)
@@ -27,12 +28,19 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
     }
     setSubmitting(true)
     try {
-      await api.createProject({
-        name: name.trim(),
-        path: path.trim(),
-        applyDevDocsGuidelines: applyDevDocs,
-      })
-      await refreshProjects()
+      await logAction(
+        'project',
+        'create',
+        async () => {
+          await api.createProject({
+            name: name.trim(),
+            path: path.trim(),
+            applyDevDocsGuidelines: applyDevDocs,
+          })
+          await refreshProjects()
+        },
+        { meta: { name: name.trim(), path: path.trim(), applyDevDocs } },
+      )
       onClose()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))

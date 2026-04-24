@@ -1,70 +1,155 @@
-# 终端输入抖动 · Plan（v2，已对齐截图）
+# 终端输入抖动 · Plan（v3，浮动输入框 + 吞字）
 
-## 背景（更新）
-
-用户截图确认：所谓"进度条"是中文输入法（IME）候选词浮窗 `1改变 2改编 3概念 …`，
-它本身是系统级浮窗，但它的弹出 / 消失会让浏览器里底部 `<input>` 元素发生
-sub-pixel 高度变化，沿 `flex-1` 链条传到上方 xterm 容器，触发：
-
-`ResizeObserver` → `fit.fit()` → `aimonWS.sendResize()` → 后端 PTY SIGWINCH → AI agent 重绘
-prompt → 用户看到"终端区域被拉长一下，下方多出一条状态/候选条"。
-
-随着用户继续打字、IME 候选条出现/消失、上屏，整套 resize 来回触发，呈现"来回变化"。
+> v2（固定 h-10 + ResizeObserver 阈值）已实现并通过类型检查，但用户手测仍然报告
+> "吞字 + 界面抖动"，step 4 未 verify。诊断认为 v2 只处理了"抖动的一种来源"
+> （flex 链路 sub-pixel 扰动），没处理两个真正让用户难受的根因：
+>
+> 1. **吞字** = 受控 `<input>` + 中文 IME composing 期间 React re-render 打断合成态 → 丢字。
+> 2. **抖动的另一条路径** = 任何让 `<input>` 或其父容器发生高度扰动的事件（比如聚焦状态、IME 候选条与浏览器的相对位置），只要输入框仍在 flex 链路里，就仍有机会通过 flex 再分布影响 termHost。
+>
+> v3 的思路是**把 input 彻底从 flex 链路里摘出去** + **从 React 受控变成非受控**，
+> 同时补上"整个会话视图不允许出现滚动条"的硬约束。
 
 ## 目标
 
-让"会话页签内的 xterm 终端区"和"底部输入栏"的尺寸**完全由手动拖拽分隔条决定**，
-**不再被任何内容变化（IME、输入文本、placeholder、字号变更）触发的高度抖动连带 resize**。
+1. 底部输入框物理上**悬浮**在 xterm 终端区域上方（绝对定位，不再占用 flex 列布局），
+   所以输入框自身任何高度/内部变化**都不可能**再通过 flex 链路传到 termHost。
+2. 中文 IME 连续输入**不再吞字**：输入框改为**非受控**（读 ref，不触发 SessionView re-render）。
+3. **终端会话视图的外框长宽完全固定**：不论输入多长、IME 候选条多高，整个
+   `session-view-<id>` 容器**永远不出现滚动条**。输入内容溢出只允许在 `<input>`
+   自己内部做原生横向滚动（无可见滚动条），不向外扩散。
 
-### 可验证的验收标准（必须能在浏览器里看到）
+## 可验证的验收标准（必须能在浏览器里看到）
 
-1. 打开任意会话页签，在底部 `> type to send (Enter)` 输入框：
-   - **中文 IME 连续输入** + 候选词浮窗反复出现：xterm 区域高度像素级稳定，底部输入栏高度恒定，AI agent 的 prompt 行不被重绘冲掉。
-   - **粘贴 200+ 字符长文本**：同上不抖。
-   - **切换中英文 / 反复退格**：同上不抖。
-2. DevTools → Network → WS：打字过程中**不再有** `resize` 帧发出（仅在拖动 splitter 或窗口尺寸变化时才发）。
-3. 手动拖拽主 splitter / sidebar splitter 改变窗口尺寸：xterm 仍然能正确 `fit`，cols / rows 正常更新。
-4. 类型检查通过（命令在 Context 阶段确认；初步看是 `pnpm -C packages/web build` 或 `tsc --noEmit`）。
+1. 打开任意会话页签，在底部输入框：
+   - **中文 IME 连续打 50 字**（比如 "你好世界这是一段测试文本"）：逐字上屏，**不丢任何一个字**；xterm 区域 cols/rows 不变；AI agent 的 prompt 行不重绘。
+   - **粘贴 500+ 字符长文本**：输入框内部横向滚（不显示滚动条即可），xterm 区域不变，`session-view-<id>` 容器不出现任何滚动条。
+   - **IME 候选条反复出现/消失**：xterm 区域像素级稳定。
+2. DevTools → Elements 选中 `#session-view-<id>` → Computed：`overflow` 链路上至少有一层 `overflow: hidden`，整个视图不可滚动。
+3. DevTools → Network → WS：纯打字过程**无 `resize` 帧**；只有拖 splitter / 改窗口尺寸时才发。
+4. 拖主 splitter、左右侧边栏 splitter、窗口 resize：xterm 仍正确 fit，cols/rows 更新正常。
+5. 右键终端选区 → "添加到终端聊天"：文本正确追加到输入框末尾，光标落到末尾，输入框获得焦点。
+6. PromptLibrary 发送、自定义按钮发送、Enter 发送、Shift+Enter 不发送：全部保持原语义。
+7. 类型检查通过：`pnpm -C packages/web exec tsc -b` 退出码 0。
 
 ## 非目标 (Non-Goals)
 
-- 不动 xterm 字体 / 字号 / 主题。
-- 不修改 IME composition 时按 Enter 的发送语义（该问题真实存在但属另一任务，记入 `dev/issues.md`）。
-- 不引入新的窗口管理库 / 状态机。
-- 不让 input 自适应高度、不让终端自适应内容 —— 用户明确要求"固定就是固定"。
+- 不动 xterm 字体/字号/主题/scrollback。
+- 不改 WS 协议、不动 `aimonWS` 任何接口。
+- 不改顶部 button bar、不改右侧 PermissionsDrawer、不改 PromptLibraryDialog 内部。
+- 不让输入框可拖拽/可折叠/可移动——就是固定悬浮在底部，高度 `h-10`。
+- 不引入 IME 事件抽象层或 input 组件库，所有改动局限在 `SessionView.tsx`。
 
-## 实施方案（核心思路：把"内容驱动的 resize"和"用户驱动的 resize"分开）
+## 实施方案
 
-### 关键改动点（`packages/web/src/components/terminal/SessionView.tsx`）
+### 改动点集中在 `packages/web/src/components/terminal/SessionView.tsx`
 
-1. **给底部输入容器写死高度**
-   - 当前 (line 443-454)：`<div className="flex items-center gap-2 px-3 py-2 border-t border-border/60 bg-white/[0.02]">` —— 高度由 `py-2` + 内部 `<input>` 行高决定，IME 时会抖。
-   - 改为显式 `h-10`（或 9，依视觉对齐定）；同时给 `<input>` 加 `h-full leading-none`，杜绝 IME 影响外层。
+#### 1. 布局：把底部输入条从 flex 子节点改成绝对定位悬浮层
 
-2. **让 ResizeObserver 只对"宽度变化"或"显著高度变化"做 fit**
-   - 当前 (line 217-224) 的 ResizeObserver 任意尺寸变化都触发 `fit + sendResize`。
-   - 改为：缓存上一次的 `width / height`，只有 `Δwidth >= 1px` 或 `Δheight >= 4px` 时才 fit。这样 IME 引起的 sub-pixel 高度抖被吞掉；splitter 拖拽引起的几十像素变化照常生效。
-   - 数值 4px 是一个保守阈值（一行 xterm 约 16-18px），保证拖动 splitter 时绝不会失灵。
+当前（v2 已落地）：
+```tsx
+<div className="absolute inset-0 flex flex-col bg-bg ...">
+  <div>topbar</div>
+  <div ref={termHostRef} className="flex-1 min-h-0 p-1" />
+  <div className="flex items-center gap-2 px-3 h-10 border-t ...">
+    <input ... />
+  </div>
+</div>
+```
 
-3. **给 termHost 容器加 `min-h-0` 已有，但补一层"高度由 flex 自动算"的保护**
-   - 验证一下父链是否有 `flex-1 min-h-0` 完整闭环（已有），不需要新增。
+改为：
+```tsx
+<div className="absolute inset-0 flex flex-col bg-bg overflow-hidden ...">
+  <div>topbar</div>
+  <div className="relative flex-1 min-h-0 overflow-hidden">
+    <div
+      ref={termHostRef}
+      className="absolute inset-0 p-1 pb-10 bg-[#1c1c1c] ..."
+    />
+    <div className="absolute bottom-0 left-0 right-0 h-10 flex items-center gap-2 px-3 border-t border-border/60 bg-white/[0.02] z-10">
+      <input ref={inputRef} ... />
+    </div>
+  </div>
+</div>
+```
 
-> **方案简洁性自检（按 CLAUDE.md "外科改动" 要求）**：
-> - 不引入 IME 事件 (compositionstart/end) 监听 —— 上面 1+2 已能解决问题，加 IME 监听是多余抽象。
-> - 不动 store / props / 类型 —— 改动局限在 SessionView.tsx。
-> - 不顺手优化任何相邻代码。
+关键点：
+- 外框加 `overflow-hidden` → 保证"视图永远不滚"。
+- 新增 `relative flex-1 min-h-0 overflow-hidden` 中间包装 → 给 termHost 和 floating input 提供定位上下文。
+- termHost 从 `flex-1` 改为 `absolute inset-0`，padding 从 `p-1` 改为 `p-1 pb-10`（底部留 40px 给浮动输入框）。
+- 输入框容器从 flex 子节点改为 `absolute bottom-0 ... h-10 ... z-10`，彻底脱离 flex 链路。
+
+#### 2. FitAddon 行数自动适配
+
+`@xterm/addon-fit` 的 `fit()` 内部用 `getComputedStyle(host)` 减去 padding 计算 rows。
+termHost `pb-10`（40px）会被自动扣除 → xterm 只占 termHost 可视区的上 `height - 44px`
+（含 `p-1` 的 4px 上下各一份），正好不被浮动输入框覆盖。**不用手动改 fit 逻辑**。
+
+#### 3. 吞字：输入框改为非受控
+
+当前 `inputValue` state 的所有消费点：
+- `<input value>` / `<input onChange>` 受控绑定 → **改成非受控**（只留 `ref`）。
+- `onInputKey` Enter 发送 → 改读 `inputRef.current?.value ?? ''`，发完 `inputRef.current.value = ''`。
+- 右键菜单 "添加到终端聊天" → 改成直接操作 DOM：
+  ```ts
+  const el = inputRef.current
+  if (!el) return
+  el.value = (el.value ? el.value + ' ' : '') + text
+  el.focus()
+  el.setSelectionRange(el.value.length, el.value.length)
+  ```
+- `inputValue` state 本身可以**整个删掉**（`const [inputValue, setInputValue]` 及其所有引用）。
+
+吞字根因：受控模式下每个 keystroke → `setInputValue` → SessionView 整棵 re-render → React
+重新把 `value` 属性 diff 回 `<input>`。IME composing 中这个 diff 会让浏览器认为合成态
+被打断，丢字。非受控彻底断开这条链：打字过程零 React re-render。
+
+IME 额外补一道：`onKeyDown` 里用 `e.nativeEvent.isComposing` 保护 Enter，避免候选中按 Enter 误发送：
+```ts
+function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
+  if (e.nativeEvent.isComposing) return
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    const el = e.currentTarget
+    aimonWS.sendInput(session.id, el.value + '\r')
+    el.value = ''
+  }
+}
+```
+
+#### 4. 输入溢出不产生外部滚动条
+
+`<input>` 本身是单行、原生 overflow 不显示滚动条；但需要确认：
+- 外框 `overflow-hidden` 已加 → 兜底。
+- 输入框容器 `h-10` 固定 → IME 候选条是系统级浮窗，不会撑高容器。
+- 不加任何 `overflow-x: auto`（否则会出滚动条）。
+
+> **方案简洁性自检**（按 CLAUDE.md "外科改动"）：
+> - 不引入 compositionstart/end 事件监听（用 `nativeEvent.isComposing` 足够）。
+> - 不引入 useRef 新 hook（复用现有 `inputRef`）。
+> - 不抽新组件、不改 store、不改 ws、不改 api。
+> - 删代码多于加代码（`inputValue` state 整个删）。
 
 ## 边界情况
 
-- **死会话页签**（`isDead`）：input 被 disabled，但容器固定高度依然生效，不会引起视觉跳变。
-- **页签切换 active → inactive → active**（line 266-277 的 `useEffect`）：那里的 `requestAnimationFrame` re-fit 必须保留，是激活后修正 stale 尺寸的，不在本次方案的"打字静默"逻辑覆盖范围（那是 active=true 期间）。
-- **窗口最大化 / 最小化**：触发 ResizeObserver 上的 `Δwidth/Δheight` 远超阈值，照常 fit。
-- **输入框获得焦点但没打字**：input 高度不变 → 不触发 ResizeObserver → 行为与现在一致。
-- **极端窄屏 / 极端宽屏**：阈值 4px 不依赖屏幕尺寸，安全。
+- **死会话页签**（`isDead`）：input `disabled`，非受控模式下 disabled 仍然生效；浮动容器 `h-10` 依然绝对定位，不会触发布局变化。
+- **页签 active → inactive → active**：已有 `requestAnimationFrame` re-fit 逻辑 ([SessionView.tsx:318-329](packages/web/src/components/terminal/SessionView.tsx#L318-L329)) 保留不动。非受控模式下切页签不会清空输入内容（DOM value 不随 React 状态走），这是想要的行为。
+- **ResizeObserver 回调**：v2 阈值（Δw ≥ 1px / Δh ≥ 4px）保留，作为双保险——虽然 flex 链路断了，但如果 termHost 父包装的尺寸真变了（splitter 拖动），该 fit 还会 fit。
+- **窗口极窄 / 终端区高度 < 40px**：浮动输入框仍然覆盖 termHost 底部 40px，termHost 可视 rows = 0。xterm 会显示空白，这种尺寸整个 UI 本就不可用，不单独处理。
+- **右键 "添加到终端聊天"** 当前用 `setInputValue((prev) => ...)`，改 DOM 直接写入后视觉效果等价；`queueMicrotask` 的 focus/setSelectionRange 逻辑不再需要包一层——但为保险先保留 `queueMicrotask` 包法，确保 React 本轮 render flush 后再操作 DOM。
+- **PromptLibraryDialog.onSend**：它已经直接调 `aimonWS.sendInput`，根本不碰 input，无需改动。
+- **自定义按钮**：同上，直接 `aimonWS.sendInput(session.id, cmd + '\r')`，不碰 input。
 
 ## 风险与注意
 
-- **假设**：抖动确实由 input 高度变化引起，而非 xterm 自身在某些情况下会自我 resize。如果改完仍抖，需要在 ResizeObserver 回调里加日志验证 `entry.contentRect` 的来源元素，回滚到"加 IME 事件监听"的备用方案。
-- **假设**：固定 `h-10` 不会破坏现有的视觉对齐（顶部 button bar 是 py-1.5、输入栏是 py-2，应该容得下）。Context 阶段会量一下 DOM 实际高度。
-- **阈值 4px 的副作用**：在用户拖动 splitter **极慢** 时，可能出现一帧延迟才 fit。可接受，因为 ResizeObserver 还会继续触发后续帧。
-- 另：`onInputKey` 在 IME composing 中按 Enter 也会发送 —— 中文输入法用户的常见痛点，**记入 `dev/issues.md`** 但不在此次任务做。
+- **风险 1：非受控导致其它 React 逻辑拿不到最新 input 值。**
+  现状逐点核查：只有 Enter 发送和右键追加用到，两处都直接读 DOM；PromptLibrary / 自定义按钮不走 input。结论：没有暗处依赖 state。
+- **风险 2：删掉 `inputValue` state 后，useStore / 其它 hook 是否有订阅？**
+  抓 "inputValue" grep 确认只在 SessionView 本文件出现（见 Context 阶段盘点）。
+- **风险 3：`pb-10` 的 tailwind 值是否真的 40px。**
+  tailwind 默认 `pb-10 = 2.5rem = 40px`，与 `h-10` 严格匹配，不会差一像素。
+- **假设 1**：FitAddon 真的减 padding 算 rows。回顾其源码是 `elementStyle.getPropertyValue('padding-...')` 减掉 —— 成立。如果 Context 阶段读源码发现不成立，备用方案是给 termHost 套一层 `inset-0 bottom-[40px]` 的 inner div 做隔离。
+- **假设 2**：`e.nativeEvent.isComposing` 在所有主流浏览器（Chromium/Edge/Firefox）可用 —— 可用，自 2018 年就是 Web 标准属性。
+- **已知副作用：用户切到其它页签回来，输入框里残留上次没发的文本。**
+  这是非受控的自然行为，实际上对用户友好（草稿不丢），保留。
+- **v2 step 4 未 verify**：直接在 v3 里一并被新的验收标准覆盖，旧 tasks.md step 4 改为 `blocked`（原因：方案已升级到 v3，以新清单为准）。
