@@ -2,6 +2,7 @@ import * as api from '../api'
 import { logAction } from '../logs'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
+import { sendToSession } from '../sendToSession'
 import type { AgentKind } from '../types'
 import { alertDialog, confirmDialog } from './dialog/DialogHost'
 import type { ContextMenuItem } from './ContextMenu'
@@ -78,10 +79,11 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
             label: `发送到 ${sessions[0].agent}·${shortTail(sessions[0].id)}`,
             icon: '➡',
             onSelect: () => {
-              aimonWS.sendInput(
-                sessions[0].id,
-                formatForSession(sessions[0].agent, path, kind),
-              )
+              const text = formatForSession(sessions[0].agent, path, kind)
+              void sendToSession(projectId, sessions[0], text, {
+                scope: 'files',
+                meta: { path, kind },
+              })
             },
           }
         : {
@@ -90,7 +92,11 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
             submenu: sessions.map((s) => ({
               label: `${s.agent}·${shortTail(s.id)}`,
               onSelect: () => {
-                aimonWS.sendInput(s.id, formatForSession(s.agent, path, kind))
+                const text = formatForSession(s.agent, path, kind)
+                void sendToSession(projectId, s, text, {
+                  scope: 'files',
+                  meta: { path, kind },
+                })
               },
             })),
           }

@@ -176,14 +176,23 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const liveStatus = useStore((s) => s.liveStatus[session.id])
   const isNotifying = useStore((s) => s.notifyingSessions.has(session.id))
   const clearNotify = useStore((s) => s.clearNotify)
+  const pendingInput = useStore((s) => s.pendingInputBySession[session.id])
+  const consumePendingInput = useStore((s) => s.consumePendingInput)
   const project = projects.find((p) => p.id === session.projectId)
   const status = liveStatus ?? session.status
 
   const termHostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const inputBarRef = useRef<HTMLDivElement | null>(null)
   const filesRef = useRef<string[] | null>(null)
+  // 粘贴/填入超长文本时，原文放到这里，textarea 里只留一个占位 token，避免
+  // 大文本在 DOM 里导致每次 keystroke 都 reflow + menu 扫描整个字符串。
+  // 发送（Enter）时把 token 展开回原文。
+  const pasteStashRef = useRef<Map<string, string>>(new Map())
+  const pasteSeqRef = useRef(0)
+  const resizeRafRef = useRef<number | null>(null)
   const [menu, setMenu] = useState<MenuState>({ kind: 'none' })
   const [busy, setBusy] = useState(false)
   const [showExitInfo, setShowExitInfo] = useState(true)
@@ -339,6 +348,24 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     return () => cancelAnimationFrame(raf)
   }, [active, session.id])
 
+  // 把输入框 wrapper 的实际高度推到 termHost 的 bottom 上，这样输入框撑开到 3 行
+  // 时终端区域会相应收缩。termHost 自己的 ResizeObserver（见挂载 effect）会接着
+  // 触发 fit() + sendResize，cols/rows 与后端 PTY 同步更新。
+  useEffect(() => {
+    const bar = inputBarRef.current
+    const host = termHostRef.current
+    if (!bar || !host) return
+    const update = () => {
+      // 输入框 wrapper 的 bottom-3 留了 12px 间距；termHost 的 bottom 应该留够
+      // wrapper 高度 + 这 12px，才能把终端底部完全让给输入框。
+      host.style.bottom = `${bar.offsetHeight + 12}px`
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(bar)
+    return () => ro.disconnect()
+  }, [])
+
   async function confirmCloseSession() {
     setBusy(true)
     try {
@@ -380,14 +407,67 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     onClose(session.id)
   }
 
+  function autoResizeInput(el: HTMLTextAreaElement) {
+    // rAF 合并多次 keystroke：每次输入都直接同步读 scrollHeight 会触发
+    // reflow，大批量输入时会卡。合并到下一帧统一做一次。
+    if (resizeRafRef.current != null) cancelAnimationFrame(resizeRafRef.current)
+    resizeRafRef.current = requestAnimationFrame(() => {
+      resizeRafRef.current = null
+      // max height ≈ 3× single-line wrapper (40px * 3 = 120px); textarea
+      // content caps at 100px to leave the 20px wrapper padding, then the
+      // wrapper grows to exactly 120px before scrollbar kicks in.
+      el.style.height = 'auto'
+      el.style.height = `${Math.min(el.scrollHeight, 100)}px`
+    })
+  }
+
+  // 超过此阈值的粘贴/填入按 stash 处理（显示为占位 token）。500 字符约 = 5 行
+  // textarea 撑满，再多就要滚动/缩略。
+  const PASTE_STASH_THRESHOLD = 500
+
+  function stashText(text: string): string {
+    const n = ++pasteSeqRef.current
+    const token = `⟦粘贴·${n}·${text.length}字⟧`
+    pasteStashRef.current.set(token, text)
+    return token
+  }
+
+  function expandStashed(input: string): string {
+    const stash = pasteStashRef.current
+    if (stash.size === 0) return input
+    let out = input
+    stash.forEach((original, token) => {
+      if (out.includes(token)) out = out.split(token).join(original)
+    })
+    return out
+  }
+
+  function clearStash() {
+    pasteStashRef.current.clear()
+    pasteSeqRef.current = 0
+  }
+
   function fillInput(text: string) {
     const el = inputRef.current
     if (!el) return
-    el.value = text
+    el.value = text.length > PASTE_STASH_THRESHOLD ? stashText(text) : text
     el.focus()
-    el.setSelectionRange(text.length, text.length)
+    el.setSelectionRange(el.value.length, el.value.length)
+    autoResizeInput(el)
     setMenu({ kind: 'none' })
   }
+
+  // Drains `pendingInputBySession[session.id]` from the store into the floating
+  // input (appended to whatever the user has already typed). The file
+  // right-click "发送到 XXX" flow uses this instead of writing straight to the
+  // pty, so the user gets a chance to edit before hitting Enter.
+  useEffect(() => {
+    if (!pendingInput) return
+    const el = inputRef.current
+    if (!el) return
+    fillInput(el.value + pendingInput)
+    consumePendingInput(session.id)
+  }, [pendingInput, session.id, consumePendingInput])
 
   function ensureFilesLoaded() {
     if (filesRef.current !== null) return
@@ -408,12 +488,15 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     })()
   }
 
-  function detectTrigger(el: HTMLInputElement): MenuState {
+  function detectTrigger(el: HTMLTextAreaElement): MenuState {
     const v = el.value
     const cursor = el.selectionStart ?? v.length
     // Scan left from cursor to find the most recent trigger char or whitespace.
+    // 限制最多向左扫 256 字符 —— / 或 @ 触发的 token 不会很长，超了等于没有触发，
+    // 避免无空格长文本场景下每次 keystroke O(N) 扫描。
+    const stop = Math.max(0, cursor - 256)
     let i = cursor - 1
-    while (i >= 0) {
+    while (i >= stop) {
       const ch = v[i]
       if (ch === ' ' || ch === '\t' || ch === '\n') return { kind: 'none' }
       if (ch === '/') {
@@ -489,10 +572,11 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     const pos = (before + replacement).length
     el.setSelectionRange(pos, pos)
     el.focus()
+    autoResizeInput(el)
     setMenu({ kind: 'none' })
   }
 
-  function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
+  function onInputKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.nativeEvent.isComposing) return
     if (menu.kind !== 'none') {
       const items = getMenuItems(menu)
@@ -525,22 +609,26 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       const el = e.currentTarget
-      aimonWS.sendInput(session.id, el.value + '\r')
+      const payload = expandStashed(el.value)
+      aimonWS.sendInput(session.id, payload + '\r')
       el.value = ''
+      clearStash()
+      autoResizeInput(el)
       setMenu({ kind: 'none' })
     }
   }
 
-  function onInputChange(e: React.FormEvent<HTMLInputElement>) {
+  function onInputChange(e: React.FormEvent<HTMLTextAreaElement>) {
     // React's onInput fires after composition end, so `isComposing` is false
     // here in normal use. Guard anyway for safety.
     const ne = e.nativeEvent as InputEvent
     if (ne.isComposing) return
+    autoResizeInput(e.currentTarget)
     const next = detectTrigger(e.currentTarget)
     setMenu(next)
   }
 
-  function onInputPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+  function onInputPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const items = e.clipboardData?.items
     if (!items) return
     let imageItem: DataTransferItem | null = null
@@ -550,7 +638,25 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         break
       }
     }
-    if (!imageItem) return
+    // 没有图片：判断是否为超长文本，若是则换成 token 占位，避免 textarea 撑爆。
+    if (!imageItem) {
+      const text = e.clipboardData?.getData('text/plain') ?? ''
+      if (text.length <= PASTE_STASH_THRESHOLD) return
+      e.preventDefault()
+      const el = e.currentTarget
+      const token = stashText(text)
+      const start = el.selectionStart ?? el.value.length
+      const end = el.selectionEnd ?? el.value.length
+      const before = el.value.slice(0, start)
+      const after = el.value.slice(end)
+      el.value = before + token + after
+      const cursor = (before + token).length
+      el.setSelectionRange(cursor, cursor)
+      el.focus()
+      autoResizeInput(el)
+      setMenu(detectTrigger(el))
+      return
+    }
     e.preventDefault()
     const blob = imageItem.getAsFile()
     if (!blob) return
@@ -576,6 +682,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         const cursor = (before + sep + ref).length
         el.setSelectionRange(cursor, cursor)
         el.focus()
+        autoResizeInput(el)
       } catch (err) {
         await alertDialog(
           `上传图片失败: ${err instanceof Error ? err.message : String(err)}`,
@@ -720,19 +827,24 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
               })
               .catch(() => { /* clipboard blocked — silent */ })
           }}
-          className={`absolute top-0 left-0 right-0 bottom-[52px] bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
+          style={{ bottom: 52 }}
+          className={`absolute top-0 left-0 right-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
         />
 
-        <div className="absolute bottom-3 left-3 right-3 h-10 z-10 flex items-center gap-2 px-3 rounded-win border border-border bg-card shadow-flyout">
-          <span className="text-subtle text-xs">{'>'}</span>
-          <input
+        <div
+          ref={inputBarRef}
+          className="absolute bottom-3 left-3 right-3 min-h-10 z-10 flex items-start gap-2 px-3 py-2.5 rounded-win border border-border bg-card shadow-flyout"
+        >
+          <span className="text-subtle text-xs leading-5">{'>'}</span>
+          <textarea
             ref={inputRef}
+            rows={1}
             onKeyDown={onInputKey}
             onPaste={onInputPaste}
             onInput={onInputChange}
             disabled={isDead}
-            placeholder={isDead ? '会话已结束' : 'type to send (Enter)'}
-            className="flex-1 h-full leading-none bg-transparent text-sm font-mono placeholder:text-subtle disabled:opacity-50 outline-none"
+            placeholder={isDead ? '会话已结束' : 'type to send (Enter, Shift+Enter 换行)'}
+            className="flex-1 bg-transparent text-sm font-mono leading-5 resize-none max-h-[100px] overflow-y-auto placeholder:text-subtle disabled:opacity-50 outline-none"
             onMouseDown={() => setShowExitInfo(true)}
           />
         </div>

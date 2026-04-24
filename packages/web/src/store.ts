@@ -161,6 +161,8 @@ interface State {
   activeSessionIdByProject: Record<string, string>
   /** Which kind of tab is currently showing in the unified workspace. */
   activeTabKind: 'file' | 'session' | null
+  /** Text queued for injection into a session's floating input on next render. Not persisted. */
+  pendingInputBySession: Record<string, string>
 
   setActivity: (a: Activity) => void
   setProjectsColumnSize: (n: number) => void
@@ -174,6 +176,8 @@ interface State {
 
   setActiveSession: (projectId: string, sessionId: string) => void
   setActiveTabKind: (k: 'file' | 'session' | null) => void
+  queuePendingInput: (sessionId: string, text: string) => void
+  consumePendingInput: (sessionId: string) => void
 
   /** Incremented whenever the file listing (FilesView) should re-fetch. */
   filesRefreshTick: number
@@ -307,6 +311,7 @@ export const useStore = create<State>((set, get) => ({
   activeFileKey: null,
   activeSessionIdByProject: readWorkbench().activeSessionIdByProject ?? {},
   activeTabKind: null,
+  pendingInputBySession: {},
   docsTasks: {},
   docsLoading: {},
   docsError: {},
@@ -397,6 +402,21 @@ export const useStore = create<State>((set, get) => ({
     }))
     persistWorkbench(useStore.getState())
   },
+
+  queuePendingInput: (sessionId, text) =>
+    set((st) => ({
+      pendingInputBySession: {
+        ...st.pendingInputBySession,
+        [sessionId]: (st.pendingInputBySession[sessionId] ?? '') + text,
+      },
+    })),
+  consumePendingInput: (sessionId) =>
+    set((st) => {
+      if (!(sessionId in st.pendingInputBySession)) return st
+      const next = { ...st.pendingInputBySession }
+      delete next[sessionId]
+      return { pendingInputBySession: next }
+    }),
 
   setWsState: (s) => {
     const prev = get().wsState

@@ -7,6 +7,7 @@ import type { DocFileKind, DocTaskSummary, IssueItem } from '../../types'
 import { MemoryView } from './MemoryView'
 import { logAction, pushLog } from '../../logs'
 import { dispatchClaude } from '../../dispatchClaude'
+import { pickClaudeTarget, sendToSession } from '../../sendToSession'
 
 const EMPTY_TASKS: DocTaskSummary[] = []
 const EMPTY_ISSUES: IssueItem[] = []
@@ -313,7 +314,19 @@ export default function DocsView() {
     if (!projectId || dispatching) return
     setDispatching(true)
     try {
-      await dispatchClaude({ projectId, prompt, successTitle })
+      // Prefer injecting into an existing claude session's input box: user
+      // gets to edit before hitting Enter, and no clipboard/paste detour. Fall
+      // back to the spawn+clipboard flow only when the project has no live
+      // claude — mid-spawn pty isn't ready to receive pending text.
+      const target = pickClaudeTarget(projectId)
+      if (target) {
+        await sendToSession(projectId, target, prompt, {
+          scope: 'docs',
+          meta: { kind: successTitle },
+        })
+      } else {
+        await dispatchClaude({ projectId, prompt, successTitle })
+      }
     } catch {
       /* alertDialog already shown inside dispatchClaude */
     } finally {
