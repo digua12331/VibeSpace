@@ -77,12 +77,27 @@ function saveProjectsJson(projects: Project[]): void {
 }
 
 function syncProjectsTable(db: Database.Database, projects: Project[]): void {
+  // UPSERT instead of DELETE+INSERT: a blanket DELETE on projects triggers the
+  // sessions ON DELETE CASCADE and wipes every session row even when the JSON
+  // shadow is unchanged. tsx-watch reloads the module on every save, so dev
+  // sessions used to vanish each time db.ts (or anything it imports) ticked.
   const tx = db.transaction((list: Project[]) => {
-    db.prepare("DELETE FROM projects").run();
-    const stmt = db.prepare(
-      "INSERT INTO projects (id, name, path, created_at) VALUES (?, ?, ?, ?)",
+    const upsert = db.prepare(
+      `INSERT INTO projects (id, name, path, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         path = excluded.path,
+         created_at = excluded.created_at`,
     );
-    for (const p of list) stmt.run(p.id, p.name, p.path, p.createdAt);
+    for (const p of list) upsert.run(p.id, p.name, p.path, p.createdAt);
+    if (list.length === 0) {
+      db.prepare("DELETE FROM projects").run();
+      return;
+    }
+    const placeholders = list.map(() => "?").join(",");
+    db.prepare(
+      `DELETE FROM projects WHERE id NOT IN (${placeholders})`,
+    ).run(...list.map((p) => p.id));
   });
   tx(projects);
 }

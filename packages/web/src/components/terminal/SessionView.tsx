@@ -10,6 +10,7 @@ import * as api from '../../api'
 import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
+import { logAction } from '../../logs'
 import { formatForSession } from '../fileContextMenu'
 import { openContextMenu, type ContextMenuItem } from '../ContextMenu'
 import PromptLibraryDialog from '../PromptLibraryDialog'
@@ -59,10 +60,7 @@ async function findImageInClipboard(
  * Unified paste handler — image first, text fallback. Extracted out of the
  * useEffect body so the logic doesn't inflate the terminal setup block.
  */
-async function handleClipboardPaste(
-  session: Session,
-  term: Terminal,
-): Promise<void> {
+async function handleClipboardPaste(session: Session): Promise<void> {
   // Step 1: try to locate an image on the clipboard.
   let items: ClipboardItem[] | null = null
   try {
@@ -83,11 +81,21 @@ async function handleClipboardPaste(
         return
       }
       try {
-        const r = await api.uploadPastedImage(
-          session.projectId,
-          session.id,
-          hit.blob,
-          hit.mime,
+        const r = await logAction(
+          'paste-image',
+          'upload',
+          () =>
+            api.uploadPastedImage(
+              session.projectId,
+              session.id,
+              hit.blob,
+              hit.mime,
+            ),
+          {
+            projectId: session.projectId,
+            sessionId: session.id,
+            meta: { mime: hit.mime, bytes: hit.blob.size, source: 'terminal' },
+          },
         )
         aimonWS.sendInput(
           session.id,
@@ -103,10 +111,11 @@ async function handleClipboardPaste(
     }
   }
 
-  // Step 2: no image detected — legacy text paste.
+  // Step 2: no image detected — 直接把文本丢给后端。注意：不能走 term.paste(text)，
+  // 因为我们开了 disableStdin，xterm 的 triggerDataEvent 在那种状态下会静默 no-op。
   try {
     const text = await navigator.clipboard.readText()
-    if (text) term.paste(text)
+    if (text) aimonWS.sendInput(session.id, text)
   } catch {
     // Clipboard blocked — silent; user can use the "type to send" input.
   }
@@ -213,6 +222,11 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       convertEol: false,
       scrollback: 5000,
       allowProposedApi: true,
+      // 屏蔽终端内部的键盘输入：用户打字不会再直接流进 PTY。所有输入统一走
+      // 下方的悬浮输入框（见 attachCustomKeyEventHandler 的字符转发逻辑）。
+      // 副作用：xterm 的 Ctrl+C、Enter、方向键等都失效，我们在 handler 里按
+      // 需要手动补回（目前只保留 Ctrl+C 终止）。
+      disableStdin: true,
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -255,20 +269,35 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         (ev.key === 'v' || ev.key === 'V')
       if (isPasteCombo) {
         ev.preventDefault()
-        void handleClipboardPaste(session, term)
+        void handleClipboardPaste(session)
         return false
       }
-      // Ctrl/Cmd+C: if there's a selection, copy it instead of sending SIGINT.
-      // No selection → let xterm emit 0x03 as usual.
+      // Ctrl/Cmd+C: 有选区 → 复制；无选区 → 手动发 \x03（disableStdin 会吞掉默认行为，
+      // 所以必须我们自己 sendInput，否则跑飞的 AI 无法 Ctrl+C 中断）。
       const isCopyCombo =
         (ev.ctrlKey || ev.metaKey) && !ev.altKey && !ev.shiftKey &&
         (ev.key === 'c' || ev.key === 'C')
-      if (isCopyCombo && term.hasSelection()) {
+      if (isCopyCombo) {
         ev.preventDefault()
-        void copySelectionToClipboard(term)
+        if (term.hasSelection()) {
+          void copySelectionToClipboard(term)
+        } else {
+          aimonWS.sendInput(session.id, '\x03')
+        }
         return false
       }
-      return true
+      // 可打印单字符（无 Ctrl/Meta/Alt 修饰；Shift 允许）→ 自动转发到悬浮输入框，
+      // 并把 focus 切过去。防止用户对着终端区敲字没反馈。
+      const isPrintable =
+        ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey
+      if (isPrintable) {
+        ev.preventDefault()
+        forwardCharToInput(ev.key)
+        return false
+      }
+      // 其他键（Enter / Backspace / 方向键 / 功能键 / IME Process 等）：全部屏蔽，
+      // disableStdin 会确保它们不会意外落到 PTY。
+      return false
     })
 
     const dataDisposable = term.onData((d) => {
@@ -356,9 +385,9 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     const host = termHostRef.current
     if (!bar || !host) return
     const update = () => {
-      // 输入框 wrapper 的 bottom-3 留了 12px 间距；termHost 的 bottom 应该留够
-      // wrapper 高度 + 这 12px，才能把终端底部完全让给输入框。
-      host.style.bottom = `${bar.offsetHeight + 12}px`
+      // 输入框 wrapper 的 bottom-[32px] 留了 32px 间距；termHost 的 bottom 应该留够
+      // wrapper 高度 + 这 32px，才能把终端底部完全让给输入框。
+      host.style.bottom = `${bar.offsetHeight + 32}px`
     }
     update()
     const ro = new ResizeObserver(update)
@@ -369,7 +398,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   async function confirmCloseSession() {
     setBusy(true)
     try {
-      await api.deleteSession(session.id)
+      await logAction(
+        'session',
+        'stop',
+        () => api.deleteSession(session.id),
+        {
+          projectId: session.projectId,
+          sessionId: session.id,
+          meta: { agent: session.agent },
+        },
+      )
     } catch (e: unknown) {
       setBusy(false)
       await alertDialog(
@@ -455,6 +493,21 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     el.setSelectionRange(el.value.length, el.value.length)
     autoResizeInput(el)
     setMenu({ kind: 'none' })
+  }
+
+  // 用户对着终端区按可打印键时，把字符插入到悬浮输入框当前 cursor 位置，并把
+  // focus 切到悬浮框。见 xterm `attachCustomKeyEventHandler` 里的 isPrintable 分支。
+  function forwardCharToInput(ch: string) {
+    const el = inputRef.current
+    if (!el) return
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? el.value.length
+    el.value = el.value.slice(0, start) + ch + el.value.slice(end)
+    const pos = start + ch.length
+    el.focus()
+    el.setSelectionRange(pos, pos)
+    autoResizeInput(el)
+    setMenu(detectTrigger(el))
   }
 
   // Drains `pendingInputBySession[session.id]` from the store into the floating
@@ -671,7 +724,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         return
       }
       try {
-        const r = await api.uploadPastedImage(session.projectId, session.id, blob, mime)
+        const r = await logAction(
+          'paste-image',
+          'upload',
+          () => api.uploadPastedImage(session.projectId, session.id, blob, mime),
+          {
+            projectId: session.projectId,
+            sessionId: session.id,
+            meta: { mime, bytes: blob.size, source: 'input-box' },
+          },
+        )
         const ref = formatForSession(session.agent, r.relPath, 'file')
         const start = el.selectionStart ?? el.value.length
         const end = el.selectionEnd ?? el.value.length
@@ -820,20 +882,21 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
               return
             }
             // No selection → legacy right-click = paste from clipboard.
+            // disableStdin 下 term.paste() 无效，直接 sendInput 把文本送给后端。
             navigator.clipboard
               .readText()
               .then((text) => {
-                if (text && termRef.current) termRef.current.paste(text)
+                if (text) aimonWS.sendInput(session.id, text)
               })
               .catch(() => { /* clipboard blocked — silent */ })
           }}
-          style={{ bottom: 52 }}
+          style={{ bottom: 72 }}
           className={`absolute top-0 left-0 right-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
         />
 
         <div
           ref={inputBarRef}
-          className="absolute bottom-3 left-3 right-3 min-h-10 z-10 flex items-start gap-2 px-3 py-2.5 rounded-win border border-border bg-card shadow-flyout"
+          className="absolute bottom-[32px] left-3 right-3 min-h-10 z-10 flex items-start gap-2 px-3 py-2.5 rounded-win border border-border bg-card shadow-flyout"
         >
           <span className="text-subtle text-xs leading-5">{'>'}</span>
           <textarea

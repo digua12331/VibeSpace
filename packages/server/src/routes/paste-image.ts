@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { getProject } from "../db.js";
+import { serverLog } from "../log-bus.js";
 import { appendGitignoreEntry } from "./fs-ops.js";
 
 const ALLOWED_MIME = new Set<string>([
@@ -51,6 +52,11 @@ export async function registerPasteImageRoutes(
       const proj = await loadProjectOr404(reply, req.params.id);
       if (!proj) return;
 
+      const startedAt = Date.now();
+      serverLog("info", "paste-image", "paste-image 开始", {
+        projectId: proj.id,
+      });
+
       // @fastify/multipart exposes req.file() when registered. Narrow via a
       // local cast to keep the type-surface tight.
       const reqAny = req as unknown as {
@@ -68,15 +74,26 @@ export async function registerPasteImageRoutes(
         part = await reqAny.file();
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
+        serverLog("error", "paste-image", `paste-image 失败: ${msg}`, {
+          projectId: proj.id,
+          meta: { ms: Date.now() - startedAt, error: { message: msg } },
+        });
         return reply.code(400).send({ error: "invalid_upload", message: msg });
       }
 
       if (!part) {
+        serverLog("warn", "paste-image", "paste-image 失败: 缺少文件部分", {
+          projectId: proj.id,
+        });
         return reply.code(400).send({ error: "no_file" });
       }
 
       const mime = part.mimetype;
       if (!ALLOWED_MIME.has(mime)) {
+        serverLog("warn", "paste-image", `paste-image 失败: 不支持的 MIME=${mime}`, {
+          projectId: proj.id,
+          meta: { mime },
+        });
         return reply.code(415).send({ error: "unsupported_mime", mime });
       }
 
@@ -88,12 +105,24 @@ export async function registerPasteImageRoutes(
         // limit is hit — surface as 413.
         const msg = (err as Error)?.message ?? String(err);
         if (/file too large|FST_REQ_FILE_TOO_LARGE/i.test(msg)) {
+          serverLog("warn", "paste-image", `paste-image 失败: 超过 ${MAX_BYTES} bytes`, {
+            projectId: proj.id,
+            meta: { mime, limit: MAX_BYTES },
+          });
           return reply.code(413).send({ error: "too_large", limit: MAX_BYTES });
         }
+        serverLog("error", "paste-image", `paste-image 失败: ${msg}`, {
+          projectId: proj.id,
+          meta: { mime, error: { message: msg } },
+        });
         return reply.code(400).send({ error: "read_failed", message: msg });
       }
 
       if (buf.length > MAX_BYTES) {
+        serverLog("warn", "paste-image", `paste-image 失败: 超过 ${MAX_BYTES} bytes`, {
+          projectId: proj.id,
+          meta: { mime, bytes: buf.length, limit: MAX_BYTES },
+        });
         return reply.code(413).send({ error: "too_large", limit: MAX_BYTES });
       }
 
@@ -108,6 +137,15 @@ export async function registerPasteImageRoutes(
         await writeFile(absPath, buf);
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
+        serverLog("error", "paste-image", `paste-image 失败: 写盘 ${msg}`, {
+          projectId: proj.id,
+          meta: {
+            relPath,
+            mime,
+            bytes: buf.length,
+            error: { message: msg },
+          },
+        });
         return reply.code(500).send({ error: "write_failed", message: msg });
       }
 
@@ -118,6 +156,11 @@ export async function registerPasteImageRoutes(
       } catch (err) {
         app.log.warn({ err }, "failed to update .gitignore for pasted image");
       }
+
+      serverLog("info", "paste-image", `paste-image 成功 (${Date.now() - startedAt}ms)`, {
+        projectId: proj.id,
+        meta: { relPath, mime, bytes: buf.length },
+      });
 
       return reply.send({
         relPath,

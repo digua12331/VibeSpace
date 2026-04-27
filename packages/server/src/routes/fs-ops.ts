@@ -193,10 +193,20 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
       }
+      const startedAt = Date.now();
+      const inputPath = parsed.data.path;
+      serverLog("info", "fs", "gitignore-add 开始", {
+        projectId: proj.id,
+        meta: { path: inputPath },
+      });
       try {
-        const abs = safeResolve(proj.path, parsed.data.path);
+        const abs = safeResolve(proj.path, inputPath);
         const rel = toRepoRelative(proj.path, abs);
         if (!rel) {
+          serverLog("warn", "fs", "gitignore-add 拒绝: 不能忽略项目根", {
+            projectId: proj.id,
+            meta: { path: inputPath },
+          });
           return reply
             .code(400)
             .send({ error: "invalid_path", message: "cannot ignore project root" });
@@ -206,8 +216,20 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
         const line = kind === "dir" ? `${rel}/` : rel;
         const added = await appendGitignoreEntry(proj.path, line);
         if (added) bustStatusCache(proj.path);
+        serverLog("info", "fs", `gitignore-add 成功 (${Date.now() - startedAt}ms)`, {
+          projectId: proj.id,
+          meta: { path: inputPath, line, added },
+        });
         return reply.send({ added, line });
       } catch (err) {
+        serverLog("error", "fs", `gitignore-add 失败: ${(err as Error)?.message ?? String(err)}`, {
+          projectId: proj.id,
+          meta: {
+            path: inputPath,
+            ms: Date.now() - startedAt,
+            error: { name: (err as Error)?.name, message: (err as Error)?.message },
+          },
+        });
         return sendErr(reply, err);
       }
     },
@@ -223,10 +245,20 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid_query", detail: parsed.error.issues });
       }
+      const startedAt = Date.now();
+      const inputPath = parsed.data.path;
+      serverLog("info", "fs", "entry-delete 开始", {
+        projectId: proj.id,
+        meta: { path: inputPath },
+      });
       try {
-        const abs = safeResolve(proj.path, parsed.data.path);
+        const abs = safeResolve(proj.path, inputPath);
         const rel = toRepoRelative(proj.path, abs);
         if (!rel) {
+          serverLog("warn", "fs", "entry-delete 拒绝: 不能删除项目根", {
+            projectId: proj.id,
+            meta: { path: inputPath },
+          });
           return reply
             .code(400)
             .send({ error: "invalid_path", message: "cannot delete project root" });
@@ -235,14 +267,30 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
         // literal project root, even if safeResolve's relative check was
         // somehow bypassed.
         if (resolvePath(abs) === resolvePath(proj.path)) {
+          serverLog("warn", "fs", "entry-delete 拒绝: 不能删除项目根 (resolved)", {
+            projectId: proj.id,
+            meta: { path: inputPath },
+          });
           return reply
             .code(400)
             .send({ error: "invalid_path", message: "cannot delete project root" });
         }
         await rm(abs, { recursive: true, force: false });
         bustStatusCache(proj.path);
+        serverLog("info", "fs", `entry-delete 成功 (${Date.now() - startedAt}ms)`, {
+          projectId: proj.id,
+          meta: { path: inputPath },
+        });
         return reply.code(204).send();
       } catch (err) {
+        serverLog("error", "fs", `entry-delete 失败: ${(err as Error)?.message ?? String(err)}`, {
+          projectId: proj.id,
+          meta: {
+            path: inputPath,
+            ms: Date.now() - startedAt,
+            error: { name: (err as Error)?.name, message: (err as Error)?.message },
+          },
+        });
         return sendErr(reply, err);
       }
     },

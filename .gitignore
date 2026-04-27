@@ -12,4 +12,5 @@ packages/server/data/
 .claude/settings.local.json
 dev/
 .claude/
+.codex/
 docs/

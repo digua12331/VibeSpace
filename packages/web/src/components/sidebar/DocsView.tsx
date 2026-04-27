@@ -528,7 +528,7 @@ export default function DocsView() {
                   pushLog({
                     level: 'info',
                     scope: 'docs-ctxmenu',
-                    projectId,
+                    projectId: projectId ?? undefined,
                     msg: `row onContextMenu fired task=${t.name} target=${(e.target as HTMLElement)?.tagName} xy=${e.clientX},${e.clientY}`,
                   })
                   e.preventDefault()

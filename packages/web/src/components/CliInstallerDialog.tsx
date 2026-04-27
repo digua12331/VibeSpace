@@ -28,6 +28,7 @@ export default function CliInstallerDialog({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'missing' | 'installed'>('all')
   const sourcesRef = useRef<Map<string, EventSource>>(new Map())
+  const startedAtRef = useRef<Map<string, number>>(new Map())
 
   // Esc closes
   useEffect(() => {
@@ -95,8 +96,16 @@ export default function CliInstallerDialog({
       try {
         const data = JSON.parse((ev as MessageEvent).data) as { exitCode: number | null; state: InstallJobState }
         setRow(cliId, { state: data.state, exitCode: data.exitCode })
+        const startedAt = startedAtRef.current.get(cliId)
+        const ms = startedAt ? Math.round(performance.now() - startedAt) : null
+        startedAtRef.current.delete(cliId)
         if (data.state === 'done') {
-          pushLog({ level: 'info', scope: 'installer', msg: `${cliId} 安装完成` })
+          pushLog({
+            level: 'info',
+            scope: 'installer',
+            msg: `install 成功 (${ms ?? '?'}ms)`,
+            meta: { cliId, ms, exitCode: data.exitCode },
+          })
           // Re-detect installed status, then notify the menu so the new CLI appears.
           void api.getCliInstallerStatus().then(setStatus)
           onCatalogChanged()
@@ -104,7 +113,15 @@ export default function CliInstallerDialog({
           pushLog({
             level: 'error',
             scope: 'installer',
-            msg: `${cliId} 安装失败 (exit=${data.exitCode ?? 'null'})`,
+            msg: `install 失败: exit=${data.exitCode ?? 'null'}`,
+            meta: { cliId, ms, exitCode: data.exitCode },
+          })
+        } else if (data.state === 'cancelled') {
+          pushLog({
+            level: 'warn',
+            scope: 'installer',
+            msg: `install 取消 (${ms ?? '?'}ms)`,
+            meta: { cliId, ms, exitCode: data.exitCode },
           })
         }
       } catch {
@@ -131,17 +148,38 @@ export default function CliInstallerDialog({
         log: `本机缺少依赖工具: ${missingReq.join(', ')}\n请先安装后再试。\n`,
         expanded: true,
       })
+      pushLog({
+        level: 'error',
+        scope: 'installer',
+        msg: `install 失败: 缺少依赖 ${missingReq.join(', ')}`,
+        meta: { cliId: entry.id, missing: missingReq },
+      })
       return
     }
+    const startedAt = performance.now()
+    startedAtRef.current.set(entry.id, startedAt)
     setRow(entry.id, { state: 'running', log: '', exitCode: null, expanded: true })
-    pushLog({ level: 'info', scope: 'installer', msg: `开始安装 ${entry.id}: ${entry.installCmd}` })
+    pushLog({
+      level: 'info',
+      scope: 'installer',
+      msg: `install 开始`,
+      meta: { cliId: entry.id, cmd: entry.installCmd },
+    })
     try {
       const { jobId } = await api.startCliInstall(entry.id)
       setRow(entry.id, { jobId })
       attachStream(entry.id, jobId)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
+      const ms = Math.round(performance.now() - startedAt)
+      startedAtRef.current.delete(entry.id)
       setRow(entry.id, { state: 'failed', exitCode: -1, log: msg, expanded: true })
+      pushLog({
+        level: 'error',
+        scope: 'installer',
+        msg: `install 失败: ${msg}`,
+        meta: { cliId: entry.id, ms, error: { message: msg } },
+      })
     }
   }
 

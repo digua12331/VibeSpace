@@ -18,7 +18,7 @@ import { ptyManager } from "./pty-manager.js";
 import { statusManager } from "./status.js";
 import { CodexStatusDetector } from "./codex-status.js";
 import { registerWsHub, SERVER_VERSION } from "./ws-hub.js";
-import { serverLog } from "./log-bus.js";
+import { pruneOldLogs, serverLog } from "./log-bus.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
@@ -161,6 +161,9 @@ async function main(): Promise<void> {
     `backend listening on http://${HOST}:${PORT}`,
     { meta: { version: SERVER_VERSION, host: HOST, port: PORT } },
   );
+  // Janitorial: prune log files older than 30 days. Fire-and-forget so a slow
+  // FS doesn't keep listen() from completing.
+  void pruneOldLogs();
   // Keep these two as plain console.log — they're startup-only path hints
   // for the operator, not operation events that need to reach LogsView.
   console.log(`VibeSpace db: ${getDbPath()}`);

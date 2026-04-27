@@ -3,6 +3,7 @@ import { useStore } from '../../store'
 import * as api from '../../api'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
+import { logAction } from '../../logs'
 
 interface ContextMenuState {
   projectId: string
@@ -79,9 +80,16 @@ export default function ProjectsColumn({
     if (!ok) return
     setBusy(id)
     try {
-      await api.deleteProject(id)
-      await refreshProjects()
-      await refreshSessions()
+      await logAction(
+        'project',
+        'delete',
+        async () => {
+          await api.deleteProject(id)
+          await refreshProjects()
+          await refreshSessions()
+        },
+        { projectId: id, meta: { name } },
+      )
     } catch (e: unknown) {
       await alertDialog(
         `删除失败: ${e instanceof Error ? e.message : String(e)}`,

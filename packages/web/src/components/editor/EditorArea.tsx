@@ -6,6 +6,7 @@ import ChecklistEditor from './ChecklistEditor'
 import StartSessionMenu from '../StartSessionMenu'
 import SessionView from '../terminal/SessionView'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
+import { logAction } from '../../logs'
 import type { AgentKind, Session } from '../../types'
 
 /**
@@ -127,7 +128,12 @@ export default function EditorArea() {
       })
       if (!ok) return
       try {
-        await api.deleteSession(id)
+        await logAction(
+          'session',
+          'stop',
+          () => api.deleteSession(id),
+          { projectId: s?.projectId, sessionId: id, meta: { agent: s?.agent } },
+        )
       } catch (e: unknown) {
         await alertDialog(
           `关闭失败: ${e instanceof Error ? e.message : String(e)}`,

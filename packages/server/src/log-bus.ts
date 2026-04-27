@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { appendFile } from "node:fs/promises";
+import { appendFile, readdir, stat, unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LogEntry, LogLevel, ClientLogPayload } from "./types/log.js";
@@ -9,6 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SERVER_ROOT = resolve(__dirname, "..");
 const LOG_DIR = resolve(SERVER_ROOT, "data", "logs");
+const LOG_RETENTION_DAYS = 30;
+const LOG_RETENTION_MS = LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 let _nextId = 1;
 let _dirEnsured = false;
@@ -109,4 +111,42 @@ export function handleClientLogRoundtrip(payload: ClientLogPayload): void {
     `roundtrip echo: ${payload.msg}`,
     { meta: { source: "testBackendLog" } },
   );
+}
+
+/**
+ * Delete *.log files in data/logs whose mtime is older than 30 days. Fire and
+ * forget — the server should not block startup waiting for filesystem I/O on a
+ * janitorial task. Errors are swallowed (and logged once) so a hostile FS
+ * permission state can't take the server down.
+ */
+export async function pruneOldLogs(): Promise<void> {
+  try {
+    ensureDir();
+    const entries = await readdir(LOG_DIR);
+    const now = Date.now();
+    let deleted = 0;
+    for (const name of entries) {
+      if (!name.endsWith(".log")) continue;
+      const full = resolve(LOG_DIR, name);
+      try {
+        const st = await stat(full);
+        if (now - st.mtimeMs > LOG_RETENTION_MS) {
+          await unlink(full);
+          deleted += 1;
+        }
+      } catch {
+        /* per-file failure is non-fatal */
+      }
+    }
+    if (deleted > 0) {
+      serverLog(
+        "info",
+        "log-bus",
+        `pruneOldLogs 删除 ${deleted} 个 ≥${LOG_RETENTION_DAYS}d 旧日志`,
+        { meta: { deleted, retentionDays: LOG_RETENTION_DAYS } },
+      );
+    }
+  } catch (err) {
+    console.warn("log-bus: pruneOldLogs failed:", (err as Error).message);
+  }
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as api from '../api'
-import { pushLog } from '../logs'
+import { logAction } from '../logs'
 import { useStore, type SelectedChange } from '../store'
 import type { ChangeEntry, ChangeStatus, ChangesResponse } from '../types'
 import { alertDialog, confirmDialog } from './dialog/DialogHost'
@@ -110,16 +110,25 @@ export default function ChangesList({ projectId }: Props) {
     openFile({ projectId, ...sel })
   }
 
-  async function withBusy<T>(tag: string, fn: () => Promise<T>): Promise<T | null> {
+  /**
+   * Wrap a git mutation in: busy-state toggling, logAction start/end pair, and
+   * a post-mutation `load()` so the UI reflects the new tree. Returns null on
+   * failure (so callers can short-circuit) and the result on success.
+   */
+  async function withBusy<T>(
+    tag: string,
+    action: string,
+    fn: () => Promise<T>,
+    meta?: Record<string, unknown>,
+  ): Promise<T | null> {
     setBusy(tag)
     try {
-      const r = await fn()
+      const r = await logAction('git', action, fn, { projectId, meta })
       await load()
       return r
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setErr(msg)
-      pushLog({ level: 'error', scope: 'git', projectId, msg: `${tag}: ${msg}` })
       return null
     } finally {
       setBusy(null)
@@ -128,12 +137,22 @@ export default function ChangesList({ projectId }: Props) {
 
   async function onStage(paths: string[]) {
     if (paths.length === 0) return
-    await withBusy(`stage(${paths.length})`, () => api.stagePaths(projectId, paths))
+    await withBusy(
+      `stage(${paths.length})`,
+      'stage',
+      () => api.stagePaths(projectId, paths),
+      { count: paths.length },
+    )
   }
 
   async function onUnstage(paths: string[]) {
     if (paths.length === 0) return
-    await withBusy(`unstage(${paths.length})`, () => api.unstagePaths(projectId, paths))
+    await withBusy(
+      `unstage(${paths.length})`,
+      'unstage',
+      () => api.unstagePaths(projectId, paths),
+      { count: paths.length },
+    )
   }
 
   async function onDiscard(tracked: string[], untracked: string[]) {
@@ -145,8 +164,11 @@ export default function ChangesList({ projectId }: Props) {
       confirmLabel: '丢弃',
     })
     if (!ok) return
-    await withBusy(`discard(${total})`, () =>
-      api.discardPaths(projectId, { tracked, untracked }),
+    await withBusy(
+      `discard(${total})`,
+      'discard',
+      () => api.discardPaths(projectId, { tracked, untracked }),
+      { tracked: tracked.length, untracked: untracked.length },
     )
   }
 
@@ -157,7 +179,12 @@ export default function ChangesList({ projectId }: Props) {
       ...data.untracked.map((e) => e.path),
     ]
     if (paths.length === 0) return
-    await withBusy('stage-all', () => api.stagePaths(projectId, paths))
+    await withBusy(
+      'stage-all',
+      'stage-all',
+      () => api.stagePaths(projectId, paths),
+      { count: paths.length },
+    )
   }
 
   async function onCommit() {
@@ -173,23 +200,26 @@ export default function ChangesList({ projectId }: Props) {
         confirmLabel: '暂存并提交',
       })
       if (!ok) return
-      const res = await withBusy('stage-all', () =>
-        api.stagePaths(projectId, [
-          ...data.unstaged.map((e) => e.path),
-          ...data.untracked.map((e) => e.path),
-        ]),
+      const stagePaths = [
+        ...data.unstaged.map((e) => e.path),
+        ...data.untracked.map((e) => e.path),
+      ]
+      const res = await withBusy(
+        'stage-all',
+        'stage-all',
+        () => api.stagePaths(projectId, stagePaths),
+        { count: stagePaths.length },
       )
       if (!res) return
     }
-    const r = await withBusy('commit', () => api.createCommit(projectId, { message: msg }))
+    const r = await withBusy(
+      'commit',
+      'commit',
+      () => api.createCommit(projectId, { message: msg }),
+      { message: msg.slice(0, 200) },
+    )
     if (r) {
       setMessage('')
-      pushLog({
-        level: 'info',
-        scope: 'git',
-        projectId,
-        msg: `提交 ${r.shortSha}: ${r.summary}`,
-      })
     }
   }
 
