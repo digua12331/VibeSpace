@@ -10,7 +10,7 @@ import * as api from '../../api'
 import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
-import { logAction } from '../../logs'
+import { logAction, pushLog } from '../../logs'
 import { formatForSession } from '../fileContextMenu'
 import { openContextMenu, type ContextMenuItem } from '../ContextMenu'
 import PromptLibraryDialog from '../PromptLibraryDialog'
@@ -37,6 +37,24 @@ const PASTE_IMAGE_MIMES = new Set<string>([
   'image/webp',
 ])
 const PASTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
+// xterm `disableStdin: true` 把所有按键吞掉，但 TUI 菜单（AskUserQuestion / inquirer
+// / npm prompt 等）需要这些导航键直达 PTY。条件命中下手动发对应 ANSI 序列。
+// 仅 Normal Cursor Mode；Application Mode 序列（如 \x1bOA）不支持。
+const TUI_PASSTHROUGH_KEYMAP: Readonly<Record<string, string>> = {
+  ArrowUp: '\x1b[A',
+  ArrowDown: '\x1b[B',
+  ArrowRight: '\x1b[C',
+  ArrowLeft: '\x1b[D',
+  Enter: '\r',
+  Tab: '\t',
+  Escape: '\x1b',
+  Backspace: '\x7f',
+  Home: '\x1b[H',
+  End: '\x1b[F',
+  PageUp: '\x1b[5~',
+  PageDown: '\x1b[6~',
+}
 
 async function findImageInClipboard(
   items: ClipboardItem[],
@@ -194,6 +212,9 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  // IME 真实状态：onCompositionStart/End 维护，比 keydown 的 isComposing 可靠
+  // —— 后者在 Chromium 上 compositionend 边界偶尔漏报，导致 Enter 被误判。
+  const composingRef = useRef(false)
   const inputBarRef = useRef<HTMLDivElement | null>(null)
   const filesRef = useRef<string[] | null>(null)
   // 粘贴/填入超长文本时，原文放到这里，textarea 里只留一个占位 token，避免
@@ -202,6 +223,9 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const pasteStashRef = useRef<Map<string, string>>(new Map())
   const pasteSeqRef = useRef(0)
   const resizeRafRef = useRef<number | null>(null)
+  // 单实例幂等：第一次走 TUI 透传分支时打一条 INFO 进 LogsView，之后翻 true 不再打。
+  // 见 attachCustomKeyEventHandler 的 TUI passthrough 分支。
+  const passthroughLoggedRef = useRef(false)
   const [menu, setMenu] = useState<MenuState>({ kind: 'none' })
   const [busy, setBusy] = useState(false)
   const [showExitInfo, setShowExitInfo] = useState(true)
@@ -285,6 +309,34 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
           aimonWS.sendInput(session.id, '\x03')
         }
         return false
+      }
+      // TUI passthrough：xterm 区跑的 TUI 菜单（Claude Code AskUserQuestion、
+      // codex/inquirer 系 prompt、npm init 之类）需要 ↑/↓/Enter/Tab/Esc 直达 PTY。
+      // 守卫顺序：IME → 焦点 → textarea 为空 → 命中白名单。任一不满足 fallthrough
+      // 到下方"全屏蔽"分支，绝不混进 forwardCharToInput（那条只接可打印字符）。
+      // 仅 Normal Cursor Mode；Application Mode（vim/less 等）暂不支持。
+      const inIme = ev.isComposing || ev.keyCode === 229
+      const inputEl = inputRef.current
+      const inputEmpty = inputEl?.value === ''
+      const inputUnfocused = document.activeElement !== inputEl
+      if (!inIme && inputEmpty && inputUnfocused) {
+        const seq = TUI_PASSTHROUGH_KEYMAP[ev.key]
+        if (seq !== undefined) {
+          ev.preventDefault()
+          aimonWS.sendInput(session.id, seq)
+          if (!passthroughLoggedRef.current) {
+            passthroughLoggedRef.current = true
+            pushLog({
+              level: 'info',
+              scope: 'session',
+              msg: 'tui-passthrough-enabled 开始',
+              projectId: session.projectId,
+              sessionId: session.id,
+              meta: { firstKey: ev.key },
+            })
+          }
+          return false
+        }
       }
       // 可打印单字符（无 Ctrl/Meta/Alt 修饰；Shift 允许）→ 自动转发到悬浮输入框，
       // 并把 focus 切过去。防止用户对着终端区敲字没反馈。
@@ -630,7 +682,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   }
 
   function onInputKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.nativeEvent.isComposing) return
+    // IME 三重守卫：composingRef（compositionend 同步翻转，最可靠）
+    // + nativeEvent.isComposing + keyCode === 229（Process 键，IME 占用）。
+    // Chromium 在 IME 上屏后立即按 Enter 时，单看 isComposing 偶尔漏报；
+    // 命中守卫时若是 Enter 必须 preventDefault，否则 textarea 默认行为会
+    // 把 \n 插进来——这是"按一次 Enter 没发送、文本多了换行、再按一次才发"
+    // 的根因。preventDefault 不会影响 IME 真正在选字时的候选确认。
+    if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) {
+      if (e.key === 'Enter') e.preventDefault()
+      return
+    }
     if (menu.kind !== 'none') {
       const items = getMenuItems(menu)
       if (e.key === 'Escape') {
@@ -903,6 +964,8 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
             ref={inputRef}
             rows={1}
             onKeyDown={onInputKey}
+            onCompositionStart={() => { composingRef.current = true }}
+            onCompositionEnd={() => { composingRef.current = false }}
             onPaste={onInputPaste}
             onInput={onInputChange}
             disabled={isDead}

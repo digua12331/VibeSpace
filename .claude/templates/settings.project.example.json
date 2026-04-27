@@ -1,0 +1,21 @@
+{
+  "_doc": {
+    "tier": "project-shared (template)",
+    "purpose": "拷到新项目根的 .claude/settings.json，进 git 与协作者共享",
+    "rules": "只放本项目脚本 / 批处理 / MCP / Skill；个人临时 entry 进 settings.local.json；跨项目通用进 ~/.claude/settings.json",
+    "checklist": [
+      "改 _doc.purpose 为新项目说明",
+      "替换下方 allow 里 <pkg> / <script> 占位为真实值",
+      "确认新项目 .gitignore 里 .claude/ 屏蔽规则有 !.claude/settings.json 白名单",
+      "把 docs/claude-config-tiers.md 也复制一份到新项目，或在新项目 CLAUDE.md 里指向 AIkanban 的那份"
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter <pkg>:*)",
+      "PowerShell(& \"<absolute-path>/<script>.bat\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

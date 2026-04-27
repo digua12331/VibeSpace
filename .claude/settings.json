@@ -1,0 +1,22 @@
+{
+  "_doc": {
+    "tier": "project-shared",
+    "purpose": "AIkanban 项目专属：项目脚本 + 项目 batch 文件路径 + 项目用 MCP / Skill",
+    "tier_rules": "见 docs/claude-config-tiers.md。本文件入 git 与协作者共享；本机一次性 entry 进 settings.local.json；跨项目通用进 ~/.claude/settings.json"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @aimon/server:*)",
+      "Bash(pnpm --filter @aimon/web:*)",
+      "Bash(pnpm --filter @aimon/hook-script:*)",
+      "Bash(cmd //c \"sync-to-stable.bat\")",
+      "Bash(cmd //c \"F:\\\\VibeSpace\\\\KB\\\\AIkanban-main\\\\sync-to-stable.bat\")",
+      "PowerShell(& \"F:\\\\VibeSpace\\\\KB\\\\AIkanban-main\\\\sync-to-stable.bat\")",
+      "PowerShell(& \"F:\\\\VibeSpace\\\\KB\\\\AIkanban-main\\\\start.bat\")",
+      "PowerShell(Start-Process -FilePath \"F:\\\\VibeSpace\\\\KB\\\\AIkanban-main\\\\start.bat\" -WorkingDirectory \"F:\\\\VibeSpace\\\\KB\\\\AIkanban-main\")",
+      "Skill(codex:setup)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

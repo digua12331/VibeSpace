@@ -26,14 +26,17 @@ echo [VibeSpace] identity=!VIBE_ID!  backend=!VIBE_BACKEND!  web=!VIBE_WEB!  scr
 echo [VibeSpace] project root: %~dp0
 echo.
 
-if not exist node_modules (
-  echo [VibeSpace] node_modules not found - running first-time setup ...
-  call pnpm install
-  if errorlevel 1 (
-    echo [VibeSpace] pnpm install failed. Press any key to exit.
-    pause >nul
-    exit /b 1
-  )
+set FIRST_RUN=
+if not exist node_modules set FIRST_RUN=1
+
+echo [VibeSpace] running pnpm install (refresh workspace symlinks) ...
+call pnpm install
+if errorlevel 1 (
+  echo [VibeSpace] pnpm install failed. Press any key to exit.
+  pause >nul
+  exit /b 1
+)
+if defined FIRST_RUN (
   echo [VibeSpace] rebuilding native modules for Windows ...
   call pnpm --filter @aimon/server rebuild @homebridge/node-pty-prebuilt-multiarch better-sqlite3
 )

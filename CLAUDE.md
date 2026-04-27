@@ -241,3 +241,15 @@
 - 不再因为"过度实现"反复重写
 - 澄清问题发生在动手之前，而不是事后返工
 - PR 干净、聚焦，没有顺手重构或"顺便改进"
+
+---
+
+## Claude Code 配置分层
+
+Claude Code 的权限/钩子/插件配置分**系统级**（`~/.claude/`）与**项目级**（`<repo>/.claude/`）两层；本仓库再把项目级拆成"共享"（`settings.json`，进 git）和"本机"（`settings.local.json`，gitignore）两份。
+
+- **写 settings 前的归位三问**、**deny 红线清单**、**新项目复用流程**：见 `docs/claude-config-tiers.md`。
+- **新项目复用模板**：`.claude/templates/`（system / project 两份示例）。
+- **每个 settings.json 顶部都有 `_doc` 字段**自描述层级和职责，打开文件秒看懂归我管啥。
+
+任何改 `~/.claude/settings.json` / `<repo>/.claude/settings.json` / `<repo>/.claude/settings.local.json` 的需求，先翻一眼那份文档，按归位规则放，不要随手堆。

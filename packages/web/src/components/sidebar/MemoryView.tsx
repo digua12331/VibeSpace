@@ -41,7 +41,7 @@ export function MemoryView({ projectId }: Props) {
     [payload],
   )
   const hasAny = (p: MemoryPayload | undefined): boolean =>
-    !!p && (p.auto.length > 1 || p.manual.length > 1 || p.rejected.length > 1)
+    !!p && (p.auto.length > 1 || p.manual.length > 1)
 
   const toggle = (line: number) => {
     setSelected((cur) => {
@@ -91,9 +91,8 @@ export function MemoryView({ projectId }: Props) {
 
   const autoHasContent = autoLessons.length > 0
   const manualHasContent = payload.manual.some((e) => e.text.trim().length > 0 && !isHeader(e))
-  const rejectedHasContent = payload.rejected.some((e) => e.text.trim().length > 0 && !isHeader(e))
 
-  if (!autoHasContent && !manualHasContent && !rejectedHasContent) {
+  if (!autoHasContent && !manualHasContent) {
     return (
       <div className="px-3 py-6 text-xs text-muted leading-relaxed">
         还没有记忆条目——归档一次任务后后台会自动评审并追加到 <code className="px-1 rounded bg-white/[0.06]">auto.md</code>，
@@ -119,15 +118,6 @@ export function MemoryView({ projectId }: Props) {
           }}
         </Section>
         <Section title="手动沉淀（manual.md）" entries={payload.manual}>
-          {(entry) =>
-            entry.kind === 'raw' ? (
-              <RawRow key={entry.line} entry={entry} />
-            ) : (
-              <LessonRow key={entry.line} entry={entry} readonly />
-            )
-          }
-        </Section>
-        <Section title="已撤回（rejected.md）" entries={payload.rejected}>
           {(entry) =>
             entry.kind === 'raw' ? (
               <RawRow key={entry.line} entry={entry} />
@@ -242,25 +232,32 @@ function LessonRow({
   onToggle?: () => void
   readonly?: boolean
 }) {
+  const conclusion = extractConclusion(entry.text)
+  const tooltipParts = [entry.date, entry.task, conclusion].filter(
+    (s): s is string => !!s && s.length > 0,
+  )
+  const tooltip = tooltipParts.join(' / ')
   return (
-    <div className="group flex items-start gap-2 px-2 py-1 rounded hover:bg-white/[0.04]">
-      {!readonly && (
+    <div
+      className="group flex items-center gap-1.5 pl-1 pr-2 py-1 rounded hover:bg-white/[0.04] text-sm"
+      title={tooltip}
+    >
+      {!readonly ? (
         <input
           type="checkbox"
           checked={!!checked}
           onChange={onToggle}
-          className="mt-[3px] shrink-0"
+          className="shrink-0"
         />
+      ) : (
+        <span className="inline-block w-4 shrink-0" />
       )}
-      <div className="flex-1 min-w-0 text-[12px] leading-[1.45]">
-        <div className="flex items-center gap-1.5 text-[10px] text-subtle tabular-nums">
-          <span>{entry.date ?? ''}</span>
-          {entry.task && <span className="truncate">/ {entry.task}</span>}
-        </div>
-        <div className="whitespace-pre-wrap break-words text-fg/90">
-          {extractConclusion(entry.text)}
-        </div>
-      </div>
+      {entry.date && (
+        <span className="text-[10px] text-subtle tabular-nums shrink-0">
+          {entry.date}
+        </span>
+      )}
+      <span className="flex-1 truncate text-fg/90">{conclusion}</span>
     </div>
   )
 }
@@ -270,8 +267,12 @@ function RawRow({ entry }: { entry: MemoryEntry }) {
   if (!t || !t.trim()) return null
   if (isHeader(entry)) return null
   return (
-    <div className="px-2 py-1 text-[11px] text-subtle whitespace-pre-wrap break-words">
-      {t}
+    <div
+      className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded hover:bg-white/[0.04] text-sm"
+      title={t}
+    >
+      <span className="inline-block w-4 shrink-0" />
+      <span className="flex-1 truncate text-[11px] text-subtle">{t}</span>
     </div>
   )
 }

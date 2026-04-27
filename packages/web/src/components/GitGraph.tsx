@@ -273,7 +273,8 @@ export default function GitGraph({ projectId }: Props) {
                   {row.commit.refs.map((r) => (
                     <span
                       key={r}
-                      className="text-[10px] px-1 py-0.5 rounded border border-sky-500/40 text-sky-300 bg-sky-500/10"
+                      title={r}
+                      className="text-[10px] px-1 py-0.5 rounded border border-sky-500/40 text-sky-300 bg-sky-500/10 max-w-[120px] truncate shrink-0"
                     >
                       {r}
                     </span>

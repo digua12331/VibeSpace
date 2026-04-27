@@ -9,8 +9,11 @@ packages/server/data/
 .env.local
 *.log
 .vibespace/
-.claude/settings.local.json
 dev/
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/templates
+!.claude/templates/**
 .codex/
-docs/
+docs/*
+!docs/claude-config-tiers.md
