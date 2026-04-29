@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import {
+  dirname,
   join as joinPath,
   resolve as resolvePath,
   relative as relativePath,
@@ -925,4 +926,108 @@ export async function getGraph(
         isHead: sha === headSha,
       } satisfies GraphCommit;
     });
+}
+
+// ---------- Worktree ----------
+
+export interface WorktreeEntry {
+  /** Absolute path. */
+  path: string;
+  /** Commit sha at the worktree's HEAD. */
+  head: string;
+  /** Short branch name (no `refs/heads/` prefix), or null when detached. */
+  branch: string | null;
+  bare: boolean;
+  detached: boolean;
+}
+
+export async function addWorktree(
+  projectPath: string,
+  worktreePath: string,
+  branch: string,
+  baseRef: string = "HEAD",
+): Promise<void> {
+  // git refuses to create the worktree if its parent directory is missing,
+  // so ensure it exists first.
+  await mkdir(dirname(worktreePath), { recursive: true });
+  const g = gitFor(projectPath);
+  try {
+    await g.raw(["worktree", "add", "-b", branch, worktreePath, baseRef]);
+  } catch (err) {
+    throw new GitServiceError(
+      "git_failed",
+      `git worktree add failed: ${(err as Error).message}`,
+      400,
+    );
+  }
+}
+
+export async function removeWorktree(
+  projectPath: string,
+  worktreePath: string,
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  const g = gitFor(projectPath);
+  const args = ["worktree", "remove"];
+  if (opts.force) args.push("--force");
+  args.push(worktreePath);
+  try {
+    await g.raw(args);
+  } catch (err) {
+    throw new GitServiceError(
+      "git_failed",
+      `git worktree remove failed: ${(err as Error).message}`,
+      400,
+    );
+  }
+  // Drop the cached SimpleGit instance + status cache for the removed cwd.
+  forgetProject(worktreePath);
+}
+
+export async function listWorktrees(
+  projectPath: string,
+): Promise<WorktreeEntry[]> {
+  const g = gitFor(projectPath);
+  let raw: string;
+  try {
+    raw = await g.raw(["worktree", "list", "--porcelain"]);
+  } catch {
+    return [];
+  }
+  const out: WorktreeEntry[] = [];
+  let cur: Partial<WorktreeEntry> = {};
+  const flush = (): void => {
+    if (cur.path) {
+      out.push({
+        path: cur.path,
+        head: cur.head ?? "",
+        branch: cur.branch ?? null,
+        bare: cur.bare ?? false,
+        detached: cur.detached ?? false,
+      });
+    }
+    cur = {};
+  };
+  for (const line of raw.split(/\r?\n/)) {
+    if (line === "") {
+      flush();
+      continue;
+    }
+    if (line.startsWith("worktree ")) {
+      cur.path = line.slice("worktree ".length);
+    } else if (line.startsWith("HEAD ")) {
+      cur.head = line.slice("HEAD ".length);
+    } else if (line.startsWith("branch ")) {
+      const ref = line.slice("branch ".length);
+      cur.branch = ref.startsWith("refs/heads/")
+        ? ref.slice("refs/heads/".length)
+        : ref;
+    } else if (line === "bare") {
+      cur.bare = true;
+    } else if (line === "detached") {
+      cur.detached = true;
+    }
+  }
+  flush();
+  return out;
 }

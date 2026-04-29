@@ -21,9 +21,28 @@ import {
   resolveCommand,
   type CustomButton,
 } from '../../customButtons'
-import type { AgentKind, Session } from '../../types'
+import { BUILTIN_SHELL_AGENTS, type AgentKind, type Session } from '../../types'
 import InputMenu from './InputMenu'
 import { getSlashCommands } from './slashCommands'
+
+// 多行裸文本送进 PTY 时，Claude Code / Codex / Gemini 等 ink-based TUI 会把
+// 内嵌的 \n 当成"用户在 prompt 里手敲多行"，光标停在最后一行，后面的 \r
+// 不算"干净的单行 Enter"所以不触发提交——表现就是文本进了 agent 的 prompt
+// 框但没发送出去。bracketed paste 序列 (\x1b[200~ ... \x1b[201~) 是终端协议里
+// "这段是一次粘贴"的标准信号，与 xterm Ctrl+V 在物理终端里的行为对齐。
+// pwsh/cmd/shell 等纯 shell 不一定支持，会把 markers 当字面字符显示，所以
+// 只对非 shell agent 启用。
+const BRACKETED_PASTE_BEGIN = '\x1b[200~'
+const BRACKETED_PASTE_END = '\x1b[201~'
+
+function supportsBracketedPaste(agent: AgentKind): boolean {
+  return !(BUILTIN_SHELL_AGENTS as readonly string[]).includes(agent)
+}
+
+function wrapBracketedPaste(agent: AgentKind, text: string): string {
+  if (!text.includes('\n') || !supportsBracketedPaste(agent)) return text
+  return BRACKETED_PASTE_BEGIN + text + BRACKETED_PASTE_END
+}
 
 type MenuState =
   | { kind: 'none' }
@@ -133,7 +152,7 @@ async function handleClipboardPaste(session: Session): Promise<void> {
   // 因为我们开了 disableStdin，xterm 的 triggerDataEvent 在那种状态下会静默 no-op。
   try {
     const text = await navigator.clipboard.readText()
-    if (text) aimonWS.sendInput(session.id, text)
+    if (text) aimonWS.sendInput(session.id, wrapBracketedPaste(session.agent, text))
   } catch {
     // Clipboard blocked — silent; user can use the "type to send" input.
   }
@@ -724,7 +743,53 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       e.preventDefault()
       const el = e.currentTarget
       const payload = expandStashed(el.value)
-      aimonWS.sendInput(session.id, payload + '\r')
+      const hasNewline = payload.includes('\n')
+      // 所有非 shell agent（claude / codex / gemini / opencode 等 ink-based TUI）
+      // 都走"bracketed paste 包整段 + 隔一帧发 \r"，单行也走，理由见下面注释。
+      const useBracketedPaste = supportsBracketedPaste(session.agent)
+      // 诊断埋点：用来定位"Enter 偶尔只送达 prompt 不触发提交"。
+      // composingRef / isComposing / keyCode 三个字段一起看能区分是 IME 边界
+      // 漏报（值为 true 但守卫没拦住）还是 PTY/ink 侧 \r 没被识别为 submit。
+      // tailHex 是 payload 末尾两个 char code，用来确认没有尾随 \n / \r 误入。
+      const tailHex = Array.from(payload.slice(-2))
+        .map((ch) => ch.charCodeAt(0).toString(16))
+        .join(',')
+      pushLog({
+        level: 'info',
+        scope: 'session',
+        msg: 'input-submit',
+        projectId: session.projectId,
+        sessionId: session.id,
+        meta: {
+          agent: session.agent,
+          len: payload.length,
+          hasNewline,
+          bracketedPaste: useBracketedPaste,
+          tailHex,
+          composingRef: composingRef.current,
+          isComposing: e.nativeEvent.isComposing,
+          keyCode: e.keyCode,
+        },
+      })
+      if (useBracketedPaste) {
+        // ink-based TUI（claude / codex / gemini）：单行也走 bracketed paste。
+        // 原本以为只有多行才出问题，但用户实测单行 `payload\r` 一个 chunk 里
+        // \r 偶尔会被 ink 当成 CR 回车字符而不是 submit 信号——表现为光标回
+        // 到行首换行、文本没提交。bracketed paste 把整段标记为"一次粘贴"，
+        // ink 对这种事件有专门处理，更鲁棒。隔 16ms 再发独立的 \r，给 ink
+        // 一帧时间退出 paste 状态机后再当 Enter 处理。
+        aimonWS.sendInput(
+          session.id,
+          BRACKETED_PASTE_BEGIN + payload + BRACKETED_PASTE_END,
+        )
+        setTimeout(() => {
+          aimonWS.sendInput(session.id, '\r')
+        }, 16)
+      } else {
+        // shell（pwsh / cmd / shell）不识别 bracketed paste 序列，会把
+        // \x1b[200~ 当字面字符显示。维持原行为：text + \r 一次性发出去。
+        aimonWS.sendInput(session.id, payload + '\r')
+      }
       el.value = ''
       clearStash()
       autoResizeInput(el)
@@ -894,9 +959,22 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
                   return (
                     <button
                       key={b.id}
-                      onClick={() => fillInput(cmd)}
+                      onClick={() => {
+                        aimonWS.sendInput(
+                          session.id,
+                          wrapBracketedPaste(session.agent, cmd) + '\r',
+                        )
+                        pushLog({
+                          level: 'info',
+                          scope: 'session',
+                          msg: `quick-button 发送 ${b.text}`,
+                          projectId: session.projectId,
+                          sessionId: session.id,
+                          meta: { buttonId: b.id, agent: session.agent, cmd },
+                        })
+                      }}
                       disabled={busy}
-                      title={`填入输入框: ${cmd}`}
+                      title={`发送到 ${session.agent}: ${cmd}`}
                       className={`fluent-btn px-2 py-0.5 text-xs rounded border disabled:opacity-50 ${BUTTON_COLOR_CLASSES[b.color]}`}
                     >
                       {b.text}
@@ -947,7 +1025,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
             navigator.clipboard
               .readText()
               .then((text) => {
-                if (text) aimonWS.sendInput(session.id, text)
+                if (text) aimonWS.sendInput(session.id, wrapBracketedPaste(session.agent, text))
               })
               .catch(() => { /* clipboard blocked — silent */ })
           }}

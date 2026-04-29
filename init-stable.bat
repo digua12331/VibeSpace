@@ -2,20 +2,49 @@
 setlocal EnableDelayedExpansion
 
 REM ============================================================
-REM init-stable.bat
-REM Clone the current dev repo to f:\KB\AIkanban-stable and
-REM bring it to a runnable state (install + rebuild + build).
-REM Checks out the latest stable-* tag (if any); falls back
-REM to the cloned HEAD otherwise.
+REM init-stable.bat [stable_dir]
+REM Clone the current dev repo to a stable dir and bring it to
+REM a runnable state (install + rebuild + build). Resolves the
+REM stable dir via: CLI arg > env AIMON_STABLE_DIR > sibling
+REM auto-detect (e.g. AIkanban-main -> ../AIkanban-stable).
+REM Checks out the latest stable-* tag (if any); falls back to
+REM the cloned HEAD otherwise.
 REM Idempotent: refuses to overwrite an existing stable dir.
 REM ============================================================
 
 set DEV_DIR=%~dp0
 if "%DEV_DIR:~-1%"=="\" set DEV_DIR=%DEV_DIR:~0,-1%
-set STABLE_DIR=f:\KB\AIkanban-stable
+
+REM --- resolve STABLE_DIR: CLI arg > env AIMON_STABLE_DIR > sibling auto-detect ---
+REM   sibling rule: <parent>\<basename(DEV) with -main/-dev replaced by -stable, else +-stable>
+set "STABLE_DIR="
+set "STABLE_SOURCE="
+if not "%~1"=="" (
+  set "STABLE_DIR=%~1"
+  set "STABLE_SOURCE=CLI arg"
+)
+if not defined STABLE_DIR if defined AIMON_STABLE_DIR (
+  set "STABLE_DIR=%AIMON_STABLE_DIR%"
+  set "STABLE_SOURCE=env AIMON_STABLE_DIR"
+)
+if not defined STABLE_DIR (
+  for %%I in ("%DEV_DIR%") do (
+    set "DEV_NAME=%%~nxI"
+    set "DEV_PARENT=%%~dpI"
+  )
+  if "!DEV_PARENT:~-1!"=="\" set "DEV_PARENT=!DEV_PARENT:~0,-1!"
+  set "DERIVED="
+  if "!DEV_NAME:~-5!"=="-main"  set "DERIVED=!DEV_NAME:~0,-5!-stable"
+  if not defined DERIVED if "!DEV_NAME:~-4!"=="-dev" set "DERIVED=!DEV_NAME:~0,-4!-stable"
+  if not defined DERIVED set "DERIVED=!DEV_NAME!-stable"
+  set "STABLE_DIR=!DEV_PARENT!\!DERIVED!"
+  set "STABLE_SOURCE=sibling auto-detect"
+)
+REM normalize to absolute path
+for %%I in ("!STABLE_DIR!") do set "STABLE_DIR=%%~fI"
 
 echo [init] DEV    = %DEV_DIR%
-echo [init] STABLE = %STABLE_DIR%
+echo [init] STABLE = %STABLE_DIR%  ^(via %STABLE_SOURCE%^)
 echo.
 
 REM --- preflight: required tools on PATH ---
@@ -33,7 +62,9 @@ if errorlevel 1 (
 REM --- Step 1: stable must not exist ---
 if exist "%STABLE_DIR%" (
   echo [init] ERROR: STABLE_DIR already exists: %STABLE_DIR%
-  echo [init] Remove it manually if you want a fresh init, or edit STABLE_DIR in this .bat.
+  echo [init] Remove it manually for a fresh init, or pick a different path:
+  echo [init]   init-stable.bat ^<stable_dir^>
+  echo [init]   set AIMON_STABLE_DIR=^<stable_dir^> ^&^& init-stable.bat
   exit /b 1
 )
 

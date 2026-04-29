@@ -64,6 +64,9 @@ export default function StartSessionMenu({
   const [scopeEnabled, setScopeEnabled] = useState(false)
   const [rwText, setRwText] = useState('')
   const [roText, setRoText] = useState('')
+  const [isolationOn, setIsolationOn] = useState(false)
+  /** null = haven't probed yet; true/false once getProjectChanges replied */
+  const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const addSession = useStore((s) => s.addSession)
   const disabled = projectId === null
@@ -76,6 +79,23 @@ export default function StartSessionMenu({
     if (open) window.addEventListener('mousedown', onClick)
     return () => window.removeEventListener('mousedown', onClick)
   }, [open])
+
+  // Probe whether the project root is a git repo. Cheap (1 cached call), but
+  // we only do it when the menu is open (and projectId is set) to avoid
+  // unnecessary work on idle UI.
+  useEffect(() => {
+    if (!open || !projectId) return
+    let cancelled = false
+    void api.getProjectChanges(projectId).then((res) => {
+      if (cancelled) return
+      setIsGitRepo(res.enabled === true)
+    }).catch(() => {
+      if (!cancelled) setIsGitRepo(null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, projectId])
 
   // Pull catalog + status whenever the menu opens or after an install completes.
   useEffect(() => {
@@ -116,7 +136,13 @@ export default function StartSessionMenu({
                 readonly: parseGlobs(roText),
               }
             : undefined
-          const s = await api.createSession({ projectId, agent, scope })
+          const isolation = isolationOn && isGitRepo ? 'worktree' : 'shared'
+          const s = await api.createSession({
+            projectId,
+            agent,
+            scope,
+            isolation,
+          })
           // Backend doesn't echo scope in the wire response; attach it client-side
           // so the tab badge (T9) shows immediately without waiting for a refresh.
           const enriched = scope ? { ...s, scope } : s
@@ -125,7 +151,14 @@ export default function StartSessionMenu({
           onStarted?.(enriched)
           return s
         },
-        { projectId, meta: { agent, scoped: scopeEnabled } },
+        {
+          projectId,
+          meta: {
+            agent,
+            scoped: scopeEnabled,
+            isolation: isolationOn && isGitRepo ? 'worktree' : 'shared',
+          },
+        },
       )
       setOpen(false)
     } catch (e: unknown) {
@@ -136,14 +169,19 @@ export default function StartSessionMenu({
     }
   }
 
-  const cliRows: AgentRow[] = catalog.map((e) => ({
-    id: e.id,
-    label: e.label,
-    emoji: EMOJI_BY_ID[e.id] ?? '🤖',
-    installed: !!status?.cli[e.id]?.installed,
-    builtin: e.builtin,
-    homepage: e.homepage,
-  }))
+  const cliRows: AgentRow[] = catalog
+    // mcp-tool entries (e.g. browser-use) are not chat REPLs; they are wired
+    // into running sessions via mcp-bridge. Hide them from the launch menu so
+    // users do not try to spawn one as a session.
+    .filter((e) => (e.kind ?? 'agent') === 'agent')
+    .map((e) => ({
+      id: e.id,
+      label: e.label,
+      emoji: EMOJI_BY_ID[e.id] ?? '🤖',
+      installed: !!status?.cli[e.id]?.installed,
+      builtin: e.builtin,
+      homepage: e.homepage,
+    }))
   const installedCli = cliRows.filter((r) => r.installed)
   const missingCount = cliRows.length - installedCli.length
 
@@ -177,7 +215,26 @@ export default function StartSessionMenu({
         {open && (
           <div className="absolute right-0 top-full mt-2 w-72 fluent-acrylic rounded-win shadow-flyout z-20 py-1 animate-fluent-in">
             <div className="px-3 pt-2 pb-1.5 border-b border-white/[0.06]">
-              <label className="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
+              <label
+                className={`flex items-center gap-2 text-xs cursor-pointer select-none ${
+                  isGitRepo === false ? 'text-subtle cursor-not-allowed' : 'text-muted'
+                }`}
+                title={
+                  isGitRepo === false
+                    ? '非 git 项目不支持隔离'
+                    : '勾选后 session 跑在独立 git worktree + 独立分支，不污染主仓 working tree'
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={isolationOn && isGitRepo === true}
+                  disabled={isGitRepo !== true}
+                  onChange={(e) => setIsolationOn(e.target.checked)}
+                  className="accent-accent"
+                />
+                <span>🌿 工作区隔离（独立 worktree + 分支）</span>
+              </label>
+              <label className="mt-1.5 flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={scopeEnabled}

@@ -288,6 +288,14 @@ export default function CliInstallerDialog({
                             内置
                           </span>
                         )}
+                        {entry.kind === 'mcp-tool' && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30"
+                            title="MCP 工具：装好后由 mcp-bridge 自动接到 claude/codex 等 session"
+                          >
+                            MCP 工具
+                          </span>
+                        )}
                         <StatusBadge installed={installed} state={row.state} />
                       </div>
                       {entry.description && (

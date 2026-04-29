@@ -109,6 +109,17 @@ export function closeDb(): void {
   }
 }
 
+function addColumnIfMissing(
+  db: Database.Database,
+  table: string,
+  column: string,
+  def: string,
+): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+}
+
 function migrate(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS projects (
@@ -125,7 +136,11 @@ function migrate(db: Database.Database): void {
       pid INTEGER,
       started_at INTEGER NOT NULL,
       ended_at INTEGER,
-      exit_code INTEGER
+      exit_code INTEGER,
+      isolation TEXT NOT NULL DEFAULT 'shared',
+      worktree_path TEXT,
+      worktree_branch TEXT,
+      task_name TEXT
     );
     CREATE TABLE IF NOT EXISTS session_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,7 +178,11 @@ function migrate(db: Database.Database): void {
           pid INTEGER,
           started_at INTEGER NOT NULL,
           ended_at INTEGER,
-          exit_code INTEGER
+          exit_code INTEGER,
+          isolation TEXT NOT NULL DEFAULT 'shared',
+          worktree_path TEXT,
+          worktree_branch TEXT,
+          task_name TEXT
         );
         INSERT INTO sessions (id, project_id, agent, status, pid, started_at, ended_at, exit_code)
           SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code
@@ -174,6 +193,15 @@ function migrate(db: Database.Database): void {
       db.pragma("foreign_keys = ON");
     }
   }
+
+  // For DBs created before harness-worktree隔离: add the three columns if
+  // they're missing so old rows pick up the DEFAULT for isolation and NULL
+  // for the path/branch fields.
+  addColumnIfMissing(db, "sessions", "isolation", "TEXT NOT NULL DEFAULT 'shared'");
+  addColumnIfMissing(db, "sessions", "worktree_path", "TEXT");
+  addColumnIfMissing(db, "sessions", "worktree_branch", "TEXT");
+  // Added in harness-task绑定与jobs面板.
+  addColumnIfMissing(db, "sessions", "task_name", "TEXT");
 
   // projects.json is the authoritative store. The projects table is a shadow
   // kept in sync so session FKs and ON DELETE CASCADE still work.
@@ -230,6 +258,8 @@ export interface Project {
   layout?: ProjectLayout;
 }
 
+export type SessionIsolation = "shared" | "worktree";
+
 export interface Session {
   id: string;
   projectId: string;
@@ -239,6 +269,11 @@ export interface Session {
   startedAt: number;
   endedAt: number | null;
   exitCode: number | null;
+  isolation: SessionIsolation;
+  worktreePath: string | null;
+  worktreeBranch: string | null;
+  /** Bound dev/active/<task> name; NULL when unbound. */
+  task: string | null;
 }
 
 export interface SessionScope {
@@ -263,6 +298,10 @@ interface SessionRow {
   started_at: number;
   ended_at: number | null;
   exit_code: number | null;
+  isolation: SessionIsolation;
+  worktree_path: string | null;
+  worktree_branch: string | null;
+  task_name: string | null;
 }
 
 function rowToProject(r: ProjectRow): Project {
@@ -278,6 +317,10 @@ function rowToSession(r: SessionRow): Session {
     startedAt: r.started_at,
     endedAt: r.ended_at,
     exitCode: r.exit_code,
+    isolation: r.isolation ?? "shared",
+    worktreePath: r.worktree_path,
+    worktreeBranch: r.worktree_branch,
+    task: r.task_name,
   };
 }
 
@@ -338,12 +381,25 @@ export function createSession(input: {
   agent: Agent;
   status: SessionStatus;
   pid: number | null;
+  isolation?: SessionIsolation;
+  task?: string | null;
 }): Session {
   const db = getDb();
   const startedAt = Date.now();
+  const isolation: SessionIsolation = input.isolation ?? "shared";
+  const taskName = input.task ?? null;
   db.prepare(
-    "INSERT INTO sessions (id, project_id, agent, status, pid, started_at) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(input.id, input.projectId, input.agent, input.status, input.pid, startedAt);
+    "INSERT INTO sessions (id, project_id, agent, status, pid, started_at, isolation, task_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    input.id,
+    input.projectId,
+    input.agent,
+    input.status,
+    input.pid,
+    startedAt,
+    isolation,
+    taskName,
+  );
   return {
     id: input.id,
     projectId: input.projectId,
@@ -353,7 +409,44 @@ export function createSession(input: {
     startedAt,
     endedAt: null,
     exitCode: null,
+    isolation,
+    worktreePath: null,
+    worktreeBranch: null,
+    task: taskName,
   };
+}
+
+export function setSessionWorktree(
+  id: string,
+  worktreePath: string | null,
+  worktreeBranch: string | null,
+): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE sessions SET worktree_path = ?, worktree_branch = ? WHERE id = ?",
+  ).run(worktreePath, worktreeBranch, id);
+}
+
+export function setSessionTask(id: string, task: string | null): void {
+  const db = getDb();
+  db.prepare("UPDATE sessions SET task_name = ? WHERE id = ?").run(task, id);
+}
+
+/**
+ * Find an alive session (ended_at IS NULL) currently bound to `task` within
+ * `projectId`, if any. Used for the preempt detection in PATCH /:id/task.
+ */
+export function findSessionBoundToTask(
+  projectId: string,
+  task: string,
+): Session | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions WHERE project_id = ? AND task_name = ? AND ended_at IS NULL LIMIT 1",
+    )
+    .get(projectId, task) as SessionRow | undefined;
+  return row ? rowToSession(row) : null;
 }
 
 export function updateSessionStatus(id: string, status: SessionStatus): void {
@@ -381,7 +474,7 @@ export function listSessions(): Session[] {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code FROM sessions ORDER BY started_at DESC",
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions ORDER BY started_at DESC",
     )
     .all() as SessionRow[];
   return rows.map(rowToSession);
@@ -391,7 +484,7 @@ export function listSessionsByProject(projectId: string): Session[] {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code FROM sessions WHERE project_id = ? ORDER BY started_at DESC",
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions WHERE project_id = ? ORDER BY started_at DESC",
     )
     .all(projectId) as SessionRow[];
   return rows.map(rowToSession);
@@ -401,7 +494,7 @@ export function getSession(id: string): Session | null {
   const db = getDb();
   const row = db
     .prepare(
-      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code FROM sessions WHERE id = ?",
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions WHERE id = ?",
     )
     .get(id) as SessionRow | undefined;
   return row ? rowToSession(row) : null;

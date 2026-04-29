@@ -3,7 +3,7 @@ import { useStore } from '../../store'
 import * as api from '../../api'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { openContextMenu, type ContextMenuItem } from '../ContextMenu'
-import type { DocFileKind, DocTaskSummary, IssueItem } from '../../types'
+import type { DocFileKind, DocTaskSummary, IssueItem, Session } from '../../types'
 import { MemoryView } from './MemoryView'
 import { logAction, pushLog } from '../../logs'
 import { dispatchClaude } from '../../dispatchClaude'
@@ -123,6 +123,9 @@ export default function DocsView() {
   )
   const refreshIssues = useStore((s) => s.refreshIssues)
   const refreshMemory = useStore((s) => s.refreshMemory)
+  const sessions = useStore((s) => s.sessions)
+  const liveStatus = useStore((s) => s.liveStatus)
+  const setSessionTaskLocal = useStore((s) => s.setSessionTaskLocal)
   const [view, setView] = useState<DocsViewMode>('tasks')
   const memoryPollRef = useRef<{ id: ReturnType<typeof setTimeout> | null; stopped: boolean }>({ id: null, stopped: false })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -343,7 +346,85 @@ export default function DocsView() {
     await runDispatch(buildAllIssuesPrompt(openIssues), '已派 Claude 处理全部未处理问题')
   }
 
+  function aliveSessionsForProject(): Session[] {
+    if (!projectId) return []
+    return sessions
+      .filter((s) => s.projectId === projectId)
+      .filter((s) => {
+        const st = liveStatus[s.id] ?? s.status
+        return st !== 'stopped' && st !== 'crashed'
+      })
+  }
+
+  function findOwnerOfTask(taskName: string): Session | undefined {
+    return aliveSessionsForProject().find((s) => s.task === taskName)
+  }
+
+  async function onBindTaskToSession(task: string, sessionId: string) {
+    if (!projectId) return
+    try {
+      await logAction(
+        'session',
+        'bind-task',
+        async () => {
+          try {
+            const s = await api.bindSessionTask(sessionId, task)
+            setSessionTaskLocal(sessionId, task)
+            return s
+          } catch (err: unknown) {
+            const e = err as { status?: number; code?: string }
+            if (e?.status === 409 || e?.code === 'task_already_bound') {
+              const ok = await confirmDialog(
+                `任务 "${task}" 已绑定到别的 session，强制抢占?`,
+                { title: '抢占绑定', confirmLabel: '抢占', variant: 'danger' },
+              )
+              if (!ok) throw new Error('用户取消抢占')
+              const s = await api.bindSessionTask(sessionId, task, { force: true })
+              setSessionTaskLocal(sessionId, task)
+              return s
+            }
+            throw err
+          }
+        },
+        { projectId, sessionId, meta: { task } },
+      )
+    } catch {
+      /* logAction 已记 error，避免再 alert 噪声 */
+    }
+  }
+
+  async function onUnbindTask(task: string) {
+    const owner = findOwnerOfTask(task)
+    if (!owner || !projectId) return
+    try {
+      await logAction(
+        'session',
+        'unbind-task',
+        async () => {
+          const s = await api.bindSessionTask(owner.id, null)
+          setSessionTaskLocal(owner.id, null)
+          return s
+        },
+        { projectId, sessionId: owner.id, meta: { task } },
+      )
+    } catch {
+      /* swallow — already logged */
+    }
+  }
+
   function openTaskMenu(task: string, x: number, y: number) {
+    const alive = aliveSessionsForProject()
+    const owner = findOwnerOfTask(task)
+
+    const bindSubmenu: ContextMenuItem[] =
+      alive.length === 0
+        ? [{ label: '当前没有活 session', disabled: true }]
+        : alive.map((s) => ({
+            label: `${s.agent}·${s.id.slice(-6)}${owner?.id === s.id ? ' ✓' : ''}`,
+            icon: owner?.id === s.id ? '✓' : '·',
+            onSelect: () => onBindTaskToSession(task, s.id),
+          }))
+
     const items: ContextMenuItem[] = [
       {
         label: '派 Claude 继续任务',
@@ -352,6 +433,22 @@ export default function DocsView() {
         onSelect: () =>
           runDispatch(buildContinueTaskPrompt(task), '已派 Claude 继续任务'),
       },
+      {
+        label: owner
+          ? `绑定到 session（已绑 ${owner.agent}·${owner.id.slice(-6)}）`
+          : '绑定到 session',
+        icon: '🔗',
+        submenu: bindSubmenu,
+      },
+      ...(owner
+        ? ([
+            {
+              label: '解绑当前 session',
+              icon: '✂',
+              onSelect: () => onUnbindTask(task),
+            },
+          ] satisfies ContextMenuItem[])
+        : []),
       { divider: true, label: '' },
       {
         label: '归档',
@@ -540,6 +637,18 @@ export default function DocsView() {
                   {open ? '▾' : '▸'}
                 </span>
                 <span className="flex-1 truncate font-medium">{t.name}</span>
+                {(() => {
+                  const owner = findOwnerOfTask(t.name)
+                  if (!owner) return null
+                  return (
+                    <span
+                      className="text-[10px] text-cyan-300/90 bg-cyan-400/10 border border-cyan-400/30 rounded px-1 py-0 leading-4 whitespace-pre"
+                      title={`绑定到 session: ${owner.agent} · ${owner.id}`}
+                    >
+                      🔗 {owner.agent}·{owner.id.slice(-6)}
+                    </span>
+                  )
+                })()}
                 <StatusPill task={t} />
                 <span className="text-[10px] text-subtle tabular-nums shrink-0">
                   {formatTimeAgo(t.updatedAt)}

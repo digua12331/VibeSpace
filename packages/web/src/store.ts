@@ -30,7 +30,7 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output'
+export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs'
 
 export type EditorTabKind = 'file' | 'checklist'
 
@@ -234,6 +234,8 @@ interface State {
   removeSession: (id: string) => void
   updateSessionStatus: (id: string, status: SessionStatus, detail?: string) => void
   markSessionExit: (id: string, code: number) => void
+  /** Local mirror after bindSessionTask succeeds; same pattern as updateSessionStatus. */
+  setSessionTaskLocal: (id: string, task: string | null) => void
 
   /** Called when user interacts with a tile to clear nag state for that session. */
   clearNotify: (id: string) => void
@@ -553,6 +555,17 @@ export const useStore = create<State>((set, get) => ({
       if (get().notifyingSessions.has(id)) get().clearNotify(id)
     }
   },
+
+  setSessionTaskLocal: (id, task) =>
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === id
+          ? { ...s, task: task ?? undefined }
+          : task && s.task === task
+            ? { ...s, task: undefined } // forced takeover: clear losers
+            : s,
+      ),
+    })),
 
   markSessionExit: (id, code) => {
     const sess = get().sessions.find((s) => s.id === id)

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import simpleGit from "simple-git";
 import { appendLessons } from "./memory-service.js";
+import { jobsService } from "./jobs-service.js";
 
 /** Hard ceiling — abort the CLI child after this. */
 const HARD_TIMEOUT_MS = 120_000;
@@ -23,11 +24,17 @@ export function kickoffArchiveReview(
   projectPath: string,
   taskName: string,
   archivedDirName: string,
+  projectId?: string,
 ): void {
-  setImmediate(() => {
-    runArchiveReview(projectPath, taskName, archivedDirName).catch((err) => {
-      console.error(`[review-runner] uncaught for ${taskName}:`, err);
-    });
+  // Register with the global JobsService so the Jobs sidebar tab reflects
+  // progress; throwing inside the runner is captured by JobsService and
+  // surfaces as state='failed'. The original setImmediate behaviour is
+  // preserved (job runs on next tick, register() returns immediately).
+  jobsService.register({
+    kind: "review",
+    title: taskName,
+    projectId,
+    runner: () => runArchiveReview(projectPath, taskName, archivedDirName),
   });
 }
 

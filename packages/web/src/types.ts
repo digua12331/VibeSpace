@@ -7,10 +7,16 @@ export type AgentKind = string
 export const BUILTIN_SHELL_AGENTS = ['shell', 'cmd', 'pwsh'] as const
 export type BuiltinShellAgent = (typeof BUILTIN_SHELL_AGENTS)[number]
 
+export type CliKind = 'agent' | 'mcp-tool'
+
 export interface CliEntry {
   id: string
   label: string
   bin: string[]
+  /** Defaults to 'agent' when omitted. mcp-tool entries do not appear in the
+   *  StartSessionMenu launch dropdown — they are wired into running sessions
+   *  via mcp-bridge instead. */
+  kind?: CliKind
   install: Partial<Record<'win32' | 'darwin' | 'linux' | 'all', string>>
   description?: string
   builtin?: boolean
@@ -83,6 +89,8 @@ export interface SessionScope {
   readonly: string[]
 }
 
+export type SessionIsolation = 'shared' | 'worktree'
+
 export interface Session {
   id: string
   projectId: string
@@ -96,6 +104,30 @@ export interface Session {
   exit_code: number | null
   /** Omitted when no scope was configured at session start. */
   scope?: SessionScope
+  /** Defaults to 'shared' when omitted (older server payloads). */
+  isolation?: SessionIsolation
+  /** Short branch name like `agent/12345678`; only set for isolation==='worktree'. */
+  worktreeBranch?: string
+  /** Absolute worktree path on the server's data dir; only set for isolation==='worktree'. */
+  worktreePath?: string
+  /** Bound dev/active/<task> name; absent when unbound. */
+  task?: string
+}
+
+// ---------- Jobs (后台任务面板) ----------
+
+export type JobKind = 'review' | 'install'
+export type JobState = 'running' | 'done' | 'failed' | 'cancelled'
+
+export interface JobItem {
+  id: string
+  kind: JobKind
+  title: string
+  state: JobState
+  startedAt: number
+  endedAt: number | null
+  projectId?: string
+  error?: string
 }
 
 export type ClientMsg =

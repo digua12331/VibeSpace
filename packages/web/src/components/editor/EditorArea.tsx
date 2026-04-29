@@ -55,6 +55,7 @@ export default function EditorArea() {
 
   const sessions = useStore((s) => s.sessions)
   const liveStatus = useStore((s) => s.liveStatus)
+  const docsTasks = useStore((s) => s.docsTasks)
   const notifyingSessions = useStore((s) => s.notifyingSessions)
   const selectedProjectId = useStore((s) => s.selectedProjectId)
   const activeMap = useStore((s) => s.activeSessionIdByProject)
@@ -120,19 +121,46 @@ export default function EditorArea() {
     const s = sessions.find((x) => x.id === id)
     const status = liveStatus[id] ?? s?.status
     const isDead = status === 'stopped' || status === 'crashed'
+    const isIsolated = s?.isolation === 'worktree' && !!s.worktreePath
     if (!isDead) {
-      const ok = await confirmDialog('结束当前终端会话?', {
+      // If the session is bound to an unfinished task, surface the progress in
+      // the confirm message so closing isn't a silent abandon.
+      let confirmMsg = '结束当前终端会话?'
+      if (s?.task && s.projectId) {
+        const list = docsTasks[s.projectId] ?? []
+        const t = list.find((x) => x.name === s.task)
+        if (t && t.total > 0 && t.checked < t.total) {
+          confirmMsg = `结束当前终端会话?\n\n该 session 绑定的任务 "${s.task}" (${t.checked}/${t.total}) 还没做完。`
+        }
+      }
+      const ok = await confirmDialog(confirmMsg, {
         title: '关闭会话',
         variant: 'danger',
         confirmLabel: '结束',
       })
       if (!ok) return
+      let gc = false
+      if (isIsolated) {
+        gc = await confirmDialog(
+          `也删除 worktree 工作目录?\n\n  ${s?.worktreeBranch ?? ''}\n\n点「删除」会清理 worktree 及其未合并改动；点「保留」则保留目录供回看（之后可手动 git worktree remove）。`,
+          {
+            title: '清理 worktree',
+            confirmLabel: '删除',
+            cancelLabel: '保留',
+            variant: 'danger',
+          },
+        )
+      }
       try {
         await logAction(
           'session',
           'stop',
-          () => api.deleteSession(id),
-          { projectId: s?.projectId, sessionId: id, meta: { agent: s?.agent } },
+          () => api.deleteSession(id, { gc }),
+          {
+            projectId: s?.projectId,
+            sessionId: id,
+            meta: { agent: s?.agent, gc, isolation: s?.isolation },
+          },
         )
       } catch (e: unknown) {
         await alertDialog(
@@ -220,6 +248,22 @@ export default function EditorArea() {
               } ${nagging ? 'animate-pulse-soft' : ''}`}
             >
               <span className="text-[12px]">{agentIcon(s.agent)}</span>
+              {s.task && (
+                <span
+                  title={`绑定任务: ${s.task}`}
+                  className="text-[10px] text-cyan-300/90 bg-cyan-400/10 border border-cyan-400/30 rounded px-1 py-0 leading-4 whitespace-pre"
+                >
+                  📝 {s.task.length > 10 ? s.task.slice(0, 10) + '…' : s.task}
+                </span>
+              )}
+              {s.isolation === 'worktree' && s.worktreeBranch && (
+                <span
+                  title={`隔离 worktree 分支: ${s.worktreeBranch}`}
+                  className="text-[10px] text-emerald-300/90 bg-emerald-400/10 border border-emerald-400/30 rounded px-1 py-0 leading-4 whitespace-pre"
+                >
+                  🌿 {s.worktreeBranch.replace(/^agent\//, '')}
+                </span>
+              )}
               <span className="font-mono truncate max-w-[180px]">
                 {s.agent}·{s.id.slice(-6)}
               </span>

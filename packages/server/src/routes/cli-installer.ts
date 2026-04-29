@@ -41,6 +41,7 @@ function publicEntry(e: CliEntry): Omit<CliEntry, "spawnArgs"> & { installCmd: s
     id: e.id,
     label: e.label,
     bin: e.bin,
+    kind: e.kind,
     install: e.install,
     description: e.description,
     builtin: e.builtin,

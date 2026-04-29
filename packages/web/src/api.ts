@@ -18,6 +18,7 @@ import type {
   DocFileKind,
   DocTaskSummary,
   IssuesPayload,
+  JobItem,
   MemoryPayload,
   MemoryRollbackSelection,
   OutputListResult,
@@ -30,6 +31,7 @@ import type {
   ProjectFilesResult,
   ProjectPerf,
   Session,
+  SessionIsolation,
   SessionScope,
 } from './types'
 
@@ -38,6 +40,11 @@ const BASE: string =
 
 export function backendBase(): string {
   return BASE
+}
+
+export function projectRawUrl(projectId: string, path: string): string {
+  const qs = new URLSearchParams({ path })
+  return `${BASE}/api/projects/${encodeURIComponent(projectId)}/raw?${qs}`
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -110,12 +117,52 @@ export function createSession(input: {
   projectId: string
   agent: AgentKind
   scope?: SessionScope
+  isolation?: SessionIsolation
+  task?: string
 }): Promise<Session> {
   return request<Session>('/api/sessions', jsonInit('POST', input))
 }
 
-export function deleteSession(id: string): Promise<void> {
-  return request<void>(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export function deleteSession(
+  id: string,
+  opts?: { gc?: boolean },
+): Promise<void> {
+  const qs = opts?.gc ? '?gc=true' : ''
+  return request<void>(
+    `/api/sessions/${encodeURIComponent(id)}${qs}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function bindSessionTask(
+  id: string,
+  task: string | null,
+  opts?: { force?: boolean },
+): Promise<Session> {
+  return request<Session>(
+    `/api/sessions/${encodeURIComponent(id)}/task`,
+    jsonInit('PATCH', { task, force: opts?.force ?? false }),
+  )
+}
+
+// ---------- Jobs ----------
+
+export function listJobs(): Promise<JobItem[]> {
+  return request<JobItem[]>('/api/jobs')
+}
+
+export function cancelJob(id: string): Promise<void> {
+  return request<void>(
+    `/api/jobs/${encodeURIComponent(id)}/cancel`,
+    { method: 'POST' },
+  )
+}
+
+export function deleteJob(id: string): Promise<void> {
+  return request<void>(
+    `/api/jobs/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export function restartSession(id: string): Promise<Session> {

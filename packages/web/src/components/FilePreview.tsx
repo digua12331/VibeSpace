@@ -6,6 +6,8 @@ import CommentsPanel from './CommentsPanel'
 import DiffView from './DiffView'
 import MarkdownView from './MarkdownView'
 import HtmlPreview from './HtmlPreview'
+import ImagePreview from './ImagePreview'
+import ExcelPreview from './ExcelPreview'
 
 type Tab = 'diff' | 'source' | 'preview'
 
@@ -27,6 +29,14 @@ function isHtmlPath(p: string): boolean {
   return /\.(html?|htm)$/i.test(p)
 }
 
+function isImagePath(p: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|ico|avif|svg)$/i.test(p)
+}
+
+function isExcelPath(p: string): boolean {
+  return /\.(xlsx?|xlsm|xlsb|ods)$/i.test(p)
+}
+
 function prettyBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -36,7 +46,11 @@ function prettyBytes(n: number): string {
 export default function FilePreview({ projectId, path, ref, from, to }: Props) {
   const canMarkdown = isMarkdownPath(path)
   const isHtml = isHtmlPath(path)
-  const canPreview = canMarkdown || isHtml
+  // 图片 / Excel 仅在 WORKTREE 上预览；历史 ref 回退到 Source/Diff(老体验)。
+  const isWorktree = !ref || ref === 'WORKTREE'
+  const canImage = isImagePath(path) && isWorktree
+  const canExcel = isExcelPath(path) && isWorktree
+  const canPreview = canMarkdown || isHtml || canImage || canExcel
   const defaultTab: Tab = from && to ? 'diff' : canPreview ? 'preview' : 'source'
   const [tab, setTab] = useState<Tab>(defaultTab)
 
@@ -75,6 +89,13 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
   }, [path, from, to])
 
   useEffect(() => {
+    // 图片 / Excel 在 Preview tab 不走 /file —— 这俩组件自己用 raw URL 拉字节。
+    // 走 /file 反而会浪费一次最多 1MB 的 base64 拉取。
+    if (tab === 'preview' && (canImage || canExcel)) {
+      setLoading(false)
+      setError(null)
+      return
+    }
     let cancelled = false
     setError(null)
     setLoading(true)
@@ -104,7 +125,7 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
     return () => {
       cancelled = true
     }
-  }, [projectId, path, ref, from, to, tab, canMarkdown])
+  }, [projectId, path, ref, from, to, tab, canMarkdown, canImage, canExcel])
 
   // Ensure the md source is available for the comments panel even when the
   // user is on the Diff tab — anchor resolution / orphan detection needs the
@@ -204,7 +225,11 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
   )
 
   let body: React.ReactNode
-  if (loading) {
+  if (tab === 'preview' && canImage) {
+    body = <ImagePreview projectId={projectId} path={path} />
+  } else if (tab === 'preview' && canExcel) {
+    body = <ExcelPreview projectId={projectId} path={path} />
+  } else if (loading) {
     body = <div className="px-4 py-6 text-sm text-muted">加载中…</div>
   } else if (error) {
     body = (

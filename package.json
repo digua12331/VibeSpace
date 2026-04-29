@@ -18,7 +18,8 @@
     "smoke:codex": "node scripts/codex-smoke.mjs",
     "smoke:persistence": "node scripts/persistence-check.mjs",
     "smoke:refresh": "node scripts/refresh-smoke.mjs",
-    "smoke:git": "node scripts/git-smoke.mjs"
+    "smoke:git": "node scripts/git-smoke.mjs",
+    "smoke:worktree": "node scripts/worktree-smoke.mjs"
   },
   "packageManager": "pnpm@10.20.0",
   "engines": {

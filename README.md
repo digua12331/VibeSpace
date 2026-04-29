@@ -168,6 +168,31 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
 - **Perf sample.** `{ cpu, memRss, pid }` per live session pid, batched
   via `pidusage`, cached 1 s. Direct PTY child only — AI-spawned
   grandchildren are not summed yet.
+- **Isolated session (worktree mode).** Optional checkbox in the launch
+  menu. When enabled, the server creates a fresh `git worktree add` at
+  `packages/server/data/worktrees/<projectId>/<sessionId>/` on a new
+  branch `agent/<sessionId8>` and uses it as the PTY's cwd. Multiple
+  isolated sessions can edit the same file in parallel without polluting
+  the project's main working tree. Closing an isolated session asks
+  whether to GC the worktree directory (default: keep). Limitations:
+  worktree starts with no `node_modules` (gitignored) — use shared mode
+  for `pnpm dev` style workflows. Restart is not supported on isolated
+  sessions; close and start a fresh one. Available only when the project
+  root is a git repository.
+- **Task↔session binding.** Each session can be bound to one Dev Docs
+  task name. Right-click a task row in the 📝 Dev Docs sidebar to bind
+  it to any alive session in the same project; the task row gets a
+  `🔗 agent·id` badge and the session tab gets a `📝 <task>` prefix.
+  Closing a session whose task still has unchecked steps surfaces the
+  progress in the confirm dialog so it isn't a silent abandon. Binding
+  is one-to-one per task; binding to an already-bound task triggers a
+  preempt confirm.
+- **Background Jobs panel (🛠).** Sidebar tab listing long-running
+  server-side tasks: archive review (Dev Docs → 记忆 evaluation by
+  codex/gemini) and CLI installer jobs. Polled every 3 s. Running jobs
+  can be cancelled; finished review jobs auto-prune after 30 min and
+  vanish on server restart. install jobs still have their own dedicated
+  detail dialog under 📦.
 
 ## HTTP API
 

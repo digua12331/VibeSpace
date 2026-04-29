@@ -2,18 +2,47 @@
 setlocal EnableDelayedExpansion
 
 REM ============================================================
-REM sync-to-stable.bat
+REM sync-to-stable.bat [stable_dir]
 REM Sync the stable clone to the latest stable-* tag in dev.
 REM Falls back to origin/main if no such tag exists.
+REM Resolves stable dir via: CLI arg > env AIMON_STABLE_DIR
+REM > sibling auto-detect (e.g. AIkanban-main -> ../AIkanban-stable).
 REM Does NOT restart stable; you pick the moment manually.
 REM ============================================================
 
 set DEV_DIR=%~dp0
 if "%DEV_DIR:~-1%"=="\" set DEV_DIR=%DEV_DIR:~0,-1%
-set STABLE_DIR=f:\KB\AIkanban-stable
+
+REM --- resolve STABLE_DIR: CLI arg > env AIMON_STABLE_DIR > sibling auto-detect ---
+REM   sibling rule: <parent>\<basename(DEV) with -main/-dev replaced by -stable, else +-stable>
+set "STABLE_DIR="
+set "STABLE_SOURCE="
+if not "%~1"=="" (
+  set "STABLE_DIR=%~1"
+  set "STABLE_SOURCE=CLI arg"
+)
+if not defined STABLE_DIR if defined AIMON_STABLE_DIR (
+  set "STABLE_DIR=%AIMON_STABLE_DIR%"
+  set "STABLE_SOURCE=env AIMON_STABLE_DIR"
+)
+if not defined STABLE_DIR (
+  for %%I in ("%DEV_DIR%") do (
+    set "DEV_NAME=%%~nxI"
+    set "DEV_PARENT=%%~dpI"
+  )
+  if "!DEV_PARENT:~-1!"=="\" set "DEV_PARENT=!DEV_PARENT:~0,-1!"
+  set "DERIVED="
+  if "!DEV_NAME:~-5!"=="-main"  set "DERIVED=!DEV_NAME:~0,-5!-stable"
+  if not defined DERIVED if "!DEV_NAME:~-4!"=="-dev" set "DERIVED=!DEV_NAME:~0,-4!-stable"
+  if not defined DERIVED set "DERIVED=!DEV_NAME!-stable"
+  set "STABLE_DIR=!DEV_PARENT!\!DERIVED!"
+  set "STABLE_SOURCE=sibling auto-detect"
+)
+REM normalize to absolute path
+for %%I in ("!STABLE_DIR!") do set "STABLE_DIR=%%~fI"
 
 echo [sync] DEV    = %DEV_DIR%
-echo [sync] STABLE = %STABLE_DIR%
+echo [sync] STABLE = %STABLE_DIR%  ^(via %STABLE_SOURCE%^)
 echo.
 
 REM --- preflight: required tools on PATH ---
@@ -52,7 +81,9 @@ popd >nul
 REM --- Step 2: stable dir must exist ---
 if not exist "%STABLE_DIR%\.git" (
   echo [sync] ERROR: stable dir not found or not a git repo: %STABLE_DIR%
-  echo [sync] Run once: init-stable.bat
+  echo [sync]   - run once:  init-stable.bat [stable_dir]
+  echo [sync]   - or pass:   sync-to-stable.bat ^<stable_dir^>
+  echo [sync]   - or set env AIMON_STABLE_DIR=^<stable_dir^> first
   exit /b 1
 )
 

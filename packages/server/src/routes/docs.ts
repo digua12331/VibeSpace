@@ -127,7 +127,7 @@ export async function registerDocsRoutes(app: FastifyInstance): Promise<void> {
         );
         // Fire-and-forget: evaluate lessons from the just-archived task in the
         // background. Never blocks the archive response.
-        kickoffArchiveReview(proj.path, taskName, out.archivedAs);
+        kickoffArchiveReview(proj.path, taskName, out.archivedAs, proj.id);
         return reply.send(out);
       } catch (err) {
         const taskName = decodeURIComponent(req.params.task);

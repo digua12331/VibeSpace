@@ -17,6 +17,8 @@ import {
   DEV_DOCS_GUIDELINES,
   ISSUES_ARCHIVE_SECTION,
 } from "../dev-docs-guidelines.js";
+import { removeWorktree } from "../git-service.js";
+import { serverLog } from "../log-bus.js";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
@@ -237,12 +239,32 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       const proj = getProject(id);
       if (!proj) return reply.code(404).send({ error: "not_found" });
 
-      // Kill any live sessions for this project, then mark them stopped.
+      // Kill any live sessions for this project, then mark them stopped, and
+      // GC their worktrees (if any) so server data/worktrees/<projectId>/ is
+      // emptied alongside the project row.
       const sessions = listSessionsByProject(id);
       for (const s of sessions) {
         if (ptyManager.isAlive(s.id)) {
           ptyManager.kill(s.id);
           endSession(s.id, "stopped", null);
+        }
+        if (s.isolation === "worktree" && s.worktreePath) {
+          try {
+            await removeWorktree(proj.path, s.worktreePath, { force: true });
+          } catch (err) {
+            // Don't block project delete on a residual worktree directory —
+            // log a warning and move on.
+            serverLog(
+              "warn",
+              "git",
+              `worktree-remove (project delete) 失败: ${(err as Error).message}`,
+              {
+                projectId: id,
+                sessionId: s.id,
+                meta: { worktreePath: s.worktreePath },
+              },
+            );
+          }
         }
       }
       const ok = dbDeleteProject(id);

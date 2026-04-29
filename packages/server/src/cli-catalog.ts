@@ -4,12 +4,25 @@
 
 export type CliPlatform = "win32" | "darwin" | "linux" | "all";
 
+/**
+ * What this entry represents:
+ *   - `agent`     (default): a TUI/REPL that VibeSpace spawns as a session via PTY
+ *                  (claude / codex / gemini / ...). Shows in StartSessionMenu.
+ *   - `mcp-tool`: a tool that other agents call into via MCP. Shows in the
+ *                  installer dialog (📦) only — never in the launch menu, since
+ *                  it is not a chat REPL. Wiring to specific agents is done by
+ *                  mcp-bridge.ts at session start.
+ */
+export type CliKind = "agent" | "mcp-tool";
+
 export interface CliEntry {
   /** Stable id; also used as the agent name passed to PTY spawn. */
   id: string;
   label: string;
   /** Executable names to probe on PATH; first hit wins. */
   bin: string[];
+  /** Defaults to 'agent' when omitted. See CliKind for behaviour differences. */
+  kind?: CliKind;
   /** Optional spawn args for the launched PTY (e.g. `-NoLogo`). */
   spawnArgs?: string[];
   /** Per-platform install command line. `all` is the fallback. */
@@ -18,7 +31,7 @@ export interface CliEntry {
   description?: string;
   /** Marks shipped-by-default CLIs (Install button becomes "Reinstall"). */
   builtin?: boolean;
-  /** Tools the install command needs on PATH (npm / pip / gh). */
+  /** Tools the install command needs on PATH (npm / pip / gh / uv). */
   requires?: string[];
   /** Optional documentation URL surfaced in the dialog. */
   homepage?: string;
@@ -80,6 +93,16 @@ export const CLI_CATALOG: CliEntry[] = [
     description: "开源 · Agentic 编程平台",
     requires: ["npm"],
     homepage: "https://kilo.ai/cli",
+  },
+  {
+    id: "browser-use",
+    label: "browser-use",
+    kind: "mcp-tool",
+    bin: ["browser-use"],
+    install: { all: "uv tool install 'browser-use[cli]'" },
+    description: "浏览器手 · 给 claude/codex 等 session 经 MCP 调用",
+    requires: ["uv"],
+    homepage: "https://github.com/browser-use/browser-use",
   },
 ];
 
