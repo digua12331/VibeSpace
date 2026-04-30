@@ -67,6 +67,10 @@ export default function StartSessionMenu({
   const [isolationOn, setIsolationOn] = useState(false)
   /** null = haven't probed yet; true/false once getProjectChanges replied */
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
+  const [taskName, setTaskName] = useState('')
+  const [projectSkills, setProjectSkills] = useState<
+    { name: string; triggers: string[] }[]
+  >([])
   const ref = useRef<HTMLDivElement>(null)
   const addSession = useStore((s) => s.addSession)
   const disabled = projectId === null
@@ -91,6 +95,21 @@ export default function StartSessionMenu({
       setIsGitRepo(res.enabled === true)
     }).catch(() => {
       if (!cancelled) setIsGitRepo(null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, projectId])
+
+  // Skills: fetch the project's available skill list when menu opens.
+  useEffect(() => {
+    if (!open || !projectId) return
+    let cancelled = false
+    void api.listProjectSkills(projectId).then((list) => {
+      if (cancelled) return
+      setProjectSkills(list)
+    }).catch(() => {
+      if (!cancelled) setProjectSkills([])
     })
     return () => {
       cancelled = true
@@ -137,11 +156,13 @@ export default function StartSessionMenu({
               }
             : undefined
           const isolation = isolationOn && isGitRepo ? 'worktree' : 'shared'
+          const trimmedTask = taskName.trim()
           const s = await api.createSession({
             projectId,
             agent,
             scope,
             isolation,
+            task: trimmedTask || undefined,
           })
           // Backend doesn't echo scope in the wire response; attach it client-side
           // so the tab badge (T9) shows immediately without waiting for a refresh.
@@ -157,6 +178,7 @@ export default function StartSessionMenu({
             agent,
             scoped: scopeEnabled,
             isolation: isolationOn && isGitRepo ? 'worktree' : 'shared',
+            task: taskName.trim() || undefined,
           },
         },
       )
@@ -272,6 +294,35 @@ export default function StartSessionMenu({
                   <p className="text-[10px] text-subtle">
                     Edit / Write / NotebookEdit 命中只读或两个列表都没命中 → 拦截。
                   </p>
+                </div>
+              )}
+              {projectSkills.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-[10px] text-subtle mb-0.5">
+                    🔗 绑定到任务（可选）
+                  </div>
+                  <input
+                    value={taskName}
+                    onChange={(e) => setTaskName(e.target.value)}
+                    placeholder="任务名（启用按需技能）"
+                    className="w-full text-xs bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 focus:outline-none focus:border-accent/60"
+                  />
+                  {(() => {
+                    const trimmed = taskName.trim()
+                    if (!trimmed) return null
+                    const haystack = trimmed.toLowerCase()
+                    const matched = projectSkills.filter((sk) =>
+                      sk.triggers.some((t) =>
+                        haystack.includes(t.toLowerCase()),
+                      ),
+                    )
+                    if (matched.length === 0) return null
+                    return (
+                      <div className="mt-1 text-[10px] text-cyan-300/80">
+                        将注入：{matched.map((m) => m.name).join(' · ')}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>

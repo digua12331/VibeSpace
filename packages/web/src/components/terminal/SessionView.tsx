@@ -224,6 +224,8 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const clearNotify = useStore((s) => s.clearNotify)
   const pendingInput = useStore((s) => s.pendingInputBySession[session.id])
   const consumePendingInput = useStore((s) => s.consumePendingInput)
+  const subagentRuns = useStore((s) => s.subagentRunsBySession[session.id]) ?? []
+  const refreshSubagentRuns = useStore((s) => s.refreshSubagentRuns)
   const project = projects.find((p) => p.id === session.projectId)
   const status = liveStatus ?? session.status
 
@@ -252,6 +254,24 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const [customButtons, setCustomButtonsState] = useState<CustomButton[]>(() => getCustomButtons())
 
   useEffect(() => onCustomButtonsChange(setCustomButtonsState), [])
+
+  // Poll subagent runs while this session view is active. 5s cadence matches
+  // MemoryView/JobsView; subagent Task calls last 30s+ so faster polling is
+  // wasted. Stops polling when the tab is not the active one.
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    const tick = () => {
+      if (cancelled) return
+      void refreshSubagentRuns(session.id)
+    }
+    tick()
+    const id = setInterval(tick, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [active, session.id, refreshSubagentRuns])
 
   useEffect(() => {
     const host = termHostRef.current
@@ -794,6 +814,9 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       clearStash()
       autoResizeInput(el)
       setMenu({ kind: 'none' })
+      // 用户在终端往上滑看历史后回到输入框发送，xterm 默认会停在原滚动位置；
+      // 主动跳回底部，让回车后立刻看到自己刚发的内容和 agent 的反馈。
+      termRef.current?.scrollToBottom()
     }
   }
 
@@ -992,6 +1015,55 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
           )}
         </div>
       </div>
+
+      {subagentRuns.length > 0 && (
+        <div className="flex items-center gap-1.5 px-3 py-1 border-b border-border/40 bg-violet-500/[0.04] overflow-x-auto whitespace-nowrap">
+          <span className="text-[10px] text-violet-300/80 shrink-0 mr-1">
+            🤖 子工:
+          </span>
+          {subagentRuns.slice(0, 10).map((r) => {
+            const isRunning = r.state === 'running'
+            const ms = r.endedAt ? r.endedAt - r.startedAt : Date.now() - r.startedAt
+            const desc = r.description.length > 12
+              ? r.description.slice(0, 12) + '…'
+              : r.description || r.subagentType
+            return (
+              <button
+                key={r.id}
+                onClick={() => {
+                  const lines: string[] = []
+                  lines.push(`类型: ${r.subagentType}`)
+                  lines.push(`状态: ${r.state}${isRunning ? '' : ` (${ms}ms)`}`)
+                  if (r.description) lines.push(`描述: ${r.description}`)
+                  if (r.prompt) {
+                    lines.push('')
+                    lines.push('Prompt:')
+                    lines.push(r.prompt)
+                    if (r.promptTruncated) lines.push('… (服务端截断到 1KB)')
+                  }
+                  void alertDialog(lines.join('\n'), { title: '子 agent 详情' })
+                }}
+                title={r.description || r.subagentType}
+                className={`text-[11px] px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+                  isRunning
+                    ? 'border-violet-400/50 bg-violet-500/15 text-violet-200 animate-pulse-soft'
+                    : 'border-border bg-white/[0.03] text-muted hover:text-fg'
+                }`}
+              >
+                📌 {desc}
+                {!isRunning && (
+                  <span className="ml-1 text-[10px] text-subtle">{ms}ms</span>
+                )}
+              </button>
+            )
+          })}
+          {subagentRuns.length > 10 && (
+            <span className="text-[10px] text-subtle shrink-0">
+              +{subagentRuns.length - 10}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="relative flex-1 min-h-0 overflow-hidden">
         <div

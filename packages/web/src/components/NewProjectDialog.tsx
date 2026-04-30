@@ -7,7 +7,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const refreshProjects = useStore((s) => s.refreshProjects)
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
-  const [applyDevDocs, setApplyDevDocs] = useState(true)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -22,10 +22,12 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!name.trim() || !path.trim()) {
-      setError('名称和路径都不能为空')
+    if (!name.trim()) {
+      setError('名称不能为空')
       return
     }
+    const trimmedPath = path.trim()
+    const pathMode: 'auto' | 'custom' = trimmedPath ? 'custom' : 'auto'
     setSubmitting(true)
     try {
       await logAction(
@@ -34,12 +36,17 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
         async () => {
           await api.createProject({
             name: name.trim(),
-            path: path.trim(),
-            applyDevDocsGuidelines: applyDevDocs,
+            ...(trimmedPath ? { path: trimmedPath } : {}),
           })
           await refreshProjects()
         },
-        { meta: { name: name.trim(), path: path.trim(), applyDevDocs } },
+        {
+          meta: {
+            name: name.trim(),
+            path: trimmedPath || undefined,
+            pathMode,
+          },
+        },
       )
       onClose()
     } catch (err: unknown) {
@@ -69,32 +76,34 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             className="w-full px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors"
             placeholder="my-app"
           />
-        </label>
-        <label className="block mb-3">
-          <span className="block text-xs text-muted mb-1.5">路径</span>
-          <input
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            className="w-full px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm font-mono transition-colors"
-            placeholder="D:\\projects\\my-app"
-          />
-        </label>
-        <label className="flex items-start gap-2 mb-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={applyDevDocs}
-            onChange={(e) => setApplyDevDocs(e.target.checked)}
-            className="mt-0.5 accent-accent"
-          />
-          <span className="text-xs text-fg/85 leading-snug">
-            启用 Dev Docs 三段式工作流
-            <span className="block text-[11px] text-muted mt-0.5">
-              往 <code className="font-mono">CLAUDE.md</code> 追加工作流守则：AI 收到新需求时先写
-              plan → context → tasks 三份 markdown 到 <code className="font-mono">dev/active/</code>，
-              用户分段确认后再执行。与左侧「Dev Docs」侧栏配套。
-            </span>
+          <span className="block text-[11px] text-muted mt-1.5">
+            留空路径则在 <code className="font-mono">F:\VibeSpace\&lt;名称&gt;</code> 自动创建。
           </span>
         </label>
+
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="w-full flex items-center justify-between text-xs text-muted hover:text-fg px-1 py-1.5 mb-2 border-t border-border/40"
+        >
+          <span>高级选项</span>
+          <span className="font-mono">{showAdvanced ? '▾' : '▸'}</span>
+        </button>
+
+        {showAdvanced && (
+          <div className="mb-2">
+            <label className="block mb-3">
+              <span className="block text-xs text-muted mb-1.5">自定义路径</span>
+              <input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                className="w-full px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm font-mono transition-colors"
+                placeholder="留空则自动创建 F:\VibeSpace\<名称>"
+              />
+            </label>
+          </div>
+        )}
+
         {error && (
           <div className="mb-3 px-3 py-2 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
             {error}

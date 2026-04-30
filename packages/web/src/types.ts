@@ -114,6 +114,31 @@ export interface Session {
   task?: string
 }
 
+// ---------- Harness team install 状态 ----------
+
+export interface HarnessApplyResult {
+  copied: string[]
+  skipped: string[]
+  gitignoreAppended: boolean
+}
+
+// ---------- Subagent runs (claude Task 工具调用卡片) ----------
+
+export type SubagentRunState = 'running' | 'done'
+
+export interface SubagentRun {
+  id: string
+  parentSessionId: string
+  subagentType: string
+  description: string
+  /** Server-truncated to ~1KB; full text only on the server. */
+  prompt: string
+  promptTruncated: boolean
+  state: SubagentRunState
+  startedAt: number
+  endedAt: number | null
+}
+
 // ---------- Jobs (后台任务面板) ----------
 
 export type JobKind = 'review' | 'install'
@@ -372,6 +397,15 @@ export interface CliConfigSavePayload {
 
 // ---------- Dev Docs ----------
 
+export interface DevDocsStatus {
+  enabled: boolean
+  claudeMdExists: boolean
+}
+
+export interface HarnessApplied {
+  enabled: boolean
+}
+
 export type DocFileKind = 'plan' | 'context' | 'tasks'
 export type DocTaskStatus = 'todo' | 'doing' | 'done' | 'blocked'
 
@@ -561,4 +595,34 @@ export interface ProjectPerf {
   totalCpu: number
   totalRssBytes: number
   sampledAt: number
+}
+
+export type ModelFamily = 'opus' | 'sonnet' | 'haiku' | 'other'
+
+export interface UsageByModel {
+  inputTokens: number
+  outputTokens: number
+  cacheCreationTokens: number
+  cacheReadTokens: number
+}
+
+export interface UsageBucket {
+  total: UsageByModel
+  byModel: Record<ModelFamily, UsageByModel>
+}
+
+export interface UsageDayPoint {
+  date: string
+  totalTokens: number
+}
+
+export interface ClaudeUsage {
+  today: UsageBucket
+  last5h: UsageBucket & { windowStartMs: number; windowEndMs: number }
+  last7days: UsageDayPoint[]
+  skipped: number
+  filesScanned: number
+  entriesScanned: number
+  asOf: number
+  note?: string
 }

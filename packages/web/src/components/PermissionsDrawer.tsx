@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import * as api from '../api'
+import { logAction } from '../logs'
 import { useStore } from '../store'
-import { alertDialog } from './dialog/DialogHost'
+import { alertDialog, confirmDialog } from './dialog/DialogHost'
 import {
   BUTTON_COLORS,
   BUTTON_COLOR_LABELS,
@@ -66,7 +67,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'claude' | 'codex'>('claude')
-  const [mode, setMode] = useState<'permissions' | 'buttons'>('permissions')
+  const [mode, setMode] = useState<'workflow' | 'permissions' | 'buttons'>('workflow')
   const [dirty, setDirty] = useState(false)
   const [initNeeded, setInitNeeded] = useState(false)
   const [postSaveDialog, setPostSaveDialog] = useState<null | { sessions: Session[] }>(null)
@@ -262,6 +263,9 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
         </div>
 
         <div className="flex border-b border-border bg-bg/20">
+          <TabBtn active={mode === 'workflow'} onClick={() => setMode('workflow')}>
+            📐 工作流
+          </TabBtn>
           <TabBtn active={mode === 'permissions'} onClick={() => setMode('permissions')}>
             🛡 权限
           </TabBtn>
@@ -352,6 +356,8 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
             </div>
           </>
         )}
+
+        {mode === 'workflow' && <WorkflowTab project={project} />}
 
         {mode === 'buttons' && <ButtonsTab />}
       </div>
@@ -1011,6 +1017,253 @@ function ButtonPreview({ color, text }: { color: ButtonColor; text: string }) {
     <span className={`px-2 py-0.5 text-xs rounded border ${colorClass}`}>
       {text || '按钮'}
     </span>
+  )
+}
+
+function WorkflowTab({ project }: { project: Project }) {
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [claudeMdExists, setClaudeMdExists] = useState<boolean>(false)
+  const [toggling, setToggling] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [harnessEnabled, setHarnessEnabled] = useState<boolean | null>(null)
+  const [harnessApplying, setHarnessApplying] = useState(false)
+  const [harnessLoadError, setHarnessLoadError] = useState<string | null>(null)
+  const [harnessRemoving, setHarnessRemoving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setEnabled(null)
+    setLoadError(null)
+    setHarnessEnabled(null)
+    setHarnessLoadError(null)
+    api
+      .getDevDocsStatus(project.id)
+      .then((s) => {
+        if (cancelled) return
+        setEnabled(s.enabled)
+        setClaudeMdExists(s.claudeMdExists)
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        setLoadError(e instanceof Error ? e.message : String(e))
+      })
+    api
+      .getHarnessApplied(project.id)
+      .then((s) => {
+        if (cancelled) return
+        setHarnessEnabled(s.enabled)
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        setHarnessLoadError(e instanceof Error ? e.message : String(e))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [project.id])
+
+  async function applyHarnessClick() {
+    if (harnessApplying || harnessEnabled !== false) return
+    setHarnessApplying(true)
+    try {
+      const result = await logAction(
+        'project',
+        'apply-harness',
+        () => api.applyHarness(project.id),
+        { projectId: project.id },
+      )
+      setHarnessEnabled(true)
+      const msg = [
+        `复制：${result.copied.length} 个`,
+        ...(result.copied.length > 0 ? result.copied.map((p) => `  + ${p}`) : []),
+        `跳过（已存在）：${result.skipped.length} 个`,
+        result.gitignoreAppended ? '已往 .gitignore 追加 .aimon/runtime/' : '.gitignore 已含 runtime 行',
+      ].join('\n')
+      await alertDialog(msg, { title: '一键安装结果' })
+    } catch (e: unknown) {
+      await alertDialog(
+        `应用失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '应用 Harness 团队配置失败', variant: 'danger' },
+      )
+    } finally {
+      setHarnessApplying(false)
+    }
+  }
+
+  async function removeHarnessClick() {
+    if (harnessRemoving || harnessEnabled !== true) return
+    const ok = await confirmDialog(
+      '会删除 Harness apply 时拷贝的全部文件（包括你可能修改过的）；用户自行新增的文件不动；.gitignore 不会被修改。',
+      { title: 'Harness 卸载确认', confirmLabel: '确认卸载', variant: 'danger' },
+    )
+    if (!ok) return
+    setHarnessRemoving(true)
+    try {
+      const result = await logAction(
+        'project',
+        'remove-harness',
+        () => api.removeHarness(project.id),
+        { projectId: project.id },
+      )
+      setHarnessEnabled(false)
+      if (result.failedFiles.length > 0) {
+        await alertDialog(
+          `以下文件未删成功（其余已删）：\n${result.failedFiles.join('\n')}`,
+          { title: '卸载部分失败', variant: 'danger' },
+        )
+      }
+    } catch (e: unknown) {
+      await alertDialog(
+        `卸载失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '卸载 Harness 失败', variant: 'danger' },
+      )
+    } finally {
+      setHarnessRemoving(false)
+    }
+  }
+
+  async function toggle(target: boolean) {
+    if (toggling || enabled === null) return
+    if (!target) {
+      const ok = await confirmDialog(
+        '此操作会移除 CLAUDE.md 中的 Dev Docs 工作流段落（含其后所有内容）。如该段落后有自定义内容请先备份。确认继续？',
+        {
+          title: '关闭 Dev Docs 工作流',
+          confirmLabel: '确认移除',
+          variant: 'danger',
+        },
+      )
+      if (!ok) return
+    }
+    setToggling(true)
+    try {
+      await logAction(
+        'project',
+        'set-devdocs',
+        async () => {
+          if (target) {
+            await api.applyDevDocsGuidelines(project.id)
+          } else {
+            await api.removeDevDocs(project.id)
+          }
+        },
+        { projectId: project.id, meta: { target } },
+      )
+      setEnabled(target)
+      const fresh = await api.getDevDocsStatus(project.id)
+      setClaudeMdExists(fresh.claudeMdExists)
+    } catch (e: unknown) {
+      await alertDialog(
+        `切换失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '切换 Dev Docs 工作流失败', variant: 'danger' },
+      )
+    } finally {
+      setToggling(false)
+    }
+  }
+
+  return (
+    <div className="flex-1 overflow-auto p-4 space-y-4">
+      <div className="text-xs text-muted leading-relaxed">
+        Dev Docs 三段式工作流：AI 收到非平凡需求时先写 plan → context → tasks 三份 markdown
+        到 <code className="font-mono">dev/active/&lt;任务名&gt;/</code>，分段确认后再执行。开关
+        会增删项目根 <code className="font-mono">CLAUDE.md</code> 中的工作流守则段落。
+      </div>
+
+      <div className="rounded border border-border/60 bg-bg/30 p-3">
+        <div className="text-sm text-fg/90 mb-1">Dev Docs 三段式工作流</div>
+        <div className="text-[11px] text-muted leading-relaxed mb-2">
+          {claudeMdExists
+            ? '当前项目 CLAUDE.md 已存在；切换会改写其中的工作流段落。'
+            : '当前项目暂无 CLAUDE.md；开启会自动创建。'}
+        </div>
+        {loadError && (
+          <div className="text-xs text-rose-300 mb-2">读取状态失败: {loadError}</div>
+        )}
+        {enabled === null && !loadError && (
+          <div className="text-xs text-muted">加载中…</div>
+        )}
+        {enabled !== null && (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs text-fg/85">
+              状态：
+              {enabled ? (
+                <span className="text-emerald-300">已应用</span>
+              ) : (
+                <span className="text-muted">未应用</span>
+              )}
+            </div>
+            {enabled ? (
+              <button
+                type="button"
+                disabled={toggling}
+                onClick={() => void toggle(false)}
+                className="fluent-btn px-3 py-1 text-xs rounded-md border border-rose-700/60 text-rose-300 hover:bg-rose-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {toggling ? '卸载中…' : '卸载'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={toggling}
+                onClick={() => void toggle(true)}
+                className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {toggling ? '应用中…' : '应用'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded border border-border/60 bg-bg/30 p-3">
+        <div className="text-sm text-fg/90 mb-1">Harness 团队配置</div>
+        <div className="text-[11px] text-muted leading-relaxed mb-2">
+          拷贝 skill（<code className="font-mono">.aimon/skills/</code>）+ 项目级 subagent
+          （<code className="font-mono">.claude/agents/</code>）+ harness 路线图与团队 blueprint
+          到目标项目，并在 <code className="font-mono">.gitignore</code> 加
+          <code className="font-mono">.aimon/runtime/</code>。装完务必读
+          <code className="font-mono">.aimon/CUSTOMIZE-harness.md</code> 改造成你项目栈。
+        </div>
+        {harnessLoadError && (
+          <div className="text-xs text-rose-300 mb-2">读取状态失败: {harnessLoadError}</div>
+        )}
+        {harnessEnabled === null && !harnessLoadError && (
+          <div className="text-xs text-muted">加载中…</div>
+        )}
+        {harnessEnabled !== null && (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs text-fg/85">
+              状态：
+              {harnessEnabled ? (
+                <span className="text-emerald-300">已应用</span>
+              ) : (
+                <span className="text-muted">未应用</span>
+              )}
+            </div>
+            {harnessEnabled ? (
+              <button
+                type="button"
+                disabled={harnessRemoving}
+                onClick={() => void removeHarnessClick()}
+                className="fluent-btn px-3 py-1 text-xs rounded-md border border-rose-700/60 text-rose-300 hover:bg-rose-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {harnessRemoving ? '卸载中…' : '卸载'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={harnessApplying}
+                onClick={() => void applyHarnessClick()}
+                className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {harnessApplying ? '应用中…' : '应用'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

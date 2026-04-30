@@ -34,6 +34,10 @@ import {
   getWorktreePath,
 } from "../worktree-paths.js";
 import { serverLog } from "../log-bus.js";
+import { injectMcpForAgent } from "../mcp-bridge.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join as pathJoin } from "node:path";
+import { buildRuntimePrompt, pickSkillsForTask } from "../skills-service.js";
 
 const BUILTIN = new Set<string>(BUILTIN_SHELL_AGENTS);
 
@@ -415,9 +419,56 @@ async function startSession(
     cwd = worktreePath;
   }
 
+  // Skills: if the session is bound to a task, see if any project skill
+  // wants to be activated for this task name. We write the joined prompt to
+  // a runtime file and expose its path via env. Whether the agent reads it
+  // is intentionally up to user-side configuration (CLAUDE.md guidance).
+  const spawnEnv: Record<string, string> = {};
+  if (task) {
+    try {
+      const matched = await pickSkillsForTask(proj.path, task);
+      if (matched.length > 0) {
+        const runtimeDir = pathJoin(proj.path, ".aimon", "runtime");
+        await mkdir(runtimeDir, { recursive: true });
+        const runtimePath = pathJoin(runtimeDir, `${sessionId}-prompt.md`);
+        await writeFile(runtimePath, buildRuntimePrompt(matched), "utf8");
+        spawnEnv.AIMON_SESSION_PROMPT_PATH = runtimePath;
+        serverLog("info", "skills", "injected", {
+          projectId,
+          sessionId,
+          meta: {
+            taskName: task,
+            skills: matched.map((s) => s.name),
+            runtimePath,
+          },
+        });
+      }
+    } catch (err) {
+      // Skill injection is best-effort. A failure must not block the spawn.
+      serverLog(
+        "warn",
+        "skills",
+        `inject failed (non-fatal): ${(err as Error).message}`,
+        {
+          projectId,
+          sessionId,
+          meta: { taskName: task },
+        },
+      );
+    }
+  }
+
+  // browser-use MCP bridge: write/merge the right config file per agent so
+  // that claude / codex sessions see the `mcp__browser-use__*` tools the moment
+  // they boot. injectMcpForAgent is best-effort and never throws — a failure
+  // here only logs at error level and never blocks the spawn. The MCP config
+  // for worktree-isolated sessions is still written to the project root, since
+  // claude code searches upwards from cwd.
+  await injectMcpForAgent(agent, proj.path, sessionId, projectId);
+
   let pid: number;
   try {
-    const r = ptyManager.spawn({ sessionId, agent, cwd });
+    const r = ptyManager.spawn({ sessionId, agent, cwd, env: spawnEnv });
     pid = r.pid;
   } catch (err) {
     const msg = (err as Error).message || "spawn failed";

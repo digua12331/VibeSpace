@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { nanoid } from "nanoid";
@@ -19,11 +19,19 @@ import {
 } from "../dev-docs-guidelines.js";
 import { removeWorktree } from "../git-service.js";
 import { serverLog } from "../log-bus.js";
+import { listSkills } from "../skills-service.js";
+import {
+  applyHarnessTemplate,
+  getHarnessStatus,
+  isHarnessApplied,
+  uninstallHarnessTemplate,
+} from "../harness-template-service.js";
+
+const DEFAULT_ROOT = "F:\\VibeSpace";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
-  path: z.string().min(1),
-  applyDevDocsGuidelines: z.boolean().optional(),
+  path: z.string().min(1).optional(),
 });
 
 /**
@@ -154,39 +162,225 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
     }
-    const { name, path, applyDevDocsGuidelines } = parsed.data;
+    const { name, path: rawPath } = parsed.data;
+    const pathMode: "auto" | "custom" = rawPath ? "custom" : "auto";
+    const path = rawPath ?? join(DEFAULT_ROOT, name);
 
-    // Validate path exists & is directory
-    try {
-      const st = statSync(path);
-      if (!st.isDirectory()) {
-        return reply.code(400).send({ error: "path_not_directory", path });
+    const t0 = Date.now();
+    serverLog("info", "project", "project-create 开始", {
+      meta: { name, path, pathMode },
+    });
+
+    if (pathMode === "auto") {
+      try {
+        mkdirSync(path, { recursive: true });
+      } catch (err) {
+        const msg = (err as Error).message || "mkdir failed";
+        serverLog("error", "project", `project-create 失败: ${msg}`, {
+          meta: {
+            name,
+            path,
+            pathMode,
+            error: { name: (err as Error).name, message: msg },
+          },
+        });
+        return reply.code(400).send({ error: "path_unwritable", path });
       }
-    } catch {
-      return reply.code(400).send({ error: "path_not_found", path });
+    } else {
+      try {
+        const st = statSync(path);
+        if (!st.isDirectory()) {
+          serverLog(
+            "error",
+            "project",
+            "project-create 失败: path_not_directory",
+            { meta: { name, path, pathMode } },
+          );
+          return reply.code(400).send({ error: "path_not_directory", path });
+        }
+      } catch {
+        serverLog("error", "project", "project-create 失败: path_not_found", {
+          meta: { name, path, pathMode },
+        });
+        return reply.code(400).send({ error: "path_not_found", path });
+      }
     }
 
     try {
       const proj = createProject({ id: nanoid(12), name, path });
-      if (applyDevDocsGuidelines) {
-        try {
-          appendDevDocsGuidelines(path);
-        } catch (err) {
-          app.log.warn(
-            { err, path },
-            "failed to append Dev Docs guidelines to CLAUDE.md",
-          );
-        }
-      }
+      serverLog(
+        "info",
+        "project",
+        `project-create 成功 (${Date.now() - t0}ms)`,
+        {
+          projectId: proj.id,
+          meta: { name, path, pathMode },
+        },
+      );
       return reply.code(201).send(proj);
     } catch (err) {
       const msg = (err as Error).message || "";
       if (msg.includes("UNIQUE") || msg.includes("constraint")) {
+        serverLog(
+          "error",
+          "project",
+          "project-create 失败: path_already_exists",
+          { meta: { name, path, pathMode } },
+        );
         return reply.code(409).send({ error: "path_already_exists", path });
       }
+      serverLog("error", "project", `project-create 失败: ${msg}`, {
+        meta: {
+          name,
+          path,
+          pathMode,
+          error: { name: (err as Error).name, message: msg },
+        },
+      });
       throw err;
     }
   });
+
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/apply-harness",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      const t0 = Date.now();
+      serverLog("info", "project", "apply-harness 开始", {
+        projectId: proj.id,
+        meta: { source: "drawer" },
+      });
+      try {
+        const r = await applyHarnessTemplate(proj.path);
+        serverLog(
+          "info",
+          "project",
+          `apply-harness 成功 (${Date.now() - t0}ms)`,
+          {
+            projectId: proj.id,
+            meta: {
+              source: "drawer",
+              copied: r.copied.length,
+              skipped: r.skipped.length,
+              gitignoreAppended: r.gitignoreAppended,
+            },
+          },
+        );
+        return reply.send(r);
+      } catch (err) {
+        const msg = (err as Error).message || "apply-harness failed";
+        serverLog("error", "project", `apply-harness 失败: ${msg}`, {
+          projectId: proj.id,
+          meta: {
+            source: "drawer",
+            error: { name: (err as Error).name, message: msg },
+          },
+        });
+        return reply.code(500).send({ error: "apply_failed", detail: msg });
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/api/projects/:id/harness",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      const t0 = Date.now();
+      serverLog("info", "project", "harness-uninstall 开始", {
+        projectId: proj.id,
+      });
+      try {
+        const r = await uninstallHarnessTemplate(proj.path);
+        if (r.failedFiles.length > 0) {
+          serverLog(
+            "error",
+            "project",
+            `harness-uninstall 部分失败 (${Date.now() - t0}ms)`,
+            {
+              projectId: proj.id,
+              meta: {
+                removedCount: r.removedCount,
+                skippedCount: r.skippedCount,
+                failedCount: r.failedFiles.length,
+              },
+            },
+          );
+          return reply.code(207).send({ ok: false, ...r });
+        }
+        serverLog(
+          "info",
+          "project",
+          `harness-uninstall 成功 (${Date.now() - t0}ms)`,
+          {
+            projectId: proj.id,
+            meta: {
+              removedCount: r.removedCount,
+              skippedCount: r.skippedCount,
+            },
+          },
+        );
+        return reply.send({ ok: true, ...r });
+      } catch (err) {
+        const msg = (err as Error).message || "harness-uninstall failed";
+        serverLog("error", "project", `harness-uninstall 失败: ${msg}`, {
+          projectId: proj.id,
+          meta: { error: { name: (err as Error).name, message: msg } },
+        });
+        return reply.code(500).send({ error: "uninstall_failed", detail: msg });
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/harness-status",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      try {
+        const status = await getHarnessStatus(proj.path);
+        return status;
+      } catch (err) {
+        return reply.code(500).send({
+          error: "status_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/harness-applied",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      const t0 = Date.now();
+      serverLog("info", "project", "harness-status 开始", {
+        projectId: proj.id,
+      });
+      try {
+        const enabled = isHarnessApplied(proj.path);
+        serverLog(
+          "info",
+          "project",
+          `harness-status 成功 (${Date.now() - t0}ms)`,
+          {
+            projectId: proj.id,
+            meta: { enabled },
+          },
+        );
+        return reply.send({ enabled });
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        serverLog("error", "project", `harness-status 失败: ${msg}`, {
+          projectId: proj.id,
+          meta: { error: { name: (err as Error).name, message: msg } },
+        });
+        return reply.code(500).send({ error: "read_failed", message: msg });
+      }
+    },
+  );
 
   app.get<{ Params: { id: string } }>(
     "/api/projects/:id/layout",
@@ -213,6 +407,17 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/skills",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      const skills = await listSkills(proj.path);
+      // Wire shape omits body to keep response small.
+      return skills.map((s) => ({ name: s.name, triggers: s.triggers }));
+    },
+  );
+
   app.post<{ Params: { id: string } }>(
     "/api/projects/:id/apply-dev-docs",
     async (req, reply) => {
@@ -227,6 +432,110 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         });
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
+        return reply.code(500).send({ error: "write_failed", message: msg });
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/dev-docs-status",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      const t0 = Date.now();
+      serverLog("info", "project", "dev-docs-status 开始", {
+        projectId: proj.id,
+      });
+      try {
+        const target = join(proj.path, "CLAUDE.md");
+        let claudeMdExists = true;
+        let content = "";
+        try {
+          content = readFileSync(target, "utf8");
+        } catch {
+          claudeMdExists = false;
+        }
+        const enabled =
+          claudeMdExists && content.indexOf(MAIN_GUIDELINES_ANCHOR) >= 0;
+        serverLog(
+          "info",
+          "project",
+          `dev-docs-status 成功 (${Date.now() - t0}ms)`,
+          {
+            projectId: proj.id,
+            meta: { enabled, claudeMdExists },
+          },
+        );
+        return reply.send({ enabled, claudeMdExists });
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        serverLog("error", "project", `dev-docs-status 失败: ${msg}`, {
+          projectId: proj.id,
+          meta: { error: { name: (err as Error).name, message: msg } },
+        });
+        return reply.code(500).send({ error: "read_failed", message: msg });
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/api/projects/:id/dev-docs",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "not_found" });
+      const t0 = Date.now();
+      serverLog("info", "project", "dev-docs-remove 开始", {
+        projectId: proj.id,
+      });
+      try {
+        const target = join(proj.path, "CLAUDE.md");
+        let content: string;
+        try {
+          content = readFileSync(target, "utf8");
+        } catch {
+          serverLog(
+            "info",
+            "project",
+            `dev-docs-remove 成功 (${Date.now() - t0}ms)`,
+            {
+              projectId: proj.id,
+              meta: { changed: false, reason: "claude_md_missing" },
+            },
+          );
+          return reply.send({ ok: true, enabled: false });
+        }
+        const REMOVE_PREFIX = "\n\n---\n\n" + MAIN_GUIDELINES_ANCHOR;
+        const idx = content.indexOf(REMOVE_PREFIX);
+        if (idx < 0) {
+          serverLog(
+            "info",
+            "project",
+            `dev-docs-remove 成功 (${Date.now() - t0}ms)`,
+            {
+              projectId: proj.id,
+              meta: { changed: false, reason: "anchor_missing" },
+            },
+          );
+          return reply.send({ ok: true, enabled: false });
+        }
+        const trimmed = content.slice(0, idx).replace(/\s+$/, "");
+        writeFileSync(target, trimmed + "\n", "utf8");
+        serverLog(
+          "info",
+          "project",
+          `dev-docs-remove 成功 (${Date.now() - t0}ms)`,
+          {
+            projectId: proj.id,
+            meta: { changed: true },
+          },
+        );
+        return reply.send({ ok: true, enabled: false });
+      } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
+        serverLog("error", "project", `dev-docs-remove 失败: ${msg}`, {
+          projectId: proj.id,
+          meta: { error: { name: (err as Error).name, message: msg } },
+        });
         return reply.code(500).send({ error: "write_failed", message: msg });
       }
     },

@@ -36,6 +36,8 @@ import { registerPasteImageRoutes } from "./routes/paste-image.js";
 import { registerOutputRoutes } from "./routes/output.js";
 import { registerRawFileRoutes } from "./routes/raw-file.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
+import { registerSubagentRunsRoutes } from "./routes/subagent-runs.js";
+import { registerUsageRoutes } from "./routes/usage.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
 const PORT = Number(process.env.AIMON_PORT || 8787);
@@ -156,6 +158,8 @@ async function main(): Promise<void> {
   await registerOutputRoutes(app);
   await registerRawFileRoutes(app);
   await registerJobsRoutes(app);
+  await registerSubagentRunsRoutes(app);
+  await registerUsageRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import PermissionsDrawer from '../PermissionsDrawer'
@@ -29,6 +29,20 @@ export default function ProjectsColumn({
   const [permProjectId, setPermProjectId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [changeCount, setChangeCount] = useState<number | null>(null)
+  const [activeTab, setActiveTab] = useState<'active' | 'inactive'>('active')
+
+  const { activeProjects, inactiveProjects } = useMemo(() => {
+    const active: typeof projects = []
+    const inactive: typeof projects = []
+    for (const p of projects) {
+      const count = sessions.filter((s) => s.projectId === p.id && s.ended_at == null).length
+      if (count >= 1) active.push(p)
+      else inactive.push(p)
+    }
+    return { activeProjects: active, inactiveProjects: inactive }
+  }, [projects, sessions])
+
+  const currentList = activeTab === 'active' ? activeProjects : inactiveProjects
 
   useEffect(() => {
     if (!menu) {
@@ -101,7 +115,7 @@ export default function ProjectsColumn({
   }
 
   function countFor(pid: string): number {
-    return sessions.filter((s) => s.projectId === pid).length
+    return sessions.filter((s) => s.projectId === pid && s.ended_at == null).length
   }
 
   function openMenu(e: React.MouseEvent, id: string, name: string) {
@@ -144,6 +158,22 @@ export default function ProjectsColumn({
         </span>
       </div>
 
+      <div className="flex gap-1 px-2 py-1 border-b border-border/30">
+        {(['active', 'inactive'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setActiveTab(t)}
+            className={`flex-1 text-xs py-1 rounded-sm transition-colors ${
+              activeTab === t
+                ? 'bg-white/[0.08] text-fg font-medium'
+                : 'text-subtle hover:text-fg'
+            }`}
+          >
+            {t === 'active' ? '激活' : '未激活'}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-auto px-2 py-1.5 space-y-0.5">
         <button
           onClick={() => select(null)}
@@ -165,7 +195,12 @@ export default function ProjectsColumn({
             点击下方 + 新建
           </div>
         )}
-        {projects.map((p) => (
+        {projects.length > 0 && currentList.length === 0 && (
+          <div className="px-3 py-6 text-xs text-muted text-center">
+            {activeTab === 'active' ? '当前没有运行中的终端' : '所有项目均已激活'}
+          </div>
+        )}
+        {currentList.map((p) => (
           <div
             key={p.id}
             className={`fluent-btn group flex items-center gap-2 px-3 py-2 text-sm rounded-md cursor-pointer ${

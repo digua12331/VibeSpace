@@ -14,6 +14,7 @@ import type {
   Project,
   Session,
   SessionStatus,
+  SubagentRun,
   WSConnState,
 } from './types'
 
@@ -30,7 +31,7 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs'
+export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs' | 'usage'
 
 export type EditorTabKind = 'file' | 'checklist'
 
@@ -236,6 +237,10 @@ interface State {
   markSessionExit: (id: string, code: number) => void
   /** Local mirror after bindSessionTask succeeds; same pattern as updateSessionStatus. */
   setSessionTaskLocal: (id: string, task: string | null) => void
+
+  /** Cached subagent-run lists keyed by parent sessionId. Polled by SessionView. */
+  subagentRunsBySession: Record<string, SubagentRun[]>
+  refreshSubagentRuns: (sessionId: string) => Promise<void>
 
   /** Called when user interacts with a tile to clear nag state for that session. */
   clearNotify: (id: string) => void
@@ -566,6 +571,21 @@ export const useStore = create<State>((set, get) => ({
             : s,
       ),
     })),
+
+  subagentRunsBySession: {},
+  refreshSubagentRuns: async (sessionId) => {
+    try {
+      const runs = await api.listSubagentRuns(sessionId)
+      set((st) => ({
+        subagentRunsBySession: {
+          ...st.subagentRunsBySession,
+          [sessionId]: runs,
+        },
+      }))
+    } catch {
+      // Silent — hook chain breaking shouldn't block the parent session UI.
+    }
+  },
 
   markSessionExit: (id, code) => {
     const sess = get().sessions.find((s) => s.id === id)

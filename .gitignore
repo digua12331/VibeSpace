@@ -14,6 +14,9 @@ dev/
 !.claude/settings.json
 !.claude/templates
 !.claude/templates/**
+!.claude/agents
+!.claude/agents/**
 .codex/
+.aimon/runtime/
 docs/*
 !docs/claude-config-tiers.md

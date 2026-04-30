@@ -5,6 +5,8 @@ import picomatch from "picomatch";
 import { appendEvent, getProject, getSession, getSessionScope } from "../db.js";
 import { statusManager } from "../status.js";
 import { readMemory, type MemoryEntry } from "../memory-service.js";
+import { subagentRuns } from "../subagent-runs.js";
+import { serverLog } from "../log-bus.js";
 
 /** Cap the injected memory header at ~10KB so it never drowns the system prompt. */
 const MEMORY_HEADER_MAX_BYTES = 10_000;
@@ -121,6 +123,75 @@ function extractToolFilePath(payload: unknown): { tool: string; filePath: string
   return { tool, filePath: raw };
 }
 
+// ---------- Task tool (subagent) extraction ----------
+
+interface TaskInvocation {
+  subagentType: string;
+  description: string;
+  prompt: string;
+  /** Claude's own tool-use id; we use it to bridge Pre and Post events. */
+  toolUseId: string | null;
+}
+
+/**
+ * Pull subagent metadata out of a Task tool hook payload. Tolerant of
+ * field name changes — claude SDK has shifted these before. Returns null
+ * when this is not a Task event. When AIMON_HOOK_DEBUG=1, dumps the raw
+ * payload once so we can verify field names match reality.
+ */
+function extractTaskInvocation(payload: unknown): TaskInvocation | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
+  const tool = typeof p.tool_name === "string" ? p.tool_name : null;
+  if (tool !== "Task") return null;
+
+  if (process.env.AIMON_HOOK_DEBUG === "1") {
+    try {
+      console.log(
+        "[hook:debug] Task payload =",
+        JSON.stringify(payload, null, 2).slice(0, 4000),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const input = p.tool_input;
+  const rec =
+    input && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+
+  const subagentType =
+    typeof rec.subagent_type === "string"
+      ? rec.subagent_type
+      : typeof rec.subagentType === "string"
+        ? rec.subagentType
+        : typeof rec.agent_type === "string"
+          ? rec.agent_type
+          : "unknown";
+  const description =
+    typeof rec.description === "string"
+      ? rec.description
+      : typeof rec.task_description === "string"
+        ? rec.task_description
+        : "";
+  const prompt =
+    typeof rec.prompt === "string"
+      ? rec.prompt
+      : typeof rec.task === "string"
+        ? rec.task
+        : "";
+  const toolUseId =
+    typeof p.tool_use_id === "string"
+      ? p.tool_use_id
+      : typeof p.toolUseId === "string"
+        ? p.toolUseId
+        : null;
+
+  return { subagentType, description, prompt, toolUseId };
+}
+
 function checkScopeForPreToolUse(
   sessionId: string,
   payload: unknown,
@@ -199,6 +270,44 @@ export async function registerHookRoutes(app: FastifyInstance): Promise<void> {
           }
         } catch (err) {
           app.log.warn({ err, sessionId }, "scope check failed — fail-open");
+        }
+        // Task tool: register a subagent run card on the parent session.
+        try {
+          const task = extractTaskInvocation(payload);
+          if (task) {
+            subagentRuns.registerStart({
+              parentSessionId: sessionId,
+              runId: task.toolUseId ?? undefined,
+              subagentType: task.subagentType,
+              description: task.description,
+              prompt: task.prompt,
+            });
+          }
+        } catch (err) {
+          // Surface to LogsView so the failure path is observable per the
+          // 「操作日志规则」 ERROR-coverage requirement.
+          serverLog(
+            "error",
+            "subagent",
+            `registerStart failed: ${(err as Error).message}`,
+            { sessionId, meta: { error: { message: (err as Error).message } } },
+          );
+        }
+      }
+
+      if (event === "PostToolUse") {
+        try {
+          const task = extractTaskInvocation(payload);
+          if (task && task.toolUseId) {
+            subagentRuns.markDone(task.toolUseId);
+          }
+        } catch (err) {
+          serverLog(
+            "error",
+            "subagent",
+            `markDone failed: ${(err as Error).message}`,
+            { sessionId, meta: { error: { message: (err as Error).message } } },
+          );
         }
       }
 

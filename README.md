@@ -193,6 +193,23 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
   can be cancelled; finished review jobs auto-prune after 30 min and
   vanish on server restart. install jobs still have their own dedicated
   detail dialog under 📦.
+- **Subagent run cards.** When a Claude session calls the `Task` tool
+  to spawn an internal subagent, the parent session's tab shows a
+  `🤖×N` badge (N = currently running) and SessionView surfaces a
+  violet chip bar above the terminal listing each subagent run with
+  type / description / state / duration. Click a chip for a full
+  prompt + status dialog. Polled every 5 s while the tab is active;
+  in-memory only, server restart clears.
+- **Skills · on-demand prompt injection.** Drop markdown skill files
+  under `<project>/.aimon/skills/<name>.md`, each with yaml frontmatter
+  `triggers: [keyword1, keyword2]` and a body. When you start a session
+  bound to a task name, any skill whose triggers match (case-insensitive
+  substring of the task name) gets joined into a runtime prompt at
+  `<project>/.aimon/runtime/<sessionId>-prompt.md` and exposed via env
+  `AIMON_SESSION_PROMPT_PATH`. Whether the agent reads that path is up
+  to user-side configuration (e.g. add a one-liner to project CLAUDE.md
+  asking the agent to consume it). Add `.aimon/runtime/` to `.gitignore`;
+  `.aimon/skills/` should normally be checked in.
 
 ## HTTP API
 
@@ -446,6 +463,32 @@ dev dir and opening the second browser tab.
 - Claude session resume (`claude --resume <id>`) on a re-spawn.
 - Sparkline / history in the perf panel.
 - Mobile-responsive layout.
+
+## Reusing the harness config in other projects
+
+The 6 skill files in `.aimon/skills/` + 7 project-level agent files in
+`.claude/agents/` + the two `dev/harness-*.md` blueprints together form a
+ready-to-port "agent team + on-demand skill" config. Drop them into any
+claude-code-driven project to give it the same `🤖 Task` subagent fleet
+and `📝 task → skill injection` flow.
+
+Three install paths:
+
+1. **NewProjectDialog checkbox** — when creating a project from the
+   VibeSpace UI, tick "🤝 应用 Harness 团队配置" alongside the existing
+   Dev Docs checkbox. Files get copied during project creation
+   (best-effort; project still gets created on copy failure).
+2. **Project right-click → 🤝 团队** — opens a panel showing per-file
+   install status + a single "一键安装缺失" button. Won't overwrite
+   anything you've already customised.
+3. **Command line** — see
+   [`templates/harness/INSTALL.md`](./templates/harness/INSTALL.md) for
+   the Bash / PowerShell one-liner. Same logic as the UI paths above.
+
+In all three cases, after install you must read
+`<your-project>/.aimon/CUSTOMIZE-harness.md` to rewrite the
+VibeSpace-specific bits (≈ 70% of the content references this repo's
+fastify / SQLite / Tailwind stack).
 
 ## License
 

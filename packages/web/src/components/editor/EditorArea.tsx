@@ -56,6 +56,7 @@ export default function EditorArea() {
   const sessions = useStore((s) => s.sessions)
   const liveStatus = useStore((s) => s.liveStatus)
   const docsTasks = useStore((s) => s.docsTasks)
+  const subagentRunsBySession = useStore((s) => s.subagentRunsBySession)
   const notifyingSessions = useStore((s) => s.notifyingSessions)
   const selectedProjectId = useStore((s) => s.selectedProjectId)
   const activeMap = useStore((s) => s.activeSessionIdByProject)
@@ -264,6 +265,19 @@ export default function EditorArea() {
                   🌿 {s.worktreeBranch.replace(/^agent\//, '')}
                 </span>
               )}
+              {(() => {
+                const runs = subagentRunsBySession[s.id] ?? []
+                const running = runs.filter((r) => r.state === 'running').length
+                if (running === 0) return null
+                return (
+                  <span
+                    title={`${running} 个 subagent 正在跑`}
+                    className="text-[10px] text-violet-300/90 bg-violet-400/10 border border-violet-400/30 rounded px-1 py-0 leading-4 whitespace-pre"
+                  >
+                    🤖×{running}
+                  </span>
+                )
+              })()}
               <span className="font-mono truncate max-w-[180px]">
                 {s.agent}·{s.id.slice(-6)}
               </span>

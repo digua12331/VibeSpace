@@ -8,6 +8,8 @@ import MarkdownView from './MarkdownView'
 import HtmlPreview from './HtmlPreview'
 import ImagePreview from './ImagePreview'
 import ExcelPreview from './ExcelPreview'
+import { isExecutablePath, runExecutableFile } from './runExecutable'
+import { alertDialog } from './dialog/DialogHost'
 
 type Tab = 'diff' | 'source' | 'preview'
 
@@ -46,6 +48,7 @@ function prettyBytes(n: number): string {
 export default function FilePreview({ projectId, path, ref, from, to }: Props) {
   const canMarkdown = isMarkdownPath(path)
   const isHtml = isHtmlPath(path)
+  const isExec = isExecutablePath(path)
   // 图片 / Excel 仅在 WORKTREE 上预览；历史 ref 回退到 Source/Diff(老体验)。
   const isWorktree = !ref || ref === 'WORKTREE'
   const canImage = isImagePath(path) && isWorktree
@@ -205,6 +208,24 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
           )}
         </div>
         <div className="flex items-center gap-1 text-xs">
+          {isExec && (
+            <button
+              onClick={async () => {
+                try {
+                  await runExecutableFile(projectId, path)
+                } catch (e: unknown) {
+                  await alertDialog(
+                    `运行失败: ${e instanceof Error ? e.message : String(e)}`,
+                    { title: '运行失败', variant: 'danger' },
+                  )
+                }
+              }}
+              title="运行磁盘上当前 worktree 版本的此文件 (起 cmd 会话执行)"
+              className="fluent-btn px-2.5 py-1 mr-1 rounded-md border border-emerald-400/40 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20"
+            >
+              ▶ 运行
+            </button>
+          )}
           {showDiffTab && (
             <TabButton active={tab === 'diff'} onClick={() => setTab('diff')}>
               Diff
@@ -221,7 +242,7 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
         </div>
       </div>
     ),
-    [path, file, showDiffTab, canPreview, tab],
+    [path, projectId, isExec, file, showDiffTab, canPreview, tab],
   )
 
   let body: React.ReactNode

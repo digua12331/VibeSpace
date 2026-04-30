@@ -308,7 +308,7 @@ export default function ChangesList({ projectId }: Props) {
           disabled={busy != null || !message.trim()}
           className="fluent-btn w-full px-3 py-1.5 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {busy === 'commit' ? '提交中…' : `✓ 提交 (${data.staged.length})`}
+          {busy === 'commit' ? '提交中…' : `✓ 提交 (${data.staged.length > 0 ? data.staged.length : workingChanges})`}
         </button>
         {err && (
           <div className="text-[11px] text-rose-300 whitespace-pre-wrap break-words">{err}</div>

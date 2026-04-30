@@ -12,11 +12,14 @@ import type {
   CommitDetail,
   CommitResult,
   CommitSummary,
+  DevDocsStatus,
   DiffResult,
   ChecklistDoc,
   DocFileContent,
   DocFileKind,
   DocTaskSummary,
+  HarnessApplied,
+  HarnessApplyResult,
   IssuesPayload,
   JobItem,
   MemoryPayload,
@@ -27,12 +30,14 @@ import type {
   GraphCommit,
   InstallJob,
   PermissionCatalog,
+  ClaudeUsage,
   Project,
   ProjectFilesResult,
   ProjectPerf,
   Session,
   SessionIsolation,
   SessionScope,
+  SubagentRun,
 } from './types'
 
 const BASE: string =
@@ -89,10 +94,22 @@ export function listProjects(): Promise<Project[]> {
 
 export function createProject(input: {
   name: string
-  path: string
-  applyDevDocsGuidelines?: boolean
+  path?: string
 }): Promise<Project> {
   return request<Project>('/api/projects', jsonInit('POST', input))
+}
+
+export function getHarnessApplied(projectId: string): Promise<HarnessApplied> {
+  return request<HarnessApplied>(
+    `/api/projects/${encodeURIComponent(projectId)}/harness-applied`,
+  )
+}
+
+export function applyHarness(projectId: string): Promise<HarnessApplyResult> {
+  return request<HarnessApplyResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/apply-harness`,
+    { method: 'POST' },
+  )
 }
 
 export function applyDevDocsGuidelines(
@@ -101,6 +118,35 @@ export function applyDevDocsGuidelines(
   return request(
     `/api/projects/${encodeURIComponent(projectId)}/apply-dev-docs`,
     { method: 'POST' },
+  )
+}
+
+export function getDevDocsStatus(projectId: string): Promise<DevDocsStatus> {
+  return request<DevDocsStatus>(
+    `/api/projects/${encodeURIComponent(projectId)}/dev-docs-status`,
+  )
+}
+
+export function removeDevDocs(
+  projectId: string,
+): Promise<{ ok: boolean; enabled: boolean }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/dev-docs`,
+    { method: 'DELETE' },
+  )
+}
+
+export interface HarnessUninstallResult {
+  ok: boolean
+  removedCount: number
+  skippedCount: number
+  failedFiles: string[]
+}
+
+export function removeHarness(projectId: string): Promise<HarnessUninstallResult> {
+  return request<HarnessUninstallResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/harness`,
+    { method: 'DELETE' },
   )
 }
 
@@ -145,10 +191,33 @@ export function bindSessionTask(
   )
 }
 
+export function listSubagentRuns(sessionId: string): Promise<SubagentRun[]> {
+  return request<SubagentRun[]>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/subagent-runs`,
+  )
+}
+
+export interface ProjectSkillSummary {
+  name: string
+  triggers: string[]
+}
+
+export function listProjectSkills(
+  projectId: string,
+): Promise<ProjectSkillSummary[]> {
+  return request<ProjectSkillSummary[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/skills`,
+  )
+}
+
 // ---------- Jobs ----------
 
 export function listJobs(): Promise<JobItem[]> {
   return request<JobItem[]>('/api/jobs')
+}
+
+export function getClaudeUsage(): Promise<ClaudeUsage> {
+  return request<ClaudeUsage>('/api/usage/claude')
 }
 
 export function cancelJob(id: string): Promise<void> {
