@@ -8,17 +8,14 @@ import {
   findSessionBoundToTask,
   getProject,
   getSession,
-  getSessionScope,
   listSessions,
   listSessionsByProject,
-  setSessionScope,
   setSessionTask,
   setSessionWorktree,
   updateSessionPid,
   type Agent,
   type Session,
   type SessionIsolation,
-  type SessionScope,
   type SessionStatus,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
@@ -41,48 +38,6 @@ import { buildRuntimePrompt, pickSkillsForTask } from "../skills-service.js";
 
 const BUILTIN = new Set<string>(BUILTIN_SHELL_AGENTS);
 
-const GlobListSchema = z
-  .array(z.string())
-  .max(200)
-  .default([])
-  .transform((arr) => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of arr) {
-      const s = raw.trim();
-      if (!s) continue;
-      if (seen.has(s)) continue;
-      seen.add(s);
-      out.push(s);
-    }
-    return out;
-  });
-
-const ScopeSchema = z
-  .object({
-    enabled: z.boolean(),
-    readwrite: GlobListSchema,
-    readonly: GlobListSchema,
-  })
-  .superRefine((val, ctx) => {
-    const bad = (list: string[], field: string) => {
-      for (const g of list) {
-        if (g.startsWith("/") || /^[A-Za-z]:[\\/]/.test(g) || g.includes("..")) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `invalid glob in ${field}: ${g}`,
-            path: [field],
-          });
-          return;
-        }
-      }
-    };
-    bad(val.readwrite, "readwrite");
-    bad(val.readonly, "readonly");
-  });
-
-type ScopeInput = z.infer<typeof ScopeSchema>;
-
 const TaskNameSchema = z
   .string()
   .min(1)
@@ -99,7 +54,6 @@ const CreateSessionSchema = z.object({
     .refine((id) => BUILTIN.has(id) || !!getCliEntry(id), {
       message: "unknown agent",
     }),
-  scope: ScopeSchema.optional(),
   isolation: z.enum(["shared", "worktree"]).optional().default("shared"),
   task: TaskNameSchema.optional(),
 });
@@ -128,13 +82,12 @@ interface WireSession {
   started_at: number;
   ended_at: number | null;
   exit_code: number | null;
-  scope?: SessionScope;
   isolation: SessionIsolation;
   worktreeBranch?: string;
   worktreePath?: string;
   task?: string;
 }
-function serialize(s: Session, scope?: SessionScope): WireSession {
+function serialize(s: Session): WireSession {
   const base: WireSession = {
     id: s.id,
     projectId: s.projectId,
@@ -146,16 +99,10 @@ function serialize(s: Session, scope?: SessionScope): WireSession {
     exit_code: s.exitCode,
     isolation: s.isolation,
   };
-  if (scope) base.scope = scope;
   if (s.worktreeBranch) base.worktreeBranch = s.worktreeBranch;
   if (s.worktreePath) base.worktreePath = s.worktreePath;
   if (s.task) base.task = s.task;
   return base;
-}
-
-function attachScope(s: Session): WireSession {
-  const scope = getSessionScope(s.id);
-  return serialize(s, scope ?? undefined);
 }
 
 export async function registerSessionRoutes(app: FastifyInstance): Promise<void> {
@@ -166,7 +113,7 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
     }
     const { projectId } = parsed.data;
     const rows = projectId ? listSessionsByProject(projectId) : listSessions();
-    return rows.map(decorateStatus).map(attachScope);
+    return rows.map(decorateStatus).map(serialize);
   });
 
   app.post("/api/sessions", async (req, reply) => {
@@ -178,7 +125,6 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
       parsed.data.projectId,
       parsed.data.agent,
       reply,
-      parsed.data.scope,
       parsed.data.isolation,
       parsed.data.task ?? null,
     );
@@ -234,7 +180,7 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
 
       const updated = getSession(id);
       if (!updated) return reply.code(404).send({ error: "not_found" });
-      return reply.send(serialize(decorateStatus(updated), getSessionScope(id) ?? undefined));
+      return reply.send(serialize(decorateStatus(updated)));
     },
   );
 
@@ -326,7 +272,6 @@ async function startSession(
   projectId: string,
   agent: Agent,
   reply: import("fastify").FastifyReply,
-  scope?: ScopeInput,
   isolation: SessionIsolation = "shared",
   task: string | null = null,
 ): Promise<unknown> {
@@ -362,20 +307,6 @@ async function startSession(
       sessionId,
       meta: { task, previousTask: null, atSpawn: true },
     });
-  }
-
-  // Persist scope before spawn so the hook can enforce from the first tool use.
-  if (scope) {
-    try {
-      setSessionScope({
-        sessionId,
-        enabled: scope.enabled,
-        readwrite: scope.readwrite,
-        readonly: scope.readonly,
-      });
-    } catch {
-      /* non-fatal: session runs unrestricted */
-    }
   }
 
   // Decide spawn cwd. For 'worktree' isolation, create the worktree first so
@@ -479,21 +410,12 @@ async function startSession(
   updateSessionPid(sessionId, pid);
 
   return reply.code(201).send(
-    serialize(
-      {
-        ...created,
-        pid,
-        status: "starting" as SessionStatus,
-        worktreePath,
-        worktreeBranch,
-      },
-      scope
-        ? {
-            enabled: scope.enabled,
-            readwrite: scope.readwrite,
-            readonly: scope.readonly,
-          }
-        : undefined,
-    ),
+    serialize({
+      ...created,
+      pid,
+      status: "starting" as SessionStatus,
+      worktreePath,
+      worktreeBranch,
+    }),
   );
 }

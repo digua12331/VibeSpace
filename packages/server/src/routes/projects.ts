@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { nanoid } from "nanoid";
@@ -13,19 +13,14 @@ import {
   updateProjectLayout,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
-import {
-  DEV_DOCS_GUIDELINES,
-  ISSUES_ARCHIVE_SECTION,
-} from "../dev-docs-guidelines.js";
 import { removeWorktree } from "../git-service.js";
 import { serverLog } from "../log-bus.js";
 import { listSkills } from "../skills-service.js";
 import {
-  applyHarnessTemplate,
-  getHarnessStatus,
-  isHarnessApplied,
-  uninstallHarnessTemplate,
-} from "../harness-template-service.js";
+  applyWorkflowToProject,
+  getWorkflowStatus,
+  removeWorkflowFromProject,
+} from "../workflow-service.js";
 
 const DEFAULT_ROOT = "F:\\VibeSpace";
 
@@ -33,108 +28,6 @@ const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   path: z.string().min(1).optional(),
 });
-
-/**
- * Append `body` to <projectPath>/CLAUDE.md, guarding against:
- * - duplicate application (by a stable anchor line),
- * - awkward newline boundaries between existing content and the appended body.
- *
- * Returns `true` when the file was written, `false` when it was already present.
- */
-function appendToClaudeMd(
-  projectPath: string,
-  body: string,
-  anchor: string,
-): boolean {
-  const target = join(projectPath, "CLAUDE.md");
-  let existing = "";
-  try {
-    existing = readFileSync(target, "utf8");
-  } catch {
-    // file does not exist — write fresh
-  }
-  if (anchor && existing.includes(anchor)) return false;
-  const needsSeparator = existing.length > 0;
-  const trailingNewlines = existing.endsWith("\n\n")
-    ? ""
-    : existing.endsWith("\n")
-      ? "\n"
-      : "\n\n";
-  const payload = needsSeparator
-    ? `${existing}${trailingNewlines}---\n\n${body}`
-    : body;
-  writeFileSync(target, payload, "utf8");
-  return true;
-}
-
-const MAIN_GUIDELINES_ANCHOR = "# Dev Docs 工作流";
-const ISSUES_SECTION_ANCHOR = "## Issues 档案";
-
-/**
- * Insert `section` into the main guidelines block when the block exists but is
- * missing that section. "The block" is the chunk of CLAUDE.md starting at
- * `mainAnchor` and ending at the **first `---` on its own line after the main
- * anchor** (the same separator `appendToClaudeMd` adds between appended bodies)
- * or end-of-file, whichever comes first. The section is appended to the end of
- * that block with a blank-line separator, preserving any user-authored content
- * in between.
- *
- * Returns `true` if a write happened, `false` if the section was already there
- * or the main block is missing entirely.
- */
-function insertSectionBeforeSeparator(
-  projectPath: string,
-  section: string,
-  sectionAnchor: string,
-  mainAnchor: string,
-): boolean {
-  const target = join(projectPath, "CLAUDE.md");
-  let existing: string;
-  try {
-    existing = readFileSync(target, "utf8");
-  } catch {
-    return false;
-  }
-  const mainIdx = existing.indexOf(mainAnchor);
-  if (mainIdx < 0) return false;
-
-  // Locate the end of the main block: the first standalone `---` separator
-  // after the main anchor, or EOF.
-  const afterMain = existing.slice(mainIdx);
-  const sepMatch = /\n---\s*\n/.exec(afterMain);
-  const blockEndRel = sepMatch ? sepMatch.index + 1 : afterMain.length;
-  const block = afterMain.slice(0, blockEndRel);
-
-  if (block.includes(sectionAnchor)) return false;
-
-  // Trim trailing whitespace of the block, then re-attach with one blank line
-  // before the inserted section so headings aren't glued together.
-  const blockTrimmed = block.replace(/\s+$/, "");
-  const rebuiltBlock = `${blockTrimmed}\n\n${section.trimEnd()}\n`;
-  const rebuilt =
-    existing.slice(0, mainIdx) +
-    rebuiltBlock +
-    afterMain.slice(blockEndRel);
-  writeFileSync(target, rebuilt, "utf8");
-  return true;
-}
-
-function appendDevDocsGuidelines(projectPath: string): boolean {
-  // Stable anchor so re-applying is a no-op even if user edits surrounding text.
-  const wroteFull = appendToClaudeMd(
-    projectPath,
-    DEV_DOCS_GUIDELINES,
-    MAIN_GUIDELINES_ANCHOR,
-  );
-  if (wroteFull) return true;
-  // Main block was already present — upgrade by inserting any missing sections.
-  return insertSectionBeforeSeparator(
-    projectPath,
-    ISSUES_ARCHIVE_SECTION,
-    ISSUES_SECTION_ANCHOR,
-    MAIN_GUIDELINES_ANCHOR,
-  );
-}
 
 const LayoutSchema = z.object({
   cols: z.number().int().min(1).max(48),
@@ -242,40 +135,56 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post<{ Params: { id: string } }>(
-    "/api/projects/:id/apply-harness",
+    "/api/projects/:id/workflow",
     async (req, reply) => {
       const proj = getProject(req.params.id);
       if (!proj) return reply.code(404).send({ error: "not_found" });
       const t0 = Date.now();
-      serverLog("info", "project", "apply-harness 开始", {
+      serverLog("info", "project", "apply-workflow 开始", {
         projectId: proj.id,
-        meta: { source: "drawer" },
       });
       try {
-        const r = await applyHarnessTemplate(proj.path);
+        const r = await applyWorkflowToProject(proj.path);
+        const devDocsOk = r.devDocs.ok;
+        const harnessOk = r.harness !== null && r.harness.ok === true;
+        if (!devDocsOk || (r.harness && !harnessOk)) {
+          // Either step failed; report as 207 (partial) so UI can branch.
+          serverLog(
+            "error",
+            "project",
+            `apply-workflow 部分失败 (${Date.now() - t0}ms)`,
+            {
+              projectId: proj.id,
+              meta: {
+                devDocsOk,
+                harnessOk,
+                partial: r.partial,
+              },
+            },
+          );
+          return reply.code(207).send(r);
+        }
         serverLog(
           "info",
           "project",
-          `apply-harness 成功 (${Date.now() - t0}ms)`,
+          `apply-workflow 成功 (${Date.now() - t0}ms)`,
           {
             projectId: proj.id,
             meta: {
-              source: "drawer",
-              copied: r.copied.length,
-              skipped: r.skipped.length,
-              gitignoreAppended: r.gitignoreAppended,
+              devDocsWrote: r.devDocs.ok ? r.devDocs.wrote : false,
+              harnessCopied:
+                r.harness && r.harness.ok ? r.harness.copied.length : 0,
+              harnessSkipped:
+                r.harness && r.harness.ok ? r.harness.skipped.length : 0,
             },
           },
         );
         return reply.send(r);
       } catch (err) {
-        const msg = (err as Error).message || "apply-harness failed";
-        serverLog("error", "project", `apply-harness 失败: ${msg}`, {
+        const msg = (err as Error).message || "apply-workflow failed";
+        serverLog("error", "project", `apply-workflow 失败: ${msg}`, {
           projectId: proj.id,
-          meta: {
-            source: "drawer",
-            error: { name: (err as Error).name, message: msg },
-          },
+          meta: { error: { name: (err as Error).name, message: msg } },
         });
         return reply.code(500).send({ error: "apply_failed", detail: msg });
       }
@@ -283,27 +192,28 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   );
 
   app.delete<{ Params: { id: string } }>(
-    "/api/projects/:id/harness",
+    "/api/projects/:id/workflow",
     async (req, reply) => {
       const proj = getProject(req.params.id);
       if (!proj) return reply.code(404).send({ error: "not_found" });
       const t0 = Date.now();
-      serverLog("info", "project", "harness-uninstall 开始", {
+      serverLog("info", "project", "remove-workflow 开始", {
         projectId: proj.id,
       });
       try {
-        const r = await uninstallHarnessTemplate(proj.path);
-        if (r.failedFiles.length > 0) {
+        const r = await removeWorkflowFromProject(proj.path);
+        if (r.partial) {
           serverLog(
             "error",
             "project",
-            `harness-uninstall 部分失败 (${Date.now() - t0}ms)`,
+            `remove-workflow 部分失败 (${Date.now() - t0}ms)`,
             {
               projectId: proj.id,
               meta: {
-                removedCount: r.removedCount,
-                skippedCount: r.skippedCount,
-                failedCount: r.failedFiles.length,
+                devDocsChanged: r.devDocs.changed,
+                harnessRemoved: r.harness.removedCount,
+                harnessSkipped: r.harness.skippedCount,
+                harnessFailed: r.harness.failedFiles.length,
               },
             },
           );
@@ -312,72 +222,56 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         serverLog(
           "info",
           "project",
-          `harness-uninstall 成功 (${Date.now() - t0}ms)`,
+          `remove-workflow 成功 (${Date.now() - t0}ms)`,
           {
             projectId: proj.id,
             meta: {
-              removedCount: r.removedCount,
-              skippedCount: r.skippedCount,
+              devDocsChanged: r.devDocs.changed,
+              harnessRemoved: r.harness.removedCount,
+              harnessSkipped: r.harness.skippedCount,
             },
           },
         );
         return reply.send({ ok: true, ...r });
       } catch (err) {
-        const msg = (err as Error).message || "harness-uninstall failed";
-        serverLog("error", "project", `harness-uninstall 失败: ${msg}`, {
+        const msg = (err as Error).message || "remove-workflow failed";
+        serverLog("error", "project", `remove-workflow 失败: ${msg}`, {
           projectId: proj.id,
           meta: { error: { name: (err as Error).name, message: msg } },
         });
-        return reply.code(500).send({ error: "uninstall_failed", detail: msg });
+        return reply.code(500).send({ error: "remove_failed", detail: msg });
       }
     },
   );
 
   app.get<{ Params: { id: string } }>(
-    "/api/projects/:id/harness-status",
-    async (req, reply) => {
-      const proj = getProject(req.params.id);
-      if (!proj) return reply.code(404).send({ error: "not_found" });
-      try {
-        const status = await getHarnessStatus(proj.path);
-        return status;
-      } catch (err) {
-        return reply.code(500).send({
-          error: "status_failed",
-          detail: (err as Error).message,
-        });
-      }
-    },
-  );
-
-  app.get<{ Params: { id: string } }>(
-    "/api/projects/:id/harness-applied",
+    "/api/projects/:id/workflow-status",
     async (req, reply) => {
       const proj = getProject(req.params.id);
       if (!proj) return reply.code(404).send({ error: "not_found" });
       const t0 = Date.now();
-      serverLog("info", "project", "harness-status 开始", {
+      serverLog("info", "project", "workflow-status 开始", {
         projectId: proj.id,
       });
       try {
-        const enabled = isHarnessApplied(proj.path);
+        const status = await getWorkflowStatus(proj.path);
         serverLog(
           "info",
           "project",
-          `harness-status 成功 (${Date.now() - t0}ms)`,
+          `workflow-status 成功 (${Date.now() - t0}ms)`,
           {
             projectId: proj.id,
-            meta: { enabled },
+            meta: { applied: status.applied },
           },
         );
-        return reply.send({ enabled });
+        return reply.send(status);
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);
-        serverLog("error", "project", `harness-status 失败: ${msg}`, {
+        serverLog("error", "project", `workflow-status 失败: ${msg}`, {
           projectId: proj.id,
           meta: { error: { name: (err as Error).name, message: msg } },
         });
-        return reply.code(500).send({ error: "read_failed", message: msg });
+        return reply.code(500).send({ error: "status_failed", detail: msg });
       }
     },
   );
@@ -415,129 +309,6 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       const skills = await listSkills(proj.path);
       // Wire shape omits body to keep response small.
       return skills.map((s) => ({ name: s.name, triggers: s.triggers }));
-    },
-  );
-
-  app.post<{ Params: { id: string } }>(
-    "/api/projects/:id/apply-dev-docs",
-    async (req, reply) => {
-      const proj = getProject(req.params.id);
-      if (!proj) return reply.code(404).send({ error: "not_found" });
-      try {
-        const wrote = appendDevDocsGuidelines(proj.path);
-        return reply.send({
-          ok: true,
-          wrote,
-          target: join(proj.path, "CLAUDE.md"),
-        });
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        return reply.code(500).send({ error: "write_failed", message: msg });
-      }
-    },
-  );
-
-  app.get<{ Params: { id: string } }>(
-    "/api/projects/:id/dev-docs-status",
-    async (req, reply) => {
-      const proj = getProject(req.params.id);
-      if (!proj) return reply.code(404).send({ error: "not_found" });
-      const t0 = Date.now();
-      serverLog("info", "project", "dev-docs-status 开始", {
-        projectId: proj.id,
-      });
-      try {
-        const target = join(proj.path, "CLAUDE.md");
-        let claudeMdExists = true;
-        let content = "";
-        try {
-          content = readFileSync(target, "utf8");
-        } catch {
-          claudeMdExists = false;
-        }
-        const enabled =
-          claudeMdExists && content.indexOf(MAIN_GUIDELINES_ANCHOR) >= 0;
-        serverLog(
-          "info",
-          "project",
-          `dev-docs-status 成功 (${Date.now() - t0}ms)`,
-          {
-            projectId: proj.id,
-            meta: { enabled, claudeMdExists },
-          },
-        );
-        return reply.send({ enabled, claudeMdExists });
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        serverLog("error", "project", `dev-docs-status 失败: ${msg}`, {
-          projectId: proj.id,
-          meta: { error: { name: (err as Error).name, message: msg } },
-        });
-        return reply.code(500).send({ error: "read_failed", message: msg });
-      }
-    },
-  );
-
-  app.delete<{ Params: { id: string } }>(
-    "/api/projects/:id/dev-docs",
-    async (req, reply) => {
-      const proj = getProject(req.params.id);
-      if (!proj) return reply.code(404).send({ error: "not_found" });
-      const t0 = Date.now();
-      serverLog("info", "project", "dev-docs-remove 开始", {
-        projectId: proj.id,
-      });
-      try {
-        const target = join(proj.path, "CLAUDE.md");
-        let content: string;
-        try {
-          content = readFileSync(target, "utf8");
-        } catch {
-          serverLog(
-            "info",
-            "project",
-            `dev-docs-remove 成功 (${Date.now() - t0}ms)`,
-            {
-              projectId: proj.id,
-              meta: { changed: false, reason: "claude_md_missing" },
-            },
-          );
-          return reply.send({ ok: true, enabled: false });
-        }
-        const REMOVE_PREFIX = "\n\n---\n\n" + MAIN_GUIDELINES_ANCHOR;
-        const idx = content.indexOf(REMOVE_PREFIX);
-        if (idx < 0) {
-          serverLog(
-            "info",
-            "project",
-            `dev-docs-remove 成功 (${Date.now() - t0}ms)`,
-            {
-              projectId: proj.id,
-              meta: { changed: false, reason: "anchor_missing" },
-            },
-          );
-          return reply.send({ ok: true, enabled: false });
-        }
-        const trimmed = content.slice(0, idx).replace(/\s+$/, "");
-        writeFileSync(target, trimmed + "\n", "utf8");
-        serverLog(
-          "info",
-          "project",
-          `dev-docs-remove 成功 (${Date.now() - t0}ms)`,
-          {
-            projectId: proj.id,
-            meta: { changed: true },
-          },
-        );
-        return reply.send({ ok: true, enabled: false });
-      } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
-        serverLog("error", "project", `dev-docs-remove 失败: ${msg}`, {
-          projectId: proj.id,
-          meta: { error: { name: (err as Error).name, message: msg } },
-        });
-        return reply.code(500).send({ error: "write_failed", message: msg });
-      }
     },
   );
 

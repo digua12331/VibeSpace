@@ -1,8 +1,8 @@
 /**
  * Server-side equivalent of `templates/harness/install.sh` —— 把 VibeSpace
- * 仓库根的 .aimon/skills + .claude/agents + dev/harness-*.md + 一份 CUSTOMIZE
- * 拷到目标项目，并往 .gitignore 追加 `.aimon/runtime/`。"已存在则跳过"
- * 与脚本行为一致；不引新依赖（全用 node:fs/promises）。
+ * 仓库根的 .aimon/skills + .aimon/docs + .claude/agents + dev/harness-*.md
+ * + 一份 CUSTOMIZE 拷到目标项目，并往 .gitignore 追加 `.aimon/runtime/`。
+ * "已存在则跳过"与脚本行为一致；不引新依赖（全用 node:fs/promises）。
  *
  * **同步提醒**：未来加新模板文件时，本文件的 `getTemplateFiles()` 与
  * `templates/harness/install.sh` 的两段 `for f in ...` 都要改——它们是两份
@@ -13,7 +13,7 @@ import { copyFile, mkdir, readdir, readFile, appendFile, writeFile, unlink, rmdi
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type HarnessFileKind = "skill" | "agent" | "doc" | "customize";
+export type HarnessFileKind = "skill" | "agent" | "doc" | "customize" | "workflow-doc";
 
 export interface HarnessFileSpec {
   /** Absolute source path inside the VibeSpace repo. */
@@ -81,6 +81,20 @@ export async function getTemplateFiles(): Promise<HarnessFileSpec[]> {
         srcAbs: join(skillsDir, name),
         dstRel: `.aimon/skills/${name}`,
         kind: "skill",
+      });
+    }
+  }
+
+  // .aimon/docs/*.md —— 主理人入口手册 + AI 执行手册
+  const workflowDocsDir = repoFile(".aimon", "docs");
+  if (existsSync(workflowDocsDir)) {
+    const names = await readdir(workflowDocsDir);
+    for (const name of names) {
+      if (!name.endsWith(".md")) continue;
+      out.push({
+        srcAbs: join(workflowDocsDir, name),
+        dstRel: `.aimon/docs/${name}`,
+        kind: "workflow-doc",
       });
     }
   }
@@ -246,7 +260,7 @@ export async function uninstallHarnessTemplate(
   // 叶子→根：仅在目录已空时成功，非空 ENOTEMPTY / 不存在 ENOENT 都跳过，
   // 天然保护用户在同目录新建的文件。目的是让 isHarnessApplied 探测点（.aimon/skills/）
   // 卸载后回 false，避免抽屉重开时状态回弹。
-  for (const dirRel of [".aimon/skills", ".claude/agents", ".aimon"]) {
+  for (const dirRel of [".aimon/docs", ".aimon/skills", ".claude/agents", ".aimon"]) {
     try {
       await rmdir(join(projectPath, dirRel));
     } catch (err) {

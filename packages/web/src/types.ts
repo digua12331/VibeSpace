@@ -83,12 +83,6 @@ export interface Project {
   layout?: ProjectLayout
 }
 
-export interface SessionScope {
-  enabled: boolean
-  readwrite: string[]
-  readonly: string[]
-}
-
 export type SessionIsolation = 'shared' | 'worktree'
 
 export interface Session {
@@ -102,8 +96,6 @@ export interface Session {
   /** epoch ms; null while still alive */
   ended_at: number | null
   exit_code: number | null
-  /** Omitted when no scope was configured at session start. */
-  scope?: SessionScope
   /** Defaults to 'shared' when omitted (older server payloads). */
   isolation?: SessionIsolation
   /** Short branch name like `agent/12345678`; only set for isolation==='worktree'. */
@@ -114,12 +106,54 @@ export interface Session {
   task?: string
 }
 
-// ---------- Harness team install 状态 ----------
+// ---------- 项目工作流统一装配（Dev Docs + Harness 合并）----------
 
-export interface HarnessApplyResult {
+export interface HarnessApplyShape {
   copied: string[]
   skipped: string[]
   gitignoreAppended: boolean
+}
+
+export interface HarnessUninstallShape {
+  removedCount: number
+  skippedCount: number
+  failedFiles: string[]
+}
+
+export interface HarnessFileEntry {
+  kind: 'skill' | 'agent' | 'doc' | 'customize' | 'workflow-doc'
+  relPath: string
+  exists: boolean
+  renamed: boolean
+}
+
+export interface HarnessStatusShape {
+  installed: number
+  total: number
+  entries: HarnessFileEntry[]
+  gitignoreHasRuntime: boolean
+}
+
+export interface WorkflowApplyResult {
+  devDocs: { ok: true; wrote: boolean } | { ok: false; error: string }
+  harness:
+    | null
+    | ({ ok: true } & HarnessApplyShape)
+    | { ok: false; error: string }
+  partial: boolean
+}
+
+export interface WorkflowRemoveResult {
+  ok?: boolean
+  devDocs: { changed: boolean; reason?: string }
+  harness: HarnessUninstallShape
+  partial: boolean
+}
+
+export interface WorkflowStatus {
+  devDocs: { enabled: boolean; claudeMdExists: boolean }
+  harness: HarnessStatusShape
+  applied: 'none' | 'partial' | 'full'
 }
 
 // ---------- Subagent runs (claude Task 工具调用卡片) ----------
@@ -396,15 +430,6 @@ export interface CliConfigSavePayload {
 }
 
 // ---------- Dev Docs ----------
-
-export interface DevDocsStatus {
-  enabled: boolean
-  claudeMdExists: boolean
-}
-
-export interface HarnessApplied {
-  enabled: boolean
-}
 
 export type DocFileKind = 'plan' | 'context' | 'tasks'
 export type DocTaskStatus = 'todo' | 'doing' | 'done' | 'blocked'

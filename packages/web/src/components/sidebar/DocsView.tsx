@@ -129,7 +129,6 @@ export default function DocsView() {
   const [view, setView] = useState<DocsViewMode>('tasks')
   const memoryPollRef = useRef<{ id: ReturnType<typeof setTimeout> | null; stopped: boolean }>({ id: null, stopped: false })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [applyingRules, setApplyingRules] = useState(false)
   const [dispatching, setDispatching] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -205,27 +204,6 @@ export default function DocsView() {
     if (!projectId) return
     const path = `dev/active/${task}/${task}-${kind}.md`
     openFile({ projectId, path })
-  }
-
-  async function onApplyRules() {
-    if (!projectId) return
-    setApplyingRules(true)
-    try {
-      const r = await api.applyDevDocsGuidelines(projectId)
-      await alertDialog(
-        r.wrote
-          ? `已写入 Dev Docs 工作流守则到 CLAUDE.md：\n${r.target}\n\n重启当前项目下的 AI session 让它生效。`
-          : `CLAUDE.md 里已存在这份守则，无需重复追加：\n${r.target}`,
-        { title: r.wrote ? '已应用' : '已存在' },
-      )
-    } catch (e: unknown) {
-      await alertDialog(
-        e instanceof Error ? e.message : String(e),
-        { title: '应用失败', variant: 'danger' },
-      )
-    } finally {
-      setApplyingRules(false)
-    }
   }
 
   async function onArchive(task: string) {
@@ -498,14 +476,6 @@ export default function DocsView() {
               </button>
             )}
             <button
-              onClick={() => void onApplyRules()}
-              disabled={applyingRules}
-              title="把 Dev Docs 工作流守则写入此项目的 CLAUDE.md（让 AI 学会 plan→context→tasks 流程）"
-              className="fluent-btn w-6 h-6 inline-flex items-center justify-center rounded text-muted hover:text-fg hover:bg-white/[0.08] disabled:opacity-50"
-            >
-              {applyingRules ? '…' : '⚙'}
-            </button>
-            <button
               onClick={() => {
                 if (view === 'tasks') void refreshDocs(projectId)
                 else if (view === 'issues') void refreshIssues(projectId)
@@ -602,9 +572,10 @@ export default function DocsView() {
               →<code className="mx-0.5 font-mono">tasks.md</code>
               三份文件到 <code className="font-mono">dev/active/&lt;任务名&gt;/</code>。
               <div className="mt-3">
-                如果 AI 不这么做，点顶部的 <span className="text-fg">⚙</span>
-                把 Dev Docs 工作流守则写入此项目的
-                <code className="mx-0.5 font-mono">CLAUDE.md</code>。
+                如果 AI 不这么做，到右上角「权限」抽屉的「工作流」tab
+                点"应用"，把工作流守则写入此项目的
+                <code className="mx-0.5 font-mono">CLAUDE.md</code>
+                并把可复用配置一并拷进去。
               </div>
             </div>
           </div>

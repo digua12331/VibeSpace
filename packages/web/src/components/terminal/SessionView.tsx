@@ -224,6 +224,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const clearNotify = useStore((s) => s.clearNotify)
   const pendingInput = useStore((s) => s.pendingInputBySession[session.id])
   const consumePendingInput = useStore((s) => s.consumePendingInput)
+  const setInputDraft = useStore((s) => s.setInputDraft)
   const subagentRuns = useStore((s) => s.subagentRunsBySession[session.id]) ?? []
   const refreshSubagentRuns = useStore((s) => s.refreshSubagentRuns)
   const project = projects.find((p) => p.id === session.projectId)
@@ -612,6 +613,27 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     fillInput(el.value + pendingInput)
     consumePendingInput(session.id)
   }, [pendingInput, session.id, consumePendingInput])
+
+  // 切换项目会让本 SessionView 卸载（visibleSessions 按 projectId 过滤），
+  // textarea 是非受控的，DOM 销毁后输入就丢了。挂载时把 store 里上次保存
+  // 的草稿回填，卸载时把当前 textarea 内容存回 store。stash 占位 token 跨
+  // 卸载无法还原原文，含 token 的草稿存空，避免下次出现死 token。
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    const draft = useStore.getState().inputDraftBySession[session.id]
+    if (draft) {
+      el.value = draft
+      autoResizeInput(el)
+      setInputDraft(session.id, '')
+    }
+    return () => {
+      const cur = inputRef.current
+      const text = cur?.value ?? ''
+      const safe = text.includes('⟦粘贴·') ? '' : text
+      setInputDraft(session.id, safe)
+    }
+  }, [session.id, setInputDraft])
 
   function ensureFilesLoaded() {
     if (filesRef.current !== null) return
