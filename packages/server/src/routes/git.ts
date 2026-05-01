@@ -1,10 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getProject } from "../db.js";
+import { serverLog } from "../log-bus.js";
 import {
   GitServiceError,
+  checkoutBranch,
+  createBranch,
   createCommit,
+  createStash,
+  deleteBranch,
   discardPaths,
+  fetchAll,
   getChanges,
   getCommit,
   getDiff,
@@ -13,7 +19,13 @@ import {
   listBranches,
   listCommits,
   listProjectFiles,
+  listStashes,
+  mergeBranch,
+  popStash,
+  pullCurrent,
+  pushCurrent,
   readFileAtRef,
+  resetSoftLastCommit,
   stagePaths,
   unstagePaths,
 } from "../git-service.js";
@@ -59,6 +71,27 @@ const CommitBody = z.object({
   message: z.string().min(1).max(10000),
   amend: z.boolean().optional(),
   allowEmpty: z.boolean().optional(),
+});
+
+// Branch names: subset of git's allowed chars + length cap.
+const BranchName = z
+  .string()
+  .min(1)
+  .max(256)
+  .regex(/^[A-Za-z0-9._/-]+$/)
+  .refine((v) => !v.includes(".."), { message: "branch name contains '..'" });
+
+const BranchBody = z.object({ branch: BranchName });
+const BranchCreateBody = z.object({
+  branch: BranchName,
+  checkout: z.boolean().optional(),
+});
+const BranchDeleteBody = z.object({
+  branch: BranchName,
+  force: z.boolean().optional(),
+});
+const StashCreateBody = z.object({
+  message: z.string().max(200).optional(),
 });
 
 function sendGitError(reply: import("fastify").FastifyReply, err: unknown) {
@@ -320,6 +353,243 @@ export async function registerGitRoutes(app: FastifyInstance): Promise<void> {
       } catch (err) {
         return sendGitError(reply, err);
       }
+    },
+  );
+
+  // ===== mutation helper: wrap fn in serverLog start/end pair =====
+  async function runLogged<T>(
+    reply: import("fastify").FastifyReply,
+    projectId: string,
+    action: string,
+    metaIn: Record<string, unknown> | undefined,
+    fn: () => Promise<T>,
+  ): Promise<unknown> {
+    const t0 = Date.now();
+    serverLog("info", "git", `${action} 开始`, { projectId, meta: metaIn });
+    try {
+      const result = await fn();
+      serverLog("info", "git", `${action} 成功 (${Date.now() - t0}ms)`, {
+        projectId,
+        meta: metaIn,
+      });
+      return reply.send(result);
+    } catch (err) {
+      const e = err as Error;
+      serverLog("error", "git", `${action} 失败: ${e?.message ?? String(err)}`, {
+        projectId,
+        meta: {
+          ...metaIn,
+          error: { name: e?.name, message: e?.message },
+        },
+      });
+      return sendGitError(reply, err);
+    }
+  }
+
+  // ---------- /pull ----------
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/pull",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(reply, proj.id, "pull", undefined, () => pullCurrent(proj.path));
+    },
+  );
+
+  // ---------- /push ----------
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/push",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(reply, proj.id, "push", undefined, () => pushCurrent(proj.path));
+    },
+  );
+
+  // ---------- /fetch ----------
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/fetch",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(reply, proj.id, "fetch", undefined, () => fetchAll(proj.path));
+    },
+  );
+
+  // ---------- /branches/create ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/branches/create",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = BranchCreateBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(
+        reply,
+        proj.id,
+        "branch-create",
+        { branch: parsed.data.branch, checkout: parsed.data.checkout === true },
+        () =>
+          createBranch(proj.path, parsed.data.branch, {
+            checkout: parsed.data.checkout === true,
+          }),
+      );
+    },
+  );
+
+  // ---------- /branches/delete ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/branches/delete",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = BranchDeleteBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(
+        reply,
+        proj.id,
+        "branch-delete",
+        { branch: parsed.data.branch, force: parsed.data.force === true },
+        () =>
+          deleteBranch(proj.path, parsed.data.branch, {
+            force: parsed.data.force === true,
+          }),
+      );
+    },
+  );
+
+  // ---------- /branches/checkout ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/branches/checkout",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = BranchBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(
+        reply,
+        proj.id,
+        "checkout",
+        { branch: parsed.data.branch },
+        () => checkoutBranch(proj.path, parsed.data.branch),
+      );
+    },
+  );
+
+  // ---------- /merge ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/merge",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = BranchBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(
+        reply,
+        proj.id,
+        "merge",
+        { branch: parsed.data.branch },
+        () => mergeBranch(proj.path, parsed.data.branch),
+      );
+    },
+  );
+
+  // ---------- /stashes (GET list) ----------
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/stashes",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      try {
+        if (!(await isGitRepo(proj.path))) return reply.send([]);
+        return reply.send(await listStashes(proj.path));
+      } catch (err) {
+        return sendGitError(reply, err);
+      }
+    },
+  );
+
+  // ---------- /stash (POST create) ----------
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/stash",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = StashCreateBody.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(
+        reply,
+        proj.id,
+        "stash-create",
+        { hasMessage: !!parsed.data.message },
+        () => createStash(proj.path, parsed.data.message),
+      );
+    },
+  );
+
+  // ---------- /stash/pop ----------
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/stash/pop",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(reply, proj.id, "stash-pop", undefined, () => popStash(proj.path));
+    },
+  );
+
+  // ---------- /reset-soft (undo last commit, keep changes staged) ----------
+  app.post<{ Params: { id: string } }>(
+    "/api/projects/:id/reset-soft",
+    async (req, reply) => {
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      if (!(await isGitRepo(proj.path))) {
+        return reply.code(400).send({ error: "not_a_git_repo" });
+      }
+      return runLogged(
+        reply,
+        proj.id,
+        "reset-soft",
+        undefined,
+        () => resetSoftLastCommit(proj.path),
+      );
     },
   );
 }

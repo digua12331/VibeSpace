@@ -237,7 +237,7 @@ export default function PromptLibraryDialog({ open, onClose, onSend }: Props) {
                         )}
                         <button
                           onClick={() => handleSend(p)}
-                          className="fluent-btn px-2.5 py-1 text-xs rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
+                          className="fluent-btn px-2.5 py-1 text-xs rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
                         >
                           发送
                         </button>
@@ -286,7 +286,7 @@ export default function PromptLibraryDialog({ open, onClose, onSend }: Props) {
               <button
                 type="button"
                 onClick={handleSaveForm}
-                className="fluent-btn px-4 py-1.5 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
+                className="fluent-btn px-4 py-1.5 text-sm rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
               >
                 保存
               </button>

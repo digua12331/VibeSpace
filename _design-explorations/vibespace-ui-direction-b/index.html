@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>VibeSpace · Direction B · 东方极简派</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Noto+Serif+SC:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+   * VibeSpace Direction B — Kenya Hara · 无印良品式 东方极简派
+   * 设计哲学：温润、安静、专注、有呼吸感、有人味
+   * 核心约束：
+   *   - 颠覆"开发工具必须深色"——宣纸米白底
+   *   - 朱砂红 accent 像印章一样只点一两处
+   *   - 大量留白（密度低）
+   *   - 慢速过渡 (300-400ms) 像翻纸
+   *   - 衬线字 + 中文宋体，建立温度
+   * ============================================================ */
+
+  :root {
+    /* 宣纸 / 墨色系 ----------------------------------------- */
+    --paper:          #F5F0E8;     /* 主底，宣纸米白 */
+    --paper-1:        #EDE7DB;     /* 浮起面板（略深一点）*/
+    --paper-2:        #E2DBCB;     /* 卡片 / 输入框 */
+    --paper-shadow:   #DCD3BD;     /* 边线 / 微影 */
+
+    /* 墨色 ---------------------------------------------------- */
+    --ink:            #1C1C1A;     /* 主墨色，不是纯黑，带暖灰 */
+    --ink-2:          #4A4742;     /* 次级 */
+    --ink-3:          #79766F;     /* 弱化 */
+    --ink-4:          #ABA89F;     /* 极弱 */
+    --ink-5:          #C9C4B5;     /* 边线级 */
+
+    /* 朱砂红（印章式 accent，只用一两处）-------------------- */
+    --vermilion:      #C04A1A;
+    --vermilion-soft: rgba(192, 74, 26, 0.12);
+
+    /* 远山墨绿（次 accent，运行中状态用）-------------------- */
+    --moss:           #5A6B4A;
+    --moss-soft:      rgba(90, 107, 74, 0.10);
+
+    /* 字体 ---------------------------------------------------- */
+    --font-serif:     'Newsreader', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', serif;
+    --font-sans:      -apple-system, 'PingFang SC', 'Noto Sans SC', system-ui, sans-serif;
+    --font-mono:      'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', monospace;
+
+    /* 节奏 ---------------------------------------------------- */
+    --r-sm: 2px;
+    --r-md: 4px;
+    --r-lg: 6px;
+    --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --t-norm: 350ms;
+    --t-slow: 500ms;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-serif);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 极弱的纸纹（不喧宾夺主）------------------------------------- */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 23% 17%, rgba(28,28,26,0.012) 0, transparent 1px),
+      radial-gradient(circle at 67% 53%, rgba(28,28,26,0.015) 0, transparent 1px),
+      radial-gradient(circle at 89% 31%, rgba(28,28,26,0.010) 0, transparent 1px),
+      radial-gradient(circle at 12% 79%, rgba(28,28,26,0.012) 0, transparent 1px),
+      radial-gradient(circle at 51% 93%, rgba(28,28,26,0.011) 0, transparent 1px);
+    background-size: 240px 240px;
+    background-repeat: repeat;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ============================================================
+   * 主布局：留白阔、密度低
+   * ============================================================ */
+  .app {
+    position: relative;
+    z-index: 1;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 56px 1fr 28px;
+    grid-template-columns: 280px 1fr 320px;
+    grid-template-areas:
+      "topbar topbar topbar"
+      "side   main   aside"
+      "status status status";
+  }
+
+  /* ============================================================
+   * 顶栏（留白、衬线、印章 logo）
+   * ============================================================ */
+  .topbar {
+    grid-area: topbar;
+    display: flex;
+    align-items: center;
+    padding: 0 28px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--paper-shadow);
+    gap: 24px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  /* "印章"——朱砂红方块，里面留白题字感 */
+  .seal {
+    width: 24px; height: 24px;
+    background: var(--vermilion);
+    position: relative;
+    align-self: center;
+    border-radius: 1px;
+  }
+  .seal::after {
+    content: 'V';
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--paper);
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 14px;
+    font-style: italic;
+    letter-spacing: -0.02em;
+  }
+  .brand-name {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .brand-name em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-3);
+    margin-left: 4px;
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-family: var(--font-serif);
+    font-size: 14px;
+    color: var(--ink-3);
+  }
+  .breadcrumb .item.active {
+    color: var(--ink);
+    font-weight: 500;
+    font-style: italic;
+  }
+  .breadcrumb .sep { color: var(--ink-4); font-size: 11px; }
+
+  .topbar-spacer { flex: 1; }
+
+  .topbar-search {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--paper-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    font-family: var(--font-serif);
+    font-size: 13px;
+    color: var(--ink-3);
+    cursor: pointer;
+    min-width: 220px;
+    transition: all var(--t-norm) var(--ease);
+  }
+  .topbar-search:hover { background: var(--paper-2); color: var(--ink-2); }
+  .topbar-search .placeholder { flex: 1; font-style: italic; }
+  .topbar-search kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    background: var(--paper);
+    color: var(--ink-3);
+    border-radius: 2px;
+    font-style: normal;
+  }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border: none;
+    background: transparent;
+    color: var(--ink-3);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: all var(--t-norm) var(--ease);
+  }
+  .icon-btn:hover { color: var(--ink); background: var(--paper-1); }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  /* ============================================================
+   * 左侧：会话像便签层叠
+   * ============================================================ */
+  .side {
+    grid-area: side;
+    background: var(--paper);
+    border-right: 1px solid var(--paper-shadow);
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+
+  .side-section { padding: 0 0 24px; }
+
+  .side-section-header {
+    padding: 0 28px 14px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .side-section-title {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+  }
+  .side-section-count {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-4);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .session-list { list-style: none; padding: 0 16px; }
+
+  .session {
+    padding: 14px 12px;
+    cursor: pointer;
+    border-radius: var(--r-md);
+    transition: background-color var(--t-norm) var(--ease);
+    display: grid;
+    grid-template-columns: 12px 1fr;
+    column-gap: 14px;
+    row-gap: 6px;
+    align-items: center;
+    margin-bottom: 2px;
+    position: relative;
+  }
+  .session:hover { background: var(--paper-1); }
+  .session.active { background: var(--paper-1); }
+
+  /* 印章式状态指示：小朱砂红方块（active）/ 远山绿圆（idle）*/
+  .session-stamp {
+    grid-row: span 2;
+    width: 8px;
+    height: 8px;
+    align-self: start;
+    margin-top: 6px;
+    background: var(--ink-4);
+    border-radius: 1px;
+  }
+  .session.running .session-stamp { background: var(--vermilion); }
+  .session.idle    .session-stamp { background: transparent; border: 1px solid var(--ink-4); }
+
+  .session.active::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px; height: 60%;
+    background: var(--vermilion);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .session-row-1 {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+  .session-name {
+    font-family: var(--font-serif);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .session.idle .session-name {
+    color: var(--ink-3);
+    font-weight: 400;
+    font-style: italic;
+  }
+
+  .session-time {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-4);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  .session-row-2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .session-row-2 .agent {
+    color: var(--ink-2);
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+  .session-row-2 .dot { color: var(--ink-5); font-size: 8px; }
+
+  /* 新建：极简底框 */
+  .new-btn {
+    margin: 12px 16px 0;
+    padding: 12px;
+    background: transparent;
+    border: 1px dashed var(--ink-5);
+    border-radius: var(--r-md);
+    color: var(--ink-3);
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 13px;
+    cursor: pointer;
+    width: calc(100% - 32px);
+    transition: all var(--t-norm) var(--ease);
+    text-align: center;
+  }
+  .new-btn:hover {
+    border-color: var(--ink-3);
+    color: var(--ink);
+    background: var(--paper-1);
+  }
+
+  .side-divider {
+    margin: 8px 28px;
+    border: none;
+    border-top: 1px solid var(--paper-shadow);
+  }
+
+  /* ============================================================
+   * 中央：终端也用米白底 + 墨字（颠覆性）
+   * ============================================================ */
+  .main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--paper);
+    position: relative;
+  }
+
+  /* tabs：极简横线 */
+  .tabs {
+    display: flex;
+    align-items: stretch;
+    height: 44px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--paper-shadow);
+    background: var(--paper);
+    gap: 28px;
+    flex-shrink: 0;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-serif);
+    font-size: 14px;
+    color: var(--ink-3);
+    cursor: pointer;
+    position: relative;
+    transition: color var(--t-norm) var(--ease);
+  }
+  .tab:hover { color: var(--ink-2); }
+  .tab.active { color: var(--ink); }
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    background: var(--vermilion);
+  }
+  .tab .agent {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--ink-4);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .tab.active .agent { color: var(--vermilion); }
+  .tab .close {
+    color: var(--ink-4);
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px;
+    margin-left: 2px;
+  }
+  .tab .close:hover { color: var(--ink); }
+
+  .tab-add {
+    color: var(--ink-4);
+    font-size: 18px;
+    line-height: 1;
+    align-self: center;
+    cursor: pointer;
+    transition: color var(--t-norm) var(--ease);
+  }
+  .tab-add:hover { color: var(--ink); }
+
+  /* 终端：宣纸底 + 墨字，像在白纸上写字 */
+  .terminal {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 32px 48px 0;
+  }
+
+  .terminal-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--paper-shadow);
+    margin-bottom: 28px;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .terminal-meta .item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .terminal-meta .item .k {
+    font-family: var(--font-serif);
+    font-style: normal;
+    color: var(--ink-4);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+  }
+  .terminal-meta .item .v {
+    color: var(--ink);
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .terminal-meta .running {
+    margin-left: auto;
+    color: var(--vermilion);
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .terminal-meta .running::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--vermilion);
+    border-radius: 50%;
+  }
+
+  .terminal-body {
+    flex: 1;
+    overflow-y: auto;
+    font-family: var(--font-serif);
+    font-size: 14.5px;
+    line-height: 1.85;
+    color: var(--ink);
+    padding-bottom: 24px;
+  }
+
+  .term-line { white-space: pre-wrap; }
+  .term-mono { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7; }
+  .term-faint { color: var(--ink-4); }
+  .term-dim { color: var(--ink-3); }
+  .term-fg { color: var(--ink); }
+  .term-acc { color: var(--vermilion); }
+  .term-moss { color: var(--moss); }
+  .term-italic { font-style: italic; color: var(--ink-3); }
+
+  .term-prompt {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 18px 0;
+    font-family: var(--font-serif);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .term-prompt .marker {
+    color: var(--vermilion);
+    font-family: var(--font-serif);
+    font-style: italic;
+    flex-shrink: 0;
+  }
+  .term-prompt .text { color: var(--ink); }
+
+  .term-claude-prefix {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 10px;
+    background: var(--paper-2);
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-2);
+    margin-right: 8px;
+  }
+  .term-claude-prefix::before {
+    content: '';
+    display: inline-block;
+    width: 5px; height: 5px;
+    background: var(--vermilion);
+    border-radius: 50%;
+    align-self: center;
+  }
+
+  .term-quote {
+    margin: 18px 0;
+    padding: 18px 24px;
+    background: var(--paper-1);
+    border-left: 3px solid var(--vermilion);
+    border-radius: 0 var(--r-md) var(--r-md) 0;
+    font-family: var(--font-serif);
+    font-size: 14px;
+    line-height: 2;
+  }
+  .term-quote .row {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 14px;
+    align-items: baseline;
+  }
+  .term-quote .label {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--vermilion);
+    font-size: 14px;
+  }
+  .term-quote .desc { color: var(--ink-2); }
+  .term-quote .desc em { color: var(--ink-3); font-style: italic; }
+
+  .term-completion {
+    margin-top: 18px;
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--ink-3);
+    font-size: 14px;
+  }
+  .term-completion .check {
+    color: var(--moss);
+    margin-right: 6px;
+    font-style: normal;
+  }
+
+  .term-cursor {
+    display: inline-block;
+    width: 2px; height: 16px;
+    background: var(--ink);
+    vertical-align: -3px;
+    margin-left: 2px;
+  }
+
+  /* Composer */
+  .composer {
+    border-top: 1px solid var(--paper-shadow);
+    padding: 18px 48px 24px;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    background: var(--paper);
+    flex-shrink: 0;
+  }
+  .composer-prefix {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--vermilion);
+    font-size: 18px;
+  }
+  .composer-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 6px;
+    color: var(--ink);
+    font-family: var(--font-serif);
+    font-size: 15px;
+    transition: border-color var(--t-norm) var(--ease);
+  }
+  .composer-input:focus { border-bottom-color: var(--ink-4); }
+  .composer-input::placeholder {
+    color: var(--ink-4);
+    font-style: italic;
+  }
+  .composer-hint {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 11px;
+    color: var(--ink-4);
+  }
+  .composer-hint kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    font-style: normal;
+  }
+
+  /* ============================================================
+   * 右侧：上下文（极简，去掉 worktree 表格的工程感，改成"册子"）
+   * ============================================================ */
+  .aside {
+    grid-area: aside;
+    background: var(--paper);
+    border-left: 1px solid var(--paper-shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .aside-tabs {
+    display: flex;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--paper-shadow);
+    flex-shrink: 0;
+    gap: 24px;
+  }
+  .aside-tab {
+    padding: 16px 0;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 13px;
+    color: var(--ink-3);
+    cursor: pointer;
+    position: relative;
+    transition: color var(--t-norm) var(--ease);
+  }
+  .aside-tab:hover { color: var(--ink-2); }
+  .aside-tab.active { color: var(--ink); font-style: normal; font-weight: 500; }
+  .aside-tab.active::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 1px;
+    background: var(--ink);
+  }
+  .aside-tab .num {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--ink-4);
+    margin-left: 4px;
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .aside-scroll { flex: 1; overflow-y: auto; padding-bottom: 16px; }
+
+  .panel {
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--paper-shadow);
+  }
+  .panel-title {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    letter-spacing: 0.02em;
+  }
+  .panel-title .extra {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-4);
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Usage：用极细的"刻度尺"风 */
+  .usage {
+    font-family: var(--font-serif);
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .usage-row {
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+  }
+  .usage-row .label { color: var(--ink-3); font-style: italic; }
+  .usage-row .scale {
+    height: 1px;
+    background: var(--paper-shadow);
+    position: relative;
+    align-self: center;
+  }
+  .usage-row .scale::after {
+    content: '';
+    position: absolute;
+    left: 0; top: -2px; bottom: -2px;
+    background: var(--ink);
+  }
+  .usage-row .scale.input::after  { width: 24%; }
+  .usage-row .scale.output::after { width: 14%; background: var(--vermilion); }
+  .usage-row .scale.cache::after  { width: 88%; background: var(--moss); }
+  .usage-row .v {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Worktrees：像翻一本册子的目录页 */
+  .wt-list { list-style: none; }
+  .wt-item {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--paper-shadow);
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .wt-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .wt-item:first-child { padding-top: 0; }
+  .wt-mark {
+    color: var(--ink-4);
+    font-size: 10px;
+    align-self: center;
+  }
+  .wt-item.active .wt-mark { color: var(--vermilion); }
+  .wt-content { display: flex; flex-direction: column; gap: 4px; }
+  .wt-branch {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .wt-item.active .wt-branch { color: var(--vermilion); }
+  .wt-session {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .wt-ahead {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+    align-self: center;
+  }
+  .wt-ahead .up { color: var(--moss); }
+  .wt-ahead .down { color: var(--vermilion); }
+
+  /* 文件树 —— 极简，去掉所有图标，纯字 */
+  .files {
+    padding: 8px 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .file-row {
+    padding: 4px 24px;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: background var(--t-norm) var(--ease);
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    line-height: 1.6;
+  }
+  .file-row:hover { background: var(--paper-1); }
+  .file-row .indent { display: inline-block; width: 14px; }
+  .file-row.dir { color: var(--ink); font-weight: 500; }
+  .file-row.dir::before { content: '⌐'; color: var(--ink-3); margin-right: 4px; opacity: 0.6; }
+  .file-row.touched { color: var(--vermilion); }
+  .file-row.touched .change {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--moss);
+  }
+  .file-row.touched .change .del { color: var(--vermilion); }
+
+  /* ============================================================
+   * 底栏（极简一行）
+   * ============================================================ */
+  .statusbar {
+    grid-area: status;
+    display: flex;
+    align-items: center;
+    padding: 0 28px;
+    gap: 18px;
+    background: var(--paper);
+    border-top: 1px solid var(--paper-shadow);
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .statusbar .item { display: flex; align-items: center; gap: 6px; cursor: pointer; transition: color var(--t-norm) var(--ease); }
+  .statusbar .item:hover { color: var(--ink); }
+  .statusbar .sep { color: var(--ink-5); }
+  .statusbar .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--moss);
+  }
+  .statusbar .spacer { flex: 1; }
+  .statusbar .num {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 10px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* skill 推广水印（按 skill 规则） */
+  .signature {
+    position: fixed;
+    bottom: 32px;
+    right: 24px;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 10px;
+    color: rgba(28, 28, 26, 0.18);
+    pointer-events: none;
+    letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ===================== 顶栏 ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="seal"></div>
+      <div class="brand-name">VibeSpace<em>氛围空间</em></div>
+    </div>
+
+    <div class="breadcrumb">
+      <span class="item">AIkanban-main</span>
+      <span class="sep">·</span>
+      <span class="item active">界面重设计</span>
+    </div>
+
+    <div class="topbar-spacer"></div>
+
+    <div class="topbar-search">
+      <span class="placeholder">搜索 · 会话、文件、命令</span>
+      <kbd>⌘ K</kbd>
+    </div>
+
+    <div style="display: flex; gap: 2px;">
+      <button class="icon-btn" title="日志">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+      </button>
+      <button class="icon-btn" title="后台任务">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </button>
+      <button class="icon-btn" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===================== 左侧：会话 ===================== -->
+  <aside class="side">
+
+    <div class="side-section">
+      <div class="side-section-header">
+        <span class="side-section-title">— 会话</span>
+        <span class="side-section-count">04</span>
+      </div>
+
+      <ul class="session-list">
+
+        <li class="session active running">
+          <div class="session-stamp"></div>
+          <div class="session-row-1">
+            <span class="session-name">界面重设计</span>
+            <span class="session-time">04:21</span>
+          </div>
+          <div class="session-row-2">
+            <span class="agent">CLAUDE</span>
+            <span class="dot">·</span>
+            <span>opus 4.7</span>
+          </div>
+        </li>
+
+        <li class="session running">
+          <div class="session-stamp"></div>
+          <div class="session-row-1">
+            <span class="session-name">迁移脚本重写</span>
+            <span class="session-time">12:08</span>
+          </div>
+          <div class="session-row-2">
+            <span class="agent">CODEX</span>
+            <span class="dot">·</span>
+            <span>gpt-5</span>
+          </div>
+        </li>
+
+        <li class="session running">
+          <div class="session-stamp"></div>
+          <div class="session-row-1">
+            <span class="session-name">长文档审阅</span>
+            <span class="session-time">02:47</span>
+          </div>
+          <div class="session-row-2">
+            <span class="agent">GEMINI</span>
+            <span class="dot">·</span>
+            <span>2.5 pro</span>
+          </div>
+        </li>
+
+        <li class="session idle">
+          <div class="session-stamp"></div>
+          <div class="session-row-1">
+            <span class="session-name">归档评审</span>
+            <span class="session-time">15:32</span>
+          </div>
+          <div class="session-row-2">
+            <span class="agent">SHELL</span>
+            <span class="dot">·</span>
+            <span>静默</span>
+          </div>
+        </li>
+
+      </ul>
+
+      <button class="new-btn">— 新建会话 —</button>
+    </div>
+
+    <hr class="side-divider"/>
+
+    <div class="side-section">
+      <div class="side-section-header">
+        <span class="side-section-title">— 项目</span>
+      </div>
+      <ul class="session-list">
+        <li class="session idle">
+          <div class="session-stamp"></div>
+          <div class="session-row-1">
+            <span class="session-name">ExcelGen</span>
+          </div>
+          <div class="session-row-2">
+            <span style="font-family: var(--font-mono); font-size: 10px; color: var(--ink-4);">F:\VibeSpace\ExcelGen</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <!-- ===================== 中央：终端 ===================== -->
+  <section class="main">
+    <div class="tabs">
+      <div class="tab active">
+        <span class="agent">CL</span>
+        <span>界面重设计</span>
+        <span class="close">×</span>
+      </div>
+      <div class="tab">
+        <span class="agent">CX</span>
+        <span>迁移脚本</span>
+        <span class="close">×</span>
+      </div>
+      <div class="tab">
+        <span class="agent">GM</span>
+        <span>文档审阅</span>
+        <span class="close">×</span>
+      </div>
+      <div class="tab-add">+</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-meta">
+        <div class="item"><span class="k">model</span><span class="v">Opus 4.7 · 1M</span></div>
+        <div class="item"><span class="k">worktree</span><span class="v">ui-redesign</span></div>
+        <div class="item"><span class="k">turns</span><span class="v">17</span></div>
+        <div class="running">运行中</div>
+      </div>
+
+      <div class="terminal-body">
+
+<div class="term-line term-mono term-faint">F:\VibeSpace\KB\AIkanban-main &gt; claude --resume ui-redesign</div>
+<div class="term-line">&nbsp;</div>
+
+<div class="term-line">
+  <span class="term-claude-prefix">Claude · v2.1.11k · Opus 4.7</span>
+</div>
+<div class="term-line term-italic">  欢迎来到 Opus 4.7「high」—— /effort 调节速度与智能</div>
+
+<div class="term-prompt">
+  <span class="marker">问</span>
+  <span class="text">重新设计 vibespace 的界面 UI，给出主题 UI 设定</span>
+</div>
+
+<div class="term-line term-italic" style="font-size: 13px; color: var(--ink-3);">
+  <span class="term-acc" style="font-family: var(--font-serif); font-style: italic;">思忖</span> · 在 5 流派 × 20 哲学里挑差异化的三个方向
+</div>
+
+<div class="term-quote">
+  <div class="row">
+    <span class="label">甲</span>
+    <span class="desc">Linear / Vercel · 信息建筑派 <em>— 安全选择</em></span>
+  </div>
+  <div class="row">
+    <span class="label">乙</span>
+    <span class="desc">Kenya Hara · 东方极简派 <em>— 差异化选择</em></span>
+  </div>
+  <div class="row">
+    <span class="label">丙</span>
+    <span class="desc">Bret Victor / Field.io · 实验先锋派 <em>— 大胆选择</em></span>
+  </div>
+</div>
+
+<div class="term-prompt">
+  <span class="marker">问</span>
+  <span class="text term-italic">继续 ——</span>
+</div>
+
+<div class="term-completion">
+  <span class="check">✓</span>已重写 hi-fi 原型为方向 乙 · 东方极简派
+</div>
+<div class="term-completion">
+  <span class="check">✓</span>宣纸米白底 <span class="term-mono term-faint">#F5F0E8</span> · 主墨色 <span class="term-mono term-faint">#1C1C1A</span> · 朱砂红 <span class="term-mono term-acc">#C04A1A</span>
+</div>
+<div class="term-completion">
+  <span class="check">✓</span>Newsreader 衬线 + 思源宋体 + IBM Plex Mono
+</div>
+<div class="term-completion">
+  <span class="check">✓</span>大量留白 · 慢速过渡 350ms · 颠覆「开发工具必须深色」
+</div>
+<div class="term-completion">
+  <span class="check">✓</span>朱砂红如盖印 · 全场仅出现于运行中标记 / 当前会话 / 重要 accent
+</div>
+
+<div class="term-line">&nbsp;</div>
+<div class="term-line term-italic" style="color: var(--ink-3); font-size: 13px;">
+  在浏览器看完截图后请告诉我喜欢哪些 / 不喜欢哪些<span class="term-cursor"></span>
+</div>
+
+      </div>
+    </div>
+
+    <div class="composer">
+      <span class="composer-prefix">问</span>
+      <input class="composer-input" placeholder="说一句话给 Claude" />
+      <span class="composer-hint">回车 <kbd>⏎</kbd> 送出 · Shift+回车 换行</span>
+    </div>
+  </section>
+
+  <!-- ===================== 右侧：上下文 ===================== -->
+  <aside class="aside">
+    <div class="aside-tabs">
+      <div class="aside-tab active">脉络</div>
+      <div class="aside-tab">文件 <span class="num">3</span></div>
+      <div class="aside-tab">日志 <span class="num">128</span></div>
+    </div>
+
+    <div class="aside-scroll">
+
+      <!-- Usage -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>用度 · 本会话</span>
+          <span class="extra">76,420 / 200,000 · 38%</span>
+        </div>
+        <div class="usage">
+          <div class="usage-row">
+            <span class="label">入</span>
+            <span class="scale input"></span>
+            <span class="v">47.4 k</span>
+          </div>
+          <div class="usage-row">
+            <span class="label">出</span>
+            <span class="scale output"></span>
+            <span class="v">29.0 k</span>
+          </div>
+          <div class="usage-row">
+            <span class="label">缓存</span>
+            <span class="scale cache"></span>
+            <span class="v">88 %</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Worktrees -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>分身 · 4 处</span>
+        </div>
+        <ul class="wt-list">
+          <li class="wt-item active">
+            <span class="wt-mark">●</span>
+            <div class="wt-content">
+              <span class="wt-branch">ui-redesign</span>
+              <span class="wt-session">界面重设计 · CLAUDE</span>
+            </div>
+            <span class="wt-ahead"><span class="up">+12</span></span>
+          </li>
+          <li class="wt-item">
+            <span class="wt-mark">○</span>
+            <div class="wt-content">
+              <span class="wt-branch">migration</span>
+              <span class="wt-session">迁移脚本重写 · CODEX</span>
+            </div>
+            <span class="wt-ahead"><span class="up">+5</span></span>
+          </li>
+          <li class="wt-item">
+            <span class="wt-mark">○</span>
+            <div class="wt-content">
+              <span class="wt-branch">main</span>
+              <span class="wt-session">长文档审阅 · GEMINI</span>
+            </div>
+            <span class="wt-ahead">±0</span>
+          </li>
+          <li class="wt-item">
+            <span class="wt-mark">○</span>
+            <div class="wt-content">
+              <span class="wt-branch">archive</span>
+              <span class="wt-session">归档评审 · SHELL</span>
+            </div>
+            <span class="wt-ahead"><span class="down">−2</span></span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Files -->
+      <div class="panel" style="border-bottom: none; padding-bottom: 0;">
+        <div class="panel-title">
+          <span>动过的文件</span>
+          <span class="extra">3 modified</span>
+        </div>
+      </div>
+      <div class="files">
+        <div class="file-row dir">_design-explorations</div>
+        <div class="file-row dir"><span class="indent"></span>vibespace-ui-direction-b</div>
+        <div class="file-row touched"><span class="indent"></span><span class="indent"></span>index.html<span class="change">+842</span></div>
+        <div class="file-row dir">packages/web/src</div>
+        <div class="file-row touched"><span class="indent"></span>index.css<span class="change">+62 <span class="del">−18</span></span></div>
+        <div class="file-row touched"><span class="indent"></span>App.tsx<span class="change" style="color: var(--vermilion);">staged</span></div>
+        <div class="file-row">CLAUDE.md</div>
+        <div class="file-row">package.json</div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- ===================== 底栏 ===================== -->
+  <footer class="statusbar">
+    <div class="item"><span class="dot"></span><span>已连接</span></div>
+    <span class="sep">·</span>
+    <div class="item"><span>main</span></div>
+    <span class="sep">·</span>
+    <div class="item"><span class="num">3</span><span>分身</span></div>
+    <span class="sep">·</span>
+    <div class="item"><span class="num">4</span><span>会话</span></div>
+    <div class="spacer"></div>
+    <div class="item"><span>已授权</span><span class="num">47</span></div>
+    <span class="sep">·</span>
+    <div class="item"><span class="num">v0.6.0</span></div>
+  </footer>
+
+</div>
+
+<div class="signature">VibeSpace · Direction B · Quiet Studio</div>
+
+</body>
+</html>

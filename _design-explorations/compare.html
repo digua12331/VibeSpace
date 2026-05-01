@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>VibeSpace 三方向对比</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a1a;
+    color: #e6e6e6;
+    font-family: -apple-system, 'PingFang SC', system-ui, sans-serif;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin-bottom: 6px;
+  }
+  .header p {
+    font-size: 13px;
+    color: #888;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 32px;
+    max-width: 1640px;
+    margin: 0 auto;
+  }
+  .card {
+    background: #0e0e0e;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid #2a2a2a;
+    background: #161616;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .card-title .tag {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    margin-right: 10px;
+    vertical-align: 1px;
+    letter-spacing: 0.04em;
+  }
+  .tag-a { background: rgba(94,106,210,0.18); color: #a3aaf0; border: 1px solid rgba(94,106,210,0.4); }
+  .tag-b { background: rgba(192,74,26,0.18); color: #e89070; border: 1px solid rgba(192,74,26,0.4); }
+  .tag-c { background: rgba(255,180,84,0.18); color: #ffb454; border: 1px solid rgba(255,180,84,0.4); }
+  .card-meta {
+    font-size: 12px;
+    color: #888;
+  }
+  .card-meta .open {
+    color: #6ad;
+    margin-left: 12px;
+    text-decoration: none;
+  }
+  .card-meta .open:hover { text-decoration: underline; }
+  .card img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .desc {
+    padding: 14px 20px;
+    border-top: 1px solid #2a2a2a;
+    font-size: 13px;
+    color: #aaa;
+    line-height: 1.6;
+    background: #161616;
+  }
+  .desc b { color: #e6e6e6; font-weight: 500; }
+  .desc .line { display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>VibeSpace · 三个方向并排对比</h1>
+  <p>从上往下：方向 A（信息建筑）→ 方向 B（东方极简）→ 方向 C（实验先锋）</p>
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">
+        <span class="tag tag-a">A</span>Linear / Vercel · 信息建筑派
+      </div>
+      <div class="card-meta">
+        中性近黑 · 单 indigo accent · 高密度 · 零动画
+        <a class="open" href="vibespace-ui-direction-a/index.html" target="_blank">→ 实时打开</a>
+      </div>
+    </div>
+    <img src="vibespace-ui-direction-a/preview-1600.png" alt="Direction A" />
+    <div class="desc">
+      <span class="line"><b>气质：</b>专业、克制、可信赖。像 Linear / Cursor / Vercel 一线工具的标配。</span>
+      <span class="line"><b>底色：</b>#0A0A0A 中性近黑（无蓝调）。<b>Accent：</b>仅一个 indigo #5E6AD2。</span>
+      <span class="line"><b>会话：</b>紧凑列表行，agent 用首字母方块 CL/CX/GM/SH，全场只一种 accent 色。信息密度高。</span>
+      <span class="line"><b>风险：</b>看着像 Linear，"撞气质"是这条路的代价；安全选择。</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">
+        <span class="tag tag-b">B</span>Kenya Hara · 东方极简派
+      </div>
+      <div class="card-meta">
+        宣纸米白 · 朱砂红印章 accent · 衬线字 · 慢动画
+        <a class="open" href="vibespace-ui-direction-b/index.html" target="_blank">→ 实时打开</a>
+      </div>
+    </div>
+    <img src="vibespace-ui-direction-b/preview-1600.png" alt="Direction B" />
+    <div class="desc">
+      <span class="line"><b>气质：</b>温润、安静、有人味。像无印良品工作室，不像工厂车间。</span>
+      <span class="line"><b>底色：</b>#F5F0E8 宣纸米白（颠覆"开发工具必须深色"）。<b>Accent：</b>朱砂红 #C04A1A 像盖印章只点关键处。</span>
+      <span class="line"><b>会话：</b>衬线字命名 + 中文宋体 + 印章式状态点；术语本地化（"分身/用度/脉络"代替 worktree/usage/context）。</span>
+      <span class="line"><b>风险：</b>程序员朋友第一眼可能不适应；但市面上没有第二个长这样，独有标识。</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">
+        <span class="tag tag-c">C</span>Bret Victor / Field.io · 实验先锋派
+      </div>
+      <div class="card-meta">
+        深空蓝黑 · 多色 agent 编码 · 流体动画 · 有性格
+        <a class="open" href="vibespace-ui-direction-c/index.html" target="_blank">→ 实时打开</a>
+      </div>
+    </div>
+    <img src="vibespace-ui-direction-c/preview-1600.png" alt="Direction C" />
+    <div class="desc">
+      <span class="line"><b>气质：</b>前卫、未来感、值得截图。像在指挥一个 AI 乐队。</span>
+      <span class="line"><b>底色：</b>#070A12 深空蓝黑 + 漂浮粒子 + 环境光晕。<b>Accent：</b>4 种 agent 色（琥珀/青/品红/翠）+ 流体动画。</span>
+      <span class="line"><b>会话：</b>发光节点 + 呼吸光晕；当前会话在中央终端区有"能量场"辉光呼应；worktrees 是流体光河。</span>
+      <span class="line"><b>风险：</b>动画可能"花哨大于好用"；做得好出圈，做不好会被说廉价。</span>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

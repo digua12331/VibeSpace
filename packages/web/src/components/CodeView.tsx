@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { highlightToHtml } from '../highlight'
+import { useShikiVersion } from '../theme/store'
 
 interface Props {
   code: string
@@ -20,6 +21,7 @@ function withLineNumbers(html: string): string {
 
 export default function CodeView({ code, lang, lineNumbers = true }: Props) {
   const [html, setHtml] = useState<string | null>(null)
+  const shikiVersion = useShikiVersion()
 
   useEffect(() => {
     let cancelled = false
@@ -35,11 +37,11 @@ export default function CodeView({ code, lang, lineNumbers = true }: Props) {
     return () => {
       cancelled = true
     }
-  }, [code, lang, lineNumbers])
+  }, [code, lang, lineNumbers, shikiVersion])
 
   if (!html) {
     return (
-      <pre className="bg-[#0d1117] text-[#c9d1d9] p-3 rounded-md overflow-auto text-[12.5px] leading-relaxed font-mono">
+      <pre className="bg-code-bg text-code-fg p-3 rounded-md overflow-auto text-[12.5px] leading-relaxed font-mono">
         <code>{code}</code>
       </pre>
     )

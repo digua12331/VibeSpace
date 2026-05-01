@@ -336,7 +336,7 @@ export default function CliInstallerDialog({
                           className={`fluent-btn px-2.5 py-1 text-xs rounded-md border ${
                             installed
                               ? 'border-border bg-white/[0.03] text-muted hover:bg-white/[0.08]'
-                              : 'bg-accent text-[#003250] font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+                              : 'bg-accent text-on-accent font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
                           } disabled:opacity-40 disabled:cursor-not-allowed`}
                           title={!entry.installCmd ? `当前平台 ${platform} 暂无安装命令` : ''}
                         >

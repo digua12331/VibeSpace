@@ -92,7 +92,7 @@ export default function LogsView() {
       <div
         ref={bodyRef}
         onScroll={onScroll}
-        className="flex-1 overflow-auto font-mono text-[11.5px] leading-relaxed px-2 py-1 bg-[#1a1a1a]"
+        className="flex-1 overflow-auto font-mono text-[11.5px] leading-relaxed px-2 py-1 bg-card-2"
       >
         {shown.length === 0 ? (
           <div className="text-subtle py-4 text-center text-xs">

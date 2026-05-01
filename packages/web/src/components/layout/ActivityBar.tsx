@@ -40,6 +40,7 @@ export default function ActivityBar() {
       label: '通知',
       badge: notifyCount > 0 ? notifyCount : undefined,
     },
+    { id: 'appearance', icon: '🎨', label: '外观' },
   ]
 
   function onClick(id: Activity) {

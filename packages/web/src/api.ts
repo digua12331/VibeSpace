@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  BranchOpResult,
   BranchRef,
   ChangesResponse,
   CliConfigSavePayload,
@@ -13,6 +14,13 @@ import type {
   CommitResult,
   CommitSummary,
   DiffResult,
+  FetchResult,
+  MergeResult,
+  PullResult,
+  PushResult,
+  ResetResult,
+  StashEntry,
+  StashOpResult,
   ChecklistDoc,
   DocFileContent,
   DocFileKind,
@@ -374,6 +382,101 @@ export function createCommit(
   return request<CommitResult>(
     `/api/projects/${encodeURIComponent(projectId)}/commit`,
     jsonInit('POST', input),
+  )
+}
+
+// ---------- Git: remote / branch / stash / reset ops ----------
+
+export function gitPull(projectId: string): Promise<PullResult> {
+  return request<PullResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/pull`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitPush(projectId: string): Promise<PushResult> {
+  return request<PushResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/push`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitFetch(projectId: string): Promise<FetchResult> {
+  return request<FetchResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/fetch`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitCreateBranch(
+  projectId: string,
+  branch: string,
+  opts: { checkout?: boolean } = {},
+): Promise<BranchOpResult> {
+  return request<BranchOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/branches/create`,
+    jsonInit('POST', { branch, checkout: opts.checkout === true }),
+  )
+}
+
+export function gitDeleteBranch(
+  projectId: string,
+  branch: string,
+  opts: { force?: boolean } = {},
+): Promise<BranchOpResult> {
+  return request<BranchOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/branches/delete`,
+    jsonInit('POST', { branch, force: opts.force === true }),
+  )
+}
+
+export function gitCheckoutBranch(
+  projectId: string,
+  branch: string,
+): Promise<BranchOpResult> {
+  return request<BranchOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/branches/checkout`,
+    jsonInit('POST', { branch }),
+  )
+}
+
+export function gitMergeBranch(
+  projectId: string,
+  branch: string,
+): Promise<MergeResult> {
+  return request<MergeResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/merge`,
+    jsonInit('POST', { branch }),
+  )
+}
+
+export function gitListStashes(projectId: string): Promise<StashEntry[]> {
+  return request<StashEntry[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/stashes`,
+  )
+}
+
+export function gitCreateStash(
+  projectId: string,
+  message?: string,
+): Promise<StashOpResult> {
+  return request<StashOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/stash`,
+    jsonInit('POST', message ? { message } : {}),
+  )
+}
+
+export function gitPopStash(projectId: string): Promise<StashOpResult> {
+  return request<StashOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/stash/pop`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitResetSoftLastCommit(projectId: string): Promise<ResetResult> {
+  return request<ResetResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/reset-soft`,
+    jsonInit('POST', {}),
   )
 }
 

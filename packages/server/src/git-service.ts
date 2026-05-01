@@ -113,6 +113,57 @@ export interface CommitResult {
   summary: string;
 }
 
+export interface PullResult {
+  /** Raw stdout from `git pull` (truncated to 4 KB). */
+  output: string;
+  /** True when the pull completed without conflicts. */
+  ok: true;
+}
+
+export interface PushResult {
+  output: string;
+  ok: true;
+}
+
+export interface FetchResult {
+  output: string;
+  ok: true;
+}
+
+export interface MergeResult {
+  output: string;
+  ok: true;
+}
+
+export interface StashEntry {
+  /** Stash ref name, e.g. `stash@{0}`. */
+  ref: string;
+  /** Branch the stash was made on, if known. */
+  branch: string | null;
+  /** Subject line of the stash commit (after `WIP on <branch>:`). */
+  subject: string;
+  /** ISO timestamp. */
+  date: string;
+}
+
+export interface StashOpResult {
+  output: string;
+  ok: true;
+}
+
+export interface BranchOpResult {
+  branch: string;
+  /** What we did: `created` | `deleted` | `checked-out` | `merged`. */
+  action: "created" | "deleted" | "checked-out" | "merged";
+}
+
+export interface ResetResult {
+  /** New HEAD sha after the reset. */
+  head: string;
+  /** Sha that was at HEAD before the reset (the "undone" commit). */
+  previousHead: string;
+}
+
 // ---------- Errors ----------
 
 export class GitServiceError extends Error {
@@ -1030,4 +1081,287 @@ export async function listWorktrees(
   }
   flush();
   return out;
+}
+
+// ---------- Remote / branch / stash / reset operations ----------
+
+const REMOTE_TIMEOUT_MS = 60_000;
+const LOCAL_TIMEOUT_MS = 15_000;
+const STDERR_CAP_BYTES = 1024;
+const VALID_BRANCH_RE = /^[A-Za-z0-9._/-][A-Za-z0-9._/-]{0,255}$/;
+
+function assertBranchName(name: string): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed || !VALID_BRANCH_RE.test(trimmed) || trimmed.includes("..") || trimmed.endsWith(".lock")) {
+    throw new GitServiceError("invalid_ref", `invalid branch name: ${name}`, 400);
+  }
+  return trimmed;
+}
+
+function clipStderr(s: string): string {
+  if (s.length <= STDERR_CAP_BYTES) return s;
+  return s.slice(0, STDERR_CAP_BYTES) + `\n…(truncated, ${s.length - STDERR_CAP_BYTES} more bytes)`;
+}
+
+/** Wrap a git operation in a hard timeout. simple-git lacks native timeout. */
+async function withGitTimeout<T>(
+  label: string,
+  ms: number,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_, rej) => {
+        timer = setTimeout(
+          () =>
+            rej(
+              new GitServiceError(
+                "git_failed",
+                `git ${label} timed out after ${ms}ms`,
+                504,
+              ),
+            ),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function normalizeNewlines(s: string): string {
+  return s.replace(/\r\n?/g, "\n");
+}
+
+async function runGitOrThrow(
+  projectPath: string,
+  label: string,
+  args: string[],
+  ms: number,
+): Promise<string> {
+  const g = gitFor(projectPath);
+  try {
+    const raw = await withGitTimeout(label, ms, () => g.raw(args));
+    return clipStderr(normalizeNewlines(raw).trim());
+  } catch (err) {
+    if (err instanceof GitServiceError) throw err;
+    const msg = clipStderr(normalizeNewlines((err as Error)?.message ?? String(err)));
+    throw new GitServiceError("git_failed", `git ${label} failed: ${msg}`, 400);
+  }
+}
+
+async function hasAnyRemote(projectPath: string): Promise<boolean> {
+  try {
+    const out = await gitFor(projectPath).raw(["remote"]);
+    return out.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function isDetachedHead(projectPath: string): Promise<boolean> {
+  try {
+    const out = (await gitFor(projectPath).raw(["symbolic-ref", "-q", "HEAD"])).trim();
+    return out.length === 0;
+  } catch {
+    return true;
+  }
+}
+
+async function currentBranch(projectPath: string): Promise<string | null> {
+  try {
+    const out = (await gitFor(projectPath).raw(["symbolic-ref", "--short", "-q", "HEAD"])).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Remote ops ----
+
+export async function pullCurrent(projectPath: string): Promise<PullResult> {
+  if (!(await hasAnyRemote(projectPath))) {
+    throw new GitServiceError("git_failed", "no remote configured", 400);
+  }
+  if (await isDetachedHead(projectPath)) {
+    throw new GitServiceError("git_failed", "cannot pull on detached HEAD", 400);
+  }
+  // --ff-only = safe, no silent rebase / merge commit.
+  const output = await runGitOrThrow(projectPath, "pull", ["pull", "--ff-only"], REMOTE_TIMEOUT_MS);
+  bustStatusCache(projectPath);
+  return { output, ok: true };
+}
+
+export async function pushCurrent(projectPath: string): Promise<PushResult> {
+  if (!(await hasAnyRemote(projectPath))) {
+    throw new GitServiceError("git_failed", "no remote configured", 400);
+  }
+  const branch = await currentBranch(projectPath);
+  if (!branch) {
+    throw new GitServiceError("git_failed", "cannot push on detached HEAD", 400);
+  }
+  // Plain push — no -u (would silently set upstream), no --force.
+  const output = await runGitOrThrow(projectPath, "push", ["push", "origin", branch], REMOTE_TIMEOUT_MS);
+  return { output, ok: true };
+}
+
+export async function fetchAll(projectPath: string): Promise<FetchResult> {
+  if (!(await hasAnyRemote(projectPath))) {
+    throw new GitServiceError("git_failed", "no remote configured", 400);
+  }
+  const output = await runGitOrThrow(
+    projectPath,
+    "fetch",
+    ["fetch", "--all", "--prune"],
+    REMOTE_TIMEOUT_MS,
+  );
+  bustStatusCache(projectPath);
+  return { output, ok: true };
+}
+
+// ---- Branch ops ----
+
+export async function createBranch(
+  projectPath: string,
+  name: string,
+  opts: { checkout?: boolean } = {},
+): Promise<BranchOpResult> {
+  const branch = assertBranchName(name);
+  const args = opts.checkout ? ["checkout", "-b", branch] : ["branch", branch];
+  await runGitOrThrow(projectPath, opts.checkout ? "checkout -b" : "branch create", args, LOCAL_TIMEOUT_MS);
+  if (opts.checkout) bustStatusCache(projectPath);
+  return { branch, action: opts.checkout ? "checked-out" : "created" };
+}
+
+export async function deleteBranch(
+  projectPath: string,
+  name: string,
+  opts: { force?: boolean } = {},
+): Promise<BranchOpResult> {
+  const branch = assertBranchName(name);
+  const cur = await currentBranch(projectPath);
+  if (cur === branch) {
+    throw new GitServiceError("git_failed", `cannot delete current branch: ${branch}`, 400);
+  }
+  const flag = opts.force ? "-D" : "-d";
+  await runGitOrThrow(projectPath, `branch ${flag}`, ["branch", flag, branch], LOCAL_TIMEOUT_MS);
+  return { branch, action: "deleted" };
+}
+
+export async function checkoutBranch(
+  projectPath: string,
+  name: string,
+): Promise<BranchOpResult> {
+  // Allow remote tracking like `origin/feature` -> create matching local branch.
+  const trimmed = (name ?? "").trim();
+  if (!trimmed || !VALID_BRANCH_RE.test(trimmed) || trimmed.includes("..")) {
+    throw new GitServiceError("invalid_ref", `invalid branch name: ${name}`, 400);
+  }
+  await runGitOrThrow(projectPath, "checkout", ["checkout", trimmed], LOCAL_TIMEOUT_MS);
+  bustStatusCache(projectPath);
+  return { branch: trimmed, action: "checked-out" };
+}
+
+export async function mergeBranch(
+  projectPath: string,
+  name: string,
+): Promise<MergeResult & { branch: string }> {
+  const branch = assertBranchName(name);
+  const cur = await currentBranch(projectPath);
+  if (!cur) {
+    throw new GitServiceError("git_failed", "cannot merge on detached HEAD", 400);
+  }
+  if (cur === branch) {
+    throw new GitServiceError("git_failed", `already on ${branch}`, 400);
+  }
+  // --no-ff keeps a visible merge commit so users can see the integration in history.
+  const output = await runGitOrThrow(
+    projectPath,
+    "merge",
+    ["merge", "--no-ff", branch],
+    LOCAL_TIMEOUT_MS,
+  );
+  bustStatusCache(projectPath);
+  return { output, ok: true, branch };
+}
+
+// ---- Stash ops ----
+
+export async function listStashes(projectPath: string): Promise<StashEntry[]> {
+  const g = gitFor(projectPath);
+  try {
+    const raw = await g.raw([
+      "stash",
+      "list",
+      "--date=iso-strict",
+      "--format=%gd%x1f%gs%x1f%aI",
+    ]);
+    return raw
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const [ref, gs, date] = line.split("\x1f");
+        // gs looks like: "WIP on main: 1234567 subject"
+        const m = gs?.match(/^WIP on ([^:]+):\s*(.*)$/);
+        return {
+          ref: ref ?? "",
+          branch: m ? m[1] : null,
+          subject: m ? m[2] : (gs ?? ""),
+          date: date ?? "",
+        } satisfies StashEntry;
+      });
+  } catch {
+    return [];
+  }
+}
+
+export async function createStash(
+  projectPath: string,
+  message?: string,
+): Promise<StashOpResult> {
+  const args = ["stash", "push", "--include-untracked"];
+  if (message && message.trim()) {
+    args.push("-m", message.trim().slice(0, 200));
+  }
+  const output = await runGitOrThrow(projectPath, "stash push", args, LOCAL_TIMEOUT_MS);
+  if (/no local changes to save/i.test(output)) {
+    throw new GitServiceError("git_failed", "no local changes to stash", 400);
+  }
+  bustStatusCache(projectPath);
+  return { output, ok: true };
+}
+
+export async function popStash(projectPath: string): Promise<StashOpResult> {
+  const list = await listStashes(projectPath);
+  if (list.length === 0) {
+    throw new GitServiceError("git_failed", "stash is empty", 400);
+  }
+  const output = await runGitOrThrow(projectPath, "stash pop", ["stash", "pop"], LOCAL_TIMEOUT_MS);
+  bustStatusCache(projectPath);
+  return { output, ok: true };
+}
+
+// ---- Reset op ----
+
+export async function resetSoftLastCommit(projectPath: string): Promise<ResetResult> {
+  const g = gitFor(projectPath);
+  let prev: string;
+  try {
+    prev = (await g.raw(["rev-parse", "HEAD"])).trim();
+  } catch {
+    throw new GitServiceError("git_failed", "no commits in repository", 400);
+  }
+  // Require at least one parent.
+  try {
+    await g.raw(["rev-parse", "--verify", "HEAD~1"]);
+  } catch {
+    throw new GitServiceError("git_failed", "cannot undo: HEAD has no parent (first commit)", 400);
+  }
+  await runGitOrThrow(projectPath, "reset --soft HEAD~1", ["reset", "--soft", "HEAD~1"], LOCAL_TIMEOUT_MS);
+  bustStatusCache(projectPath);
+  const head = (await g.raw(["rev-parse", "HEAD"])).trim();
+  return { head, previousHead: prev };
 }

@@ -8,6 +8,7 @@ import OutputView from '../sidebar/OutputView'
 import PerfView from '../sidebar/PerfView'
 import JobsView from '../sidebar/JobsView'
 import UsageView from '../sidebar/UsageView'
+import AppearanceView from '../sidebar/AppearanceView'
 
 const TITLES: Record<string, string> = {
   scm: '源代码更改',
@@ -19,6 +20,7 @@ const TITLES: Record<string, string> = {
   inbox: '通知',
   jobs: '后台任务',
   usage: '使用量',
+  appearance: '外观',
 }
 
 export default function PrimarySidebar() {
@@ -52,6 +54,9 @@ export default function PrimarySidebar() {
       break
     case 'usage':
       body = <UsageView />
+      break
+    case 'appearance':
+      body = <AppearanceView />
       break
     default:
       body = null

@@ -4,10 +4,10 @@ import * as api from '../../api'
 import FilePreview from '../FilePreview'
 import ChecklistEditor from './ChecklistEditor'
 import StartSessionMenu from '../StartSessionMenu'
-import SessionView from '../terminal/SessionView'
+import TerminalHost from '../terminal/TerminalHost'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { logAction } from '../../logs'
-import type { AgentKind, Session } from '../../types'
+import type { AgentKind } from '../../types'
 
 /**
  * When selectedProjectId is null (user picked "全部 sessions") we key the
@@ -45,7 +45,6 @@ export default function EditorArea() {
   const activeMap = useStore((s) => s.activeSessionIdByProject)
   const setActiveSession = useStore((s) => s.setActiveSession)
   const removeSession = useStore((s) => s.removeSession)
-  const addSession = useStore((s) => s.addSession)
 
   const activeTabKind = useStore((s) => s.activeTabKind)
   const setActiveTabKind = useStore((s) => s.setActiveTabKind)
@@ -155,13 +154,6 @@ export default function EditorArea() {
       }
     }
     removeSession(id)
-  }
-
-  function handleRestart(oldId: string, next: Session) {
-    removeSession(oldId)
-    addSession(next)
-    setActiveSession(next.projectId, next.id)
-    setActiveTabKind('session')
   }
 
   const hasAnyTab = openFiles.length > 0 || visibleSessions.length > 0
@@ -299,15 +291,13 @@ export default function EditorArea() {
       </div>
 
       <div className="flex-1 min-h-0 relative">
-        {visibleSessions.map((s) => (
-          <SessionView
-            key={s.id}
-            session={s}
-            active={activeTabKind === 'session' && s.id === activeSessionId}
-            onClose={removeSession}
-            onRestart={handleRestart}
-          />
-        ))}
+        {/*
+         * 终端区原本是 visibleSessions.map(<SessionView />) 直接渲染——切项目时旧项目所有
+         * SessionView 卸载并 dispose xterm，新项目又重建一遍。改由 TerminalHost 全局挂载，
+         * 跨项目切换只切 active prop，xterm 实例与 PTY 订阅原地保留。EditorArea 仍然负责
+         * 渲染上方的 tab 头部（visibleSessions 还是要用）和文件预览。
+         */}
+        <TerminalHost />
 
         {activeFile ? (
           <div className="absolute inset-0 flex flex-col bg-bg">

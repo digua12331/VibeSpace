@@ -1,0 +1,151 @@
+/* ---------------------------------------------------------------------------
+ * Preset themes — 三套预设主题，覆写 tokens.css 里的变量。
+ *
+ * 切换方式：document.documentElement.dataset.theme = 'soft-dark' | ...
+ * 用户的自定义 CSS 也可以再次覆写这些变量（特异性更高）。
+ *
+ * 颜色仍是 RGB triplet 格式（"R G B"），与 tokens.css 保持一致。
+ * 半透明值用 "R G B / A"（CSS 标准空格分隔语法）。
+ * ------------------------------------------------------------------------- */
+
+/* ── 柔和深灰：新默认（不刺眼但仍是深色风格） ──────────────────── */
+[data-theme="soft-dark"] {
+  --color-bg: 31 31 35;
+  --color-card: 38 38 44;
+  --color-card-2: 46 46 52;
+  --color-border: 58 58 64;
+  --color-border-soft: 46 46 52;
+  --color-fg: 212 212 214;
+  --color-muted: 168 168 174;
+  --color-subtle: 122 122 128;
+  --color-accent: 96 205 255;
+  --color-accent-2: 76 194 255;
+  --color-accent-deep: 0 120 212;
+  --color-on-accent: 0 50 80;
+
+  --color-code-bg: 13 17 23;
+  --color-code-fg: 201 209 217;
+
+  --color-xterm-bg: 28 28 32;
+  --color-xterm-fg: 212 212 214;
+  --color-xterm-cursor: 96 205 255;
+
+  --color-placeholder: 122 122 128;
+  --color-focus-ring: 96 205 255;
+
+  --surface-bg: rgb(var(--color-card));
+  --surface-fg: rgb(var(--color-fg));
+  --surface-border: rgb(var(--color-border));
+  --surface-blur: 0px;
+  --surface-saturate: 100%;
+
+  --acrylic-bg: rgb(var(--color-card) / 0.78);
+  --acrylic-border: rgb(255 255 255 / 0.08);
+  --acrylic-blur: 30px;
+  --acrylic-saturate: 140%;
+
+  --mica-bg: rgb(var(--color-bg) / 0.85);
+  --mica-blur: 60px;
+  --mica-saturate: 150%;
+
+  --shiki-theme-name: 'github-dark-dimmed';
+}
+
+/* ── 亮色护眼：白天用 ──────────────────────────────────────────── */
+[data-theme="light-soft"] {
+  --color-bg: 244 244 245;
+  --color-card: 255 255 255;
+  --color-card-2: 248 248 250;
+  --color-border: 220 220 224;
+  --color-border-soft: 232 232 236;
+  --color-fg: 42 42 46;
+  --color-muted: 90 90 96;
+  --color-subtle: 130 130 136;
+  --color-accent: 0 120 212;
+  --color-accent-2: 0 100 184;
+  --color-accent-deep: 0 78 152;
+  --color-on-accent: 255 255 255;
+
+  --color-code-bg: 246 248 250;
+  --color-code-fg: 36 41 47;
+
+  --color-xterm-bg: 250 250 252;
+  --color-xterm-fg: 42 42 46;
+  --color-xterm-cursor: 0 120 212;
+
+  --color-placeholder: 150 150 156;
+  --color-focus-ring: 0 120 212;
+
+  --surface-bg: rgb(var(--color-card));
+  --surface-fg: rgb(var(--color-fg));
+  --surface-border: rgb(var(--color-border));
+  --surface-blur: 0px;
+  --surface-saturate: 100%;
+
+  /* 亮色 acrylic/mica 用浅色基底 */
+  --acrylic-bg: rgb(var(--color-card) / 0.85);
+  --acrylic-border: rgb(0 0 0 / 0.06);
+  --acrylic-blur: 30px;
+  --acrylic-saturate: 140%;
+
+  --mica-bg: rgb(var(--color-bg) / 0.92);
+  --mica-blur: 60px;
+  --mica-saturate: 150%;
+
+  /* 亮色下阴影更柔和，避免反差太重 */
+  --shadow-tile:   0 2px 4px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.10);
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.10);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.16), 0 0 8px rgba(0, 0, 0, 0.10);
+
+  --shiki-theme-name: 'github-light';
+}
+
+/* ── 黑色玻璃拟态：chrome 层半透明 + 背景模糊 ──────────────────── */
+[data-theme="glass-dark"] {
+  --color-bg: 8 8 14;
+  --color-card: 20 20 30;
+  --color-card-2: 28 28 38;
+  --color-border: 60 60 75;
+  --color-border-soft: 40 40 52;
+  --color-fg: 226 226 230;
+  --color-muted: 178 178 184;
+  --color-subtle: 130 130 140;
+  --color-accent: 138 180 255;
+  --color-accent-2: 110 156 240;
+  --color-accent-deep: 70 110 200;
+  --color-on-accent: 8 8 14;
+
+  --color-code-bg: 8 8 14;
+  --color-code-fg: 226 226 230;
+
+  --color-xterm-bg: 12 12 18;
+  --color-xterm-fg: 226 226 230;
+  --color-xterm-cursor: 138 180 255;
+
+  --color-placeholder: 130 130 140;
+  --color-focus-ring: 138 180 255;
+
+  /* 表面材质改半透明 + 背景模糊（chrome 层玻璃感） */
+  --surface-bg: rgb(var(--color-card) / 0.55);
+  --surface-fg: rgb(var(--color-fg));
+  --surface-border: rgb(255 255 255 / 0.08);
+  --surface-blur: 24px;
+  --surface-saturate: 140%;
+
+  /* acrylic/mica 在玻璃主题下更透更扩散 */
+  --acrylic-bg: rgb(var(--color-card) / 0.4);
+  --acrylic-border: rgb(255 255 255 / 0.10);
+  --acrylic-blur: 40px;
+  --acrylic-saturate: 160%;
+
+  --mica-bg: rgb(var(--color-bg) / 0.55);
+  --mica-blur: 80px;
+  --mica-saturate: 160%;
+
+  /* 玻璃主题阴影更深更扩散，烘托半透明叠层 */
+  --shadow-tile:   0 4px 8px rgba(0, 0, 0, 0.40), 0 0 1px rgba(0, 0, 0, 0.50);
+  --shadow-flyout: 0 16px 32px rgba(0, 0, 0, 0.45), 0 0 1px rgba(0, 0, 0, 0.50);
+  --shadow-dialog: 0 40px 80px rgba(0, 0, 0, 0.55), 0 0 8px rgba(0, 0, 0, 0.50);
+
+  --shiki-theme-name: 'github-dark';
+}

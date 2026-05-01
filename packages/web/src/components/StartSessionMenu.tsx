@@ -190,7 +190,7 @@ export default function StartSessionMenu({
               ? 'border-border text-muted cursor-not-allowed opacity-50'
               : compact
                 ? 'border-border text-muted hover:text-fg hover:bg-white/[0.04]'
-                : 'bg-accent text-[#003250] font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+                : 'bg-accent text-on-accent font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
           }`}
           title={disabled ? '先在左侧选择一个项目' : '启动新 session'}
         >

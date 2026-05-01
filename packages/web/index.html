@@ -4,8 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#202020" />
+    <meta name="theme-color" content="#1f1f23" />
     <title>VibeSpace</title>
+    <script>
+      // FOUC 防闪：同步读 localStorage 在 React 启动前设置 data-theme + 注入用户自定义 CSS。
+      // 与 packages/web/src/theme/store.ts 的 LS_KEY / USER_STYLE_ID 保持一致。
+      (function () {
+        try {
+          var s = JSON.parse(localStorage.getItem('aimon_theme_v1') || '{}');
+          var t = s && typeof s.theme === 'string' ? s.theme : 'soft-dark';
+          document.documentElement.dataset.theme = t;
+          if (s && typeof s.customCss === 'string' && s.customCss) {
+            var st = document.createElement('style');
+            st.id = 'user-theme';
+            st.textContent = s.customCss;
+            document.head.appendChild(st);
+          }
+        } catch (_) { /* localStorage disabled / quota — fall through to default */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

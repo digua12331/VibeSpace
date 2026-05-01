@@ -6,6 +6,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { aimonWS } from '../../ws'
 import { useStore } from '../../store'
+import { useThemeStore, readCssRgb, readCssVar, type ThemeName } from '../../theme/store'
 import * as api from '../../api'
 import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
@@ -233,6 +234,10 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const termHostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const webglRef = useRef<WebglAddon | null>(null)
+  // 跟踪上一次应用到 xterm 的主题——用来跳过初次 mount（创建时已经用了当前主题）
+  const currentTheme = useThemeStore((s) => s.theme)
+  const prevThemeRef = useRef<ThemeName>(currentTheme)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   // IME 真实状态：onCompositionStart/End 维护，比 keydown 的 isComposing 可靠
   // —— 后者在 Chromium 上 compositionend 边界偶尔漏报，导致 Enter 被误判。
@@ -279,9 +284,13 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     if (!host) return
 
     const term = new Terminal({
-      fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace',
+      fontFamily: readCssVar('--font-mono', '"Cascadia Mono", Consolas, Menlo, monospace'),
       fontSize: 13,
-      theme: { background: '#1c1c1c', foreground: '#ffffff', cursor: '#60cdff' },
+      theme: {
+        background: readCssRgb('--color-xterm-bg'),
+        foreground: readCssRgb('--color-xterm-fg'),
+        cursor: readCssRgb('--color-xterm-cursor'),
+      },
       cursorBlink: true,
       convertEol: false,
       scrollback: 5000,
@@ -311,6 +320,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       const webgl = new WebglAddon()
       webgl.onContextLoss(() => webgl.dispose())
       term.loadAddon(webgl)
+      webglRef.current = webgl
     } catch {
       // Some headless / old browsers can't create a WebGL context; silently
       // stay on DOM renderer.
@@ -445,11 +455,48 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       dataDisposable.dispose()
       ro.disconnect()
       aimonWS.unsubscribe([session.id])
+      webglRef.current?.dispose()
+      webglRef.current = null
       term.dispose()
       termRef.current = null
       fitRef.current = null
     }
   }, [session.id])
+
+  // 主题切换：把新色塞给 xterm + 重挂 webgl addon（addon 缓存了颜色，
+  // setOption 不刷新；dispose+重新 loadAddon 才会重画。buffer 不动，
+  // 光标位置由 xterm 内部 state 维持，不会丢。
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return
+    if (prevThemeRef.current === currentTheme) return  // 跳过初次 mount
+    const fromTheme = prevThemeRef.current
+    prevThemeRef.current = currentTheme
+    void logAction(
+      'session',
+      'apply-theme',
+      async () => {
+        term.options.theme = {
+          background: readCssRgb('--color-xterm-bg'),
+          foreground: readCssRgb('--color-xterm-fg'),
+          cursor: readCssRgb('--color-xterm-cursor'),
+        }
+        if (webglRef.current) {
+          webglRef.current.dispose()
+          webglRef.current = null
+          try {
+            const webgl = new WebglAddon()
+            webgl.onContextLoss(() => webgl.dispose())
+            term.loadAddon(webgl)
+            webglRef.current = webgl
+          } catch {
+            /* WebGL fail → fallback DOM renderer */
+          }
+        }
+      },
+      { sessionId: session.id, meta: { from: fromTheme, to: currentTheme } },
+    )
+  }, [currentTheme, session.id])
 
   // When this tab becomes active after being hidden, xterm's measured
   // dimensions are stale (display toggled). Re-fit on activation.
@@ -1123,8 +1170,8 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
               })
               .catch(() => { /* clipboard blocked — silent */ })
           }}
-          style={{ bottom: 72 }}
-          className={`absolute top-0 left-0 right-0 bg-[#1c1c1c] p-1 ${isDead ? 'opacity-60' : ''}`}
+          style={{ bottom: 72, background: 'rgb(var(--color-xterm-bg))' }}
+          className={`absolute top-0 left-0 right-0 p-1 ${isDead ? 'opacity-60' : ''}`}
         />
 
         <div

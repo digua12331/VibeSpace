@@ -131,7 +131,7 @@ export default function DiffView({ patch }: Props) {
   }
 
   return (
-    <div className="font-mono text-[12.5px] leading-[1.45] bg-[#0d1117] rounded-md overflow-auto">
+    <div className="font-mono text-[12.5px] leading-[1.45] bg-code-bg rounded-md overflow-auto">
       <table className="w-full border-collapse">
         <tbody>
           {rows.map((r, i) => (

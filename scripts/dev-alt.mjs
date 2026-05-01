@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
 
-const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-const args = ['-r', '--parallel', 'run', 'dev'];
+const isWin = process.platform === 'win32';
+const pnpmArgs = ['-r', '--parallel', 'run', 'dev'];
+const command = isWin ? process.env.ComSpec || 'cmd.exe' : 'pnpm';
+const args = isWin ? ['/d', '/s', '/c', 'pnpm', ...pnpmArgs] : pnpmArgs;
 
 const child = spawn(command, args, {
   stdio: 'inherit',
+  windowsVerbatimArguments: isWin,
   env: {
     ...process.env,
     AIMON_PORT: '9787',

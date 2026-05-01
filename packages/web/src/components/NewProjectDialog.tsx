@@ -120,7 +120,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           <button
             type="submit"
             disabled={submitting}
-            className="fluent-btn px-4 py-1.5 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
+            className="fluent-btn px-4 py-1.5 text-sm rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
           >
             {submitting ? '创建中...' : '创建'}
           </button>

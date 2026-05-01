@@ -419,6 +419,44 @@ export interface CommitResult {
   summary: string
 }
 
+// ---------- Git: remote / branch / stash / reset ops ----------
+
+export interface PullResult {
+  output: string
+  ok: true
+}
+export interface PushResult {
+  output: string
+  ok: true
+}
+export interface FetchResult {
+  output: string
+  ok: true
+}
+export interface MergeResult {
+  output: string
+  ok: true
+  branch: string
+}
+export interface BranchOpResult {
+  branch: string
+  action: 'created' | 'deleted' | 'checked-out' | 'merged'
+}
+export interface StashEntry {
+  ref: string
+  branch: string | null
+  subject: string
+  date: string
+}
+export interface StashOpResult {
+  output: string
+  ok: true
+}
+export interface ResetResult {
+  head: string
+  previousHead: string
+}
+
 export interface CliConfigSavePayload {
   claude?: {
     selections: Record<string, TriState>
