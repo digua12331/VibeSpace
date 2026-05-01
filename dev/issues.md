@@ -17,6 +17,6 @@
 - [x] 考虑日志保留策略（文件 packages/server/src/log-bus.ts；上下文：当前按天切 JSONL 无限增长、无清理、无单文件大小限制。建议加一个启动时扫描 data/logs/ 删除 30 天前文件的小任务，或改用 pino-roll 之类的滚动库）
 - [ ] codex 斜杠命令表只有 /help /clear /model 三条占位，待用户在 codex session 里跑 /help 截图后补齐（文件 packages/web/src/components/terminal/slashCommands.ts；上下文：2026-04-24 浮动输入框命令增强任务落地时用户仅提供了 claude/gemini 的 /help 输出，codex 占位待补）
 - [ ] README.md "Highlights" 段还在写"Karpathy 守则安装器"+"NewProjectDialog 两个复选框"，但代码里 Karpathy 路径已删（grep 全 packages 0 命中），当前只有 1 个 Dev Docs 复选框（文件 README.md 第 33-65 行；上下文：2026-04-29 harness-一键装配与团队面板 任务里发现，README 描述过时；本次任务又加了第 2 个 🤝 复选框，README 这段需要按当前实际重写，跟 Karpathy 完全无关）
-- [ ] vibespace-browser-tester subagent 没有 browser-use MCP 工具可用（文件 .claude/agents/vibespace-browser-tester.md；上下文：frontmatter 用 mcp__browser-use__* 通配符，claude code 不展开；导致浏览器侧自动验收全部 SKIP，需展开成具体工具名清单）
+- [x] vibespace-browser-tester subagent 没有 browser-use MCP 工具可用（文件 .claude/agents/vibespace-browser-tester.md；上下文：frontmatter 用 mcp__browser-use__* 通配符，claude code 不展开；导致浏览器侧自动验收全部 SKIP，需展开成具体工具名清单）
 - [ ] 为 removeDevDocs anchor 切片逻辑加 1–2 个单测（文件 packages/server/src/routes/projects.ts；上下文：DELETE /api/projects/:id/dev-docs 用 indexOf+slice，目前无测试覆盖）
 - [ ] 清理后端死路由 GET /api/projects/:id/harness-status + service 函数 getHarnessStatus（文件 packages/server/src/routes/projects.ts、harness-template-service.ts；上下文：前端 HarnessTeamDrawer 已删除，该路由无消费方）

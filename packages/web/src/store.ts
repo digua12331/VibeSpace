@@ -164,6 +164,12 @@ interface State {
   activeTabKind: 'file' | 'session' | null
   /** Text queued for injection into a session's floating input on next render. Not persisted. */
   pendingInputBySession: Record<string, string>
+  /**
+   * Per-session unsent draft text. Saved when SessionView unmounts (e.g. user
+   * switches projects, which filters that session out of `visibleSessions`)
+   * and restored on next mount. Not persisted across page reloads.
+   */
+  inputDraftBySession: Record<string, string>
 
   setActivity: (a: Activity) => void
   setProjectsColumnSize: (n: number) => void
@@ -179,6 +185,7 @@ interface State {
   setActiveTabKind: (k: 'file' | 'session' | null) => void
   queuePendingInput: (sessionId: string, text: string) => void
   consumePendingInput: (sessionId: string) => void
+  setInputDraft: (sessionId: string, text: string) => void
 
   /** Incremented whenever the file listing (FilesView) should re-fetch. */
   filesRefreshTick: number
@@ -319,6 +326,7 @@ export const useStore = create<State>((set, get) => ({
   activeSessionIdByProject: readWorkbench().activeSessionIdByProject ?? {},
   activeTabKind: null,
   pendingInputBySession: {},
+  inputDraftBySession: {},
   docsTasks: {},
   docsLoading: {},
   docsError: {},
@@ -424,6 +432,19 @@ export const useStore = create<State>((set, get) => ({
       delete next[sessionId]
       return { pendingInputBySession: next }
     }),
+  setInputDraft: (sessionId, text) =>
+    set((st) => {
+      if (text) {
+        if (st.inputDraftBySession[sessionId] === text) return st
+        return {
+          inputDraftBySession: { ...st.inputDraftBySession, [sessionId]: text },
+        }
+      }
+      if (!(sessionId in st.inputDraftBySession)) return st
+      const next = { ...st.inputDraftBySession }
+      delete next[sessionId]
+      return { inputDraftBySession: next }
+    }),
 
   setWsState: (s) => {
     const prev = get().wsState
@@ -510,6 +531,7 @@ export const useStore = create<State>((set, get) => ({
     set((st) => ({
       sessions: st.sessions.filter((s) => s.id !== id),
       liveStatus: omit(st.liveStatus, id),
+      inputDraftBySession: omit(st.inputDraftBySession, id),
     }))
     get().clearNotify(id)
   },

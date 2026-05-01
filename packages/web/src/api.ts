@@ -12,14 +12,11 @@ import type {
   CommitDetail,
   CommitResult,
   CommitSummary,
-  DevDocsStatus,
   DiffResult,
   ChecklistDoc,
   DocFileContent,
   DocFileKind,
   DocTaskSummary,
-  HarnessApplied,
-  HarnessApplyResult,
   IssuesPayload,
   JobItem,
   MemoryPayload,
@@ -36,8 +33,10 @@ import type {
   ProjectPerf,
   Session,
   SessionIsolation,
-  SessionScope,
   SubagentRun,
+  WorkflowApplyResult,
+  WorkflowRemoveResult,
+  WorkflowStatus,
 } from './types'
 
 const BASE: string =
@@ -99,54 +98,23 @@ export function createProject(input: {
   return request<Project>('/api/projects', jsonInit('POST', input))
 }
 
-export function getHarnessApplied(projectId: string): Promise<HarnessApplied> {
-  return request<HarnessApplied>(
-    `/api/projects/${encodeURIComponent(projectId)}/harness-applied`,
-  )
-}
-
-export function applyHarness(projectId: string): Promise<HarnessApplyResult> {
-  return request<HarnessApplyResult>(
-    `/api/projects/${encodeURIComponent(projectId)}/apply-harness`,
+export function applyWorkflow(projectId: string): Promise<WorkflowApplyResult> {
+  return request<WorkflowApplyResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/workflow`,
     { method: 'POST' },
   )
 }
 
-export function applyDevDocsGuidelines(
-  projectId: string,
-): Promise<{ ok: boolean; wrote: boolean; target: string }> {
-  return request(
-    `/api/projects/${encodeURIComponent(projectId)}/apply-dev-docs`,
-    { method: 'POST' },
-  )
-}
-
-export function getDevDocsStatus(projectId: string): Promise<DevDocsStatus> {
-  return request<DevDocsStatus>(
-    `/api/projects/${encodeURIComponent(projectId)}/dev-docs-status`,
-  )
-}
-
-export function removeDevDocs(
-  projectId: string,
-): Promise<{ ok: boolean; enabled: boolean }> {
-  return request(
-    `/api/projects/${encodeURIComponent(projectId)}/dev-docs`,
+export function removeWorkflow(projectId: string): Promise<WorkflowRemoveResult> {
+  return request<WorkflowRemoveResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/workflow`,
     { method: 'DELETE' },
   )
 }
 
-export interface HarnessUninstallResult {
-  ok: boolean
-  removedCount: number
-  skippedCount: number
-  failedFiles: string[]
-}
-
-export function removeHarness(projectId: string): Promise<HarnessUninstallResult> {
-  return request<HarnessUninstallResult>(
-    `/api/projects/${encodeURIComponent(projectId)}/harness`,
-    { method: 'DELETE' },
+export function getWorkflowStatus(projectId: string): Promise<WorkflowStatus> {
+  return request<WorkflowStatus>(
+    `/api/projects/${encodeURIComponent(projectId)}/workflow-status`,
   )
 }
 
@@ -162,7 +130,6 @@ export function listSessions(projectId?: string): Promise<Session[]> {
 export function createSession(input: {
   projectId: string
   agent: AgentKind
-  scope?: SessionScope
   isolation?: SessionIsolation
   task?: string
 }): Promise<Session> {

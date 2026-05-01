@@ -12,7 +12,7 @@
 
 如果环境变量 `AIMON_SESSION_PROMPT_PATH` 指向一个存在且可读的文件，开始执行任务前必须先读它。这里面是 Harness 按当前 task 名命中的 `.aimon/skills/` 内容快照。
 
-读完后只把它当作本任务的执行约束和套路提示，不要把整段内容复述给大哥。文件不存在、路径为空或不可读时，记录一句“按需 skill prompt 未注入/不可读”，继续按 `CLAUDE.md` 执行，不要反复重试。
+读完后只把它当作本任务的执行约束和套路提示，不要把整段内容复述给大哥。文件不存在、路径为空或不可读时，记录一句“按需 skill prompt 未注入/不可读”，继续按 `AGENTS.md` 执行，不要反复重试。
 
 ### 跟大哥说话的规矩（硬性，贯穿全流程）
 
@@ -51,33 +51,33 @@
 
 ### Plan 阶段默认流程：三模型会审（默认开，无需关键词）
 
-**默认档**任务（量级 = 默认；非极小、非小档），plan 由 **Claude / Gemini / Codex 三方协作**产出，**最终 plan.md 由 Codex 综合主笔，Claude 兜底白话化**后呈大哥。这取代了原"关键词触发的第二意见"机制——每次都跑，不用大哥记得说"多模型"。
+**默认档**任务（量级 = 默认；非极小、非小档），plan 由 **Codex / Gemini / Codex 三方协作**产出，**最终 plan.md 由 Codex 综合主笔，Codex 兜底白话化**后呈大哥。这取代了原"关键词触发的第二意见"机制——每次都跑，不用大哥记得说"多模型"。
 
-**为什么默认开**：每次默认档任务多 1–2 次外部调用，但拿到 Codex（结构感强）和 Gemini（长上下文强）的视角介入，比 Claude 单独写 plan 稳健很多。代价可接受。
+**为什么默认开**：每次默认档任务多 1–2 次外部调用，但拿到 Codex（结构感强）和 Gemini（长上下文强）的视角介入，比 Codex 单独写 plan 稳健很多。代价可接受。
 
 #### 流程（5 步，AI 自动跑完，大哥只在最后看 plan）
 
-1. **Claude 调研产出本地 plan 草案 + 事实包**（不落盘为最终 plan）
+1. **Codex 调研产出本地 plan 草案 + 事实包**（不落盘为最终 plan）
    - 扫 `dev/memory/auto.md` + `manual.md` 找相关条目
    - 读必要的代码文件
    - 整理出：大哥摘要草案 / 验收标准草案 / 非目标 / 现状陈述 / 已知风险 / 大哥偏好提醒
    - 这一步是给 Gemini 和 Codex 提供项目上下文（它们没有 SessionStart hook，看不到项目记忆）
 
 2. **并行调用 Gemini + Codex 介入 plan**（同一轮里两个工具一起发起）
-   - **Gemini**（用 MCP 的 `ask-gemini`）→ 闭合问题："基于 Claude 草案，有没有上游依赖 / 边界情况 / 数据影响我漏了？列 ≤30 行 plan 补充清单。"
+   - **Gemini**（用 MCP 的 `ask-gemini`）→ 闭合问题："基于 Codex 草案，有没有上游依赖 / 边界情况 / 数据影响我漏了？列 ≤30 行 plan 补充清单。"
    - **Codex 评审**（用 `codex:rescue` 插件）→ 闭合问题："结构上有没有显著更简的写法？落地路径上风险点是什么？≤30 行。"
    - **不要**让它们整体重写 plan——这一步只要评审清单。
 
 3. **Codex 定稿：综合写最终 plan.md**（再派一次 `codex:rescue`）
-   - 输入：用户需求 + Claude plan 草案/事实包 + Gemini plan 补充 + Codex 自己的评审
+   - 输入：用户需求 + Codex plan 草案/事实包 + Gemini plan 补充 + Codex 自己的评审
    - 输出：完整的 plan.md（含本节第 3 步规定的所有段落——大哥摘要、目标、非目标、实施步骤、边界情况、风险与注意）
    - 派工时**明确告诉 Codex**："你是综合主笔，要把三方输入合并成一份 plan，不是再评审。"
 
-4. **Claude 兜底白话化**（必做，不能跳）
+4. **Codex 兜底白话化**（必做，不能跳）
    - 通读 Codex 写的 plan.md，**只**改这三处：
      - **大哥摘要段**——是否 3-5 行白话、术语括号翻译，不合格直接重写
      - **全文术语**——第一次出现的专业术语必须括号配白话
-     - **manual.md / auto.md 偏好核对**——Codex 看不到项目记忆，Claude 自己对照：方案是否违反大哥长期偏好（如"小功能直接改不走流程"），违反就调整
+     - **manual.md / auto.md 偏好核对**——Codex 看不到项目记忆，Codex 自己对照：方案是否违反大哥长期偏好（如"小功能直接改不走流程"），违反就调整
    - **不动**：Codex 写的实施步骤、决策记录、风险列表（除非发现事实错误）
 
 5. **呈给大哥确认**——大哥只看大哥摘要那段决定点头与否
@@ -92,15 +92,15 @@
 > [Gemini 评审] <原文关键句>
 > [Codex 评审] <原文关键句>
 > [Codex 综合主笔] <一句话说明综合时的取舍：采纳了什么、放弃了什么、为何>
-> [Claude 白话化兜底] <一句话说明改了哪几处——大哥摘要 / 术语翻译 / 偏好对齐>
+> [Codex 白话化兜底] <一句话说明改了哪几处——大哥摘要 / 术语翻译 / 偏好对齐>
 ```
 
 #### 跳过条件（保留）
 
 - **极小档任务**（改文案、改菜单项、加一个不影响数据的小路由）→ 不进 Plan 阶段，多模型协作不生效
-- **小档任务**（用户明说"按你想法做"/"小改动"/"就一行"）→ Claude 单独写 plan，**不**调外部模型，节省外部调用
+- **小档任务**（用户明说"按你想法做"/"小改动"/"就一行"）→ Codex 单独写 plan，**不**调外部模型，节省外部调用
 - **外部工具失败**（超时 / 未配置 / 报错）：
-  - 失败一次重试一次；仍失败则**回退到 Claude 单独写 plan**
+  - 失败一次重试一次；仍失败则**回退到 Codex 单独写 plan**
   - 在 plan.md 末尾 `## 多模型 Plan 会审` 段记一行 `跳过：<具体原因>`
   - **不要**反复重试，不要因为外部模型挂了就阻塞 plan 交付——大哥不应为外部基础设施买单
 
@@ -239,9 +239,9 @@
 - 新追加的条目统一用 `- [ ]`（未处理）；处理完才改成 `- [x]`。
 - `dev/issues.md` 不存在就创建；存在就 append 一行。**不要**覆盖已有内容。
 
-### 派来处理 issues 的 Claude 终端
+### 派来处理 issues 的 Codex 终端
 
-用户在 UI 的「Dev Docs」→「问题」tab 点"派 Claude"按钮时，会把问题文本塞给一个新的 Claude 终端，指令里会要求你：
+用户在 UI 的「Dev Docs」→「问题」tab 点"派 Codex"按钮时，会把问题文本塞给一个新的 Codex 终端，指令里会要求你：
 
 1. 读 `dev/issues.md` 找到对应条目，分析并修复。
 2. **处理完一条**，就把 `dev/issues.md` 里**该行**的 `- [ ]` 改成 `- [x]`（不要删行，保留作历史）。
@@ -264,18 +264,18 @@
 
 任务执行中你可能发现对**未来其他任务也有用**的结论 —— 某个库的坑、项目里非显式的约定、一类操作的通用套路。这些不要只留在本任务的 `context.md` 里，否则任务归档后就找不到了。追写到以下位置之一：
 
-- **项目根的 `CLAUDE.md`** —— 长期生效的项目规则或约定（所有后续任务都要遵守的那种）。
+- **项目根的 `AGENTS.md`** —— 长期生效的项目规则或约定（所有后续任务都要遵守的那种）。
 - **项目根的 `dev/learnings.md`**（没有就新建）—— 经验性 tips，还不到规则级别，但下次遇到类似场景能少踩坑。
 
-判断是否该写的唯一标准：**换一个任务还会不会再踩这个坑 / 再用到这个结论？** 会，就写；不会，就不写。只跟当前任务相关的（特定文件的 bug、临时 workaround、当次决策的依据）留在 `context.md` 即可，别往 `CLAUDE.md` / `learnings.md` 里倒 —— 一旦变成噪声，就没人读了。
+判断是否该写的唯一标准：**换一个任务还会不会再踩这个坑 / 再用到这个结论？** 会，就写；不会，就不写。只跟当前任务相关的（特定文件的 bug、临时 workaround、当次决策的依据）留在 `context.md` 即可，别往 `AGENTS.md` / `learnings.md` 里倒 —— 一旦变成噪声，就没人读了。
 
 ## 可持续记忆（自动沉淀 + 手动追记）
 
-本项目开启了"可持续记忆"：`dev/memory/auto.md`（自动评审产出）、`dev/memory/manual.md`（大哥手动写）、`dev/memory/rejected.md`（撤回历史）。它是上面"跨任务知识沉淀"的 **补强**，不是替换 —— 原规则里"自觉写 CLAUDE.md / dev/learnings.md"照旧。
+本项目开启了"可持续记忆"：`dev/memory/auto.md`（自动评审产出）、`dev/memory/manual.md`（大哥手动写）、`dev/memory/rejected.md`（撤回历史）。它是上面"跨任务知识沉淀"的 **补强**，不是替换 —— 原规则里"自觉写 AGENTS.md / dev/learnings.md"照旧。
 
 - **Plan 阶段的第一步**：在读代码之前先扫一遍 `dev/memory/auto.md` 和 `dev/memory/manual.md`。如果里面有与本任务主题相关的条目，在 `plan.md` 里 **显式引用**（抄一句或带编号指向），证明你看过；无关则一句"memory 扫过无相关条目"即可。不要装作没这个文件。
 - **归档会自动触发评审**：每次点归档按钮，后端 fire-and-forget 拉起 codex（失败回退 gemini）读刚归档的 plan/context/tasks，把"换个任务还会用到"的经验按单行格式 append 到 `auto.md`。UI「记忆」tab 3 秒轮询，新条目会在 2 分钟内出现；评审失败则在 `rejected.md` 留一条 `review-failed:<任务名>`。归档本身永远不被评审阻塞。
-- **SessionStart hook 自动注入**：新开 Claude 会话时 `aimon-hook.mjs` 会通过 `hookSpecificOutput.additionalContext` 协议把 `auto.md` 最近 30 条 + `manual.md` 全部内容（合计 ≤10KB 截断）塞进系统上下文。也就是说你在本会话早期就 **已经看到** 这些记忆——读不到等于 hook 故障，自行排查。
+- **SessionStart hook 自动注入**：新开 Codex 会话时 `aimon-hook.mjs` 会通过 `hookSpecificOutput.additionalContext` 协议把 `auto.md` 最近 30 条 + `manual.md` 全部内容（合计 ≤10KB 截断）塞进系统上下文。也就是说你在本会话早期就 **已经看到** 这些记忆——读不到等于 hook 故障，自行排查。
 - **UI 撤回是唯一的修复手段**：auto.md 里写歪了 → 在「记忆」tab 勾选条目 → 点"撤回选中" → 后端把它移到 `rejected.md`（保留历史，不删除）。不要直接手动编辑 auto.md；它是机器产出的文件。
 - **长期经验手动追加到 `manual.md`**：任何你觉得"换任务也会用"的偏好、约定、套路，都往 `manual.md` 追加。格式建议与 auto.md 一致（`- [日期 / 来源] 结论（上下文：…）`），但自然段也行——前端会以 raw 原文展示。manual.md 不会被自动评审改动。
 
@@ -311,12 +311,12 @@
 
 ---
 
-## Claude Code 配置分层
+## Codex 配置分层
 
-Claude Code 的权限/钩子/插件配置分**系统级**（`~/.claude/`）与**项目级**（`<repo>/.claude/`）两层；本仓库再把项目级拆成"共享"（`settings.json`，进 git）和"本机"（`settings.local.json`，gitignore）两份。
+Codex 的权限/钩子/插件配置分**系统级**（`~/.Codex/`）与**项目级**（`<repo>/.Codex/`）两层；本仓库再把项目级拆成"共享"（`settings.json`，进 git）和"本机"（`settings.local.json`，gitignore）两份。
 
-- **写 settings 前的归位三问**、**deny 红线清单**、**新项目复用流程**：见 `docs/claude-config-tiers.md`。
-- **新项目复用模板**：`.claude/templates/`（system / project 两份示例）。
+- **写 settings 前的归位三问**、**deny 红线清单**、**新项目复用流程**：见 `docs/Codex-config-tiers.md`。
+- **新项目复用模板**：`.Codex/templates/`（system / project 两份示例）。
 - **每个 settings.json 顶部都有 `_doc` 字段**自描述层级和职责，打开文件秒看懂归我管啥。
 
-任何改 `~/.claude/settings.json` / `<repo>/.claude/settings.json` / `<repo>/.claude/settings.local.json` 的需求，先翻一眼那份文档，按归位规则放，不要随手堆。
+任何改 `~/.Codex/settings.json` / `<repo>/.Codex/settings.json` / `<repo>/.Codex/settings.local.json` 的需求，先翻一眼那份文档，按归位规则放，不要随手堆。

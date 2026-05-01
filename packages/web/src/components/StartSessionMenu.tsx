@@ -3,21 +3,8 @@ import * as api from '../api'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
 import { logAction, pushLog } from '../logs'
-import type { AgentKind, CliEntry, CliStatusResponse, Session, SessionScope } from '../types'
+import type { AgentKind, CliEntry, CliStatusResponse, Session } from '../types'
 import CliInstallerDialog from './CliInstallerDialog'
-
-function parseGlobs(raw: string): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const line of raw.split(/\r?\n/)) {
-    const s = line.trim()
-    if (!s) continue
-    if (seen.has(s)) continue
-    seen.add(s)
-    out.push(s)
-  }
-  return out
-}
 
 interface AgentRow {
   id: string
@@ -61,9 +48,6 @@ export default function StartSessionMenu({
   const [catalog, setCatalog] = useState<CliEntry[]>([])
   const [status, setStatus] = useState<CliStatusResponse | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
-  const [scopeEnabled, setScopeEnabled] = useState(false)
-  const [rwText, setRwText] = useState('')
-  const [roText, setRoText] = useState('')
   const [isolationOn, setIsolationOn] = useState(false)
   /** null = haven't probed yet; true/false once getProjectChanges replied */
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
@@ -148,35 +132,23 @@ export default function StartSessionMenu({
         'session',
         'start',
         async () => {
-          const scope: SessionScope | undefined = scopeEnabled
-            ? {
-                enabled: true,
-                readwrite: parseGlobs(rwText),
-                readonly: parseGlobs(roText),
-              }
-            : undefined
           const isolation = isolationOn && isGitRepo ? 'worktree' : 'shared'
           const trimmedTask = taskName.trim()
           const s = await api.createSession({
             projectId,
             agent,
-            scope,
             isolation,
             task: trimmedTask || undefined,
           })
-          // Backend doesn't echo scope in the wire response; attach it client-side
-          // so the tab badge (T9) shows immediately without waiting for a refresh.
-          const enriched = scope ? { ...s, scope } : s
-          addSession(enriched)
+          addSession(s)
           aimonWS.subscribe([s.id])
-          onStarted?.(enriched)
+          onStarted?.(s)
           return s
         },
         {
           projectId,
           meta: {
             agent,
-            scoped: scopeEnabled,
             isolation: isolationOn && isGitRepo ? 'worktree' : 'shared',
             task: taskName.trim() || undefined,
           },
@@ -256,46 +228,6 @@ export default function StartSessionMenu({
                 />
                 <span>🌿 工作区隔离（独立 worktree + 分支）</span>
               </label>
-              <label className="mt-1.5 flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={scopeEnabled}
-                  onChange={(e) => setScopeEnabled(e.target.checked)}
-                  className="accent-accent"
-                />
-                <span>🛡 启用施工边界</span>
-              </label>
-              {scopeEnabled && (
-                <div className="mt-2 space-y-2">
-                  <div>
-                    <div className="text-[10px] text-subtle mb-0.5">
-                      可写 glob（一行一个）
-                    </div>
-                    <textarea
-                      value={rwText}
-                      onChange={(e) => setRwText(e.target.value)}
-                      placeholder="dev/**&#10;docs/**"
-                      rows={3}
-                      className="w-full text-xs font-mono bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 focus:outline-none focus:border-accent/60"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-subtle mb-0.5">
-                      只读 glob（一行一个）
-                    </div>
-                    <textarea
-                      value={roText}
-                      onChange={(e) => setRoText(e.target.value)}
-                      placeholder="core/**&#10;packages/server/**"
-                      rows={3}
-                      className="w-full text-xs font-mono bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 focus:outline-none focus:border-accent/60"
-                    />
-                  </div>
-                  <p className="text-[10px] text-subtle">
-                    Edit / Write / NotebookEdit 命中只读或两个列表都没命中 → 拦截。
-                  </p>
-                </div>
-              )}
               {projectSkills.length > 0 && (
                 <div className="mt-2">
                   <div className="text-[10px] text-subtle mb-0.5">

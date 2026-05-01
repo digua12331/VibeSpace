@@ -83,6 +83,10 @@ navigate their plan documents.
    │   ├── cli-configs        — Claude / Codex settings per project
    │   ├── cli-installer      — discovers and installs missing AI CLIs
    │   ├── hooks              — receiver for aimon-hook.mjs
+   │   ├── comments           — file comments CRUD
+   │   ├── issues             — dev/issues.md reader
+   │   ├── memory             — dev/memory/auto.md + manual.md reader
+   │   ├── usage              — Claude usage statistics
    │   └── health
    ├── WS hub                 — subscribe / input / resize / replay
    ├── PtyManager             — node-pty-prebuilt-multiarch
@@ -90,6 +94,10 @@ navigate their plan documents.
    ├── CodexStatusDetector    — heuristic stdout watcher
    ├── DocsService            — dev/active tree + tasks.md checkbox parse
    ├── PerfService            — pidusage, lazy + cached
+   ├── CommentsService        — file comments management
+   ├── IssuesService          — dev/issues.md reader
+   ├── MemoryService          — dev/memory management
+   ├── UsageService           — Claude usage tracking
    └── SQLite                 — better-sqlite3, projects/sessions/events
         |
         | spawn / stdin / stdout
@@ -210,6 +218,19 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
   to user-side configuration (e.g. add a one-liner to project CLAUDE.md
   asking the agent to consume it). Add `.aimon/runtime/` to `.gitignore`;
   `.aimon/skills/` should normally be checked in.
+- **Comments system.** Inline comments on project files. Each comment is
+  anchored to a specific block in the file with a content hash for
+  stability. Comments can be created, updated, and deleted via the API.
+  Useful for code review and collaboration.
+- **Issues tracking.** Reads issues from `<project>/dev/issues.md` and
+  displays them in the sidebar. Issues can be tracked and managed as part
+  of the development workflow.
+- **Memory system.** Reads and manages memory from `<project>/dev/memory/auto.md`
+  and `manual.md`. Memory items can be rolled back if needed. This system
+  helps maintain context across sessions and tasks.
+- **Usage statistics.** Tracks Claude CLI usage statistics, including
+  files scanned, entries scanned, and skipped items. Helps monitor
+  resource consumption and optimize workflows.
 
 ## HTTP API
 
@@ -252,6 +273,14 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
 | POST | `/api/cli-installer/install` | `{ cliId }` — returns a streaming job id |
 | GET  | `/api/cli-installer/jobs/:jobId` | job state + log tail |
 | GET  | `/api/cli-installer/jobs/:jobId/stream` | SSE stream of install output |
+| GET  | `/api/projects/:id/comments?path=` | list comments for a file |
+| POST | `/api/projects/:id/comments` | `{ path, anchor, body }` — create comment |
+| PATCH | `/api/projects/:id/comments/:cid` | `{ path, body }` — update comment body |
+| DELETE | `/api/projects/:id/comments/:cid?path=` | delete comment |
+| GET  | `/api/projects/:id/issues` | list issues from `dev/issues.md` |
+| GET  | `/api/projects/:id/memory` | read memory from `dev/memory/auto.md` and `manual.md` |
+| POST | `/api/projects/:id/memory/rollback` | `{ items: [{kind, line}] }` — rollback memory items |
+| GET  | `/api/usage/claude` | Claude usage statistics |
 
 ## WebSocket protocol
 
@@ -323,9 +352,14 @@ VibeSpace/
 │   │       ├── karpathy-guidelines.ts   text bundled from andrej-karpathy-skills
 │   │       ├── dev-docs-guidelines.ts   Dev Docs workflow rules
 │   │       ├── cli-catalog.ts      AI CLI descriptors + detection
+│   │       ├── comments-service.ts file comments management
+│   │       ├── issues-service.ts   dev/issues.md reader
+│   │       ├── memory-service.ts   dev/memory management
+│   │       ├── usage-service.ts    Claude usage tracking
 │   │       └── routes/
 │   │           health · projects · sessions · hooks · git · docs
-│   │           · perf · cli-configs · cli-installer
+│   │           · perf · cli-configs · cli-installer · comments · issues
+│   │           · memory · usage
 │   ├── web                         Vite + React + zustand + xterm.js
 │   │   └── src
 │   │       ├── App.tsx, main.tsx, store.ts, ws.ts, api.ts, types.ts
