@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
@@ -60,16 +60,56 @@ export default function StartSessionMenu({
     { name: string; triggers: string[] }[]
   >([])
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null)
   const addSession = useStore((s) => s.addSession)
   const disabled = projectId === null
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (!ref.current) return
-      if (!ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (ref.current?.contains(target)) return
+      if (popupRef.current?.contains(target)) return
+      setOpen(false)
     }
     if (open) window.addEventListener('mousedown', onClick)
     return () => window.removeEventListener('mousedown', onClick)
+  }, [open])
+
+  // The popup is rendered with position:fixed so it escapes any clipped /
+  // stacked parent (sidebar, terminal panel, empty-state card). Compute its
+  // anchor from the trigger button's bounding rect; recompute on resize/scroll.
+  useLayoutEffect(() => {
+    if (!open) {
+      setAnchor(null)
+      return
+    }
+    const PANEL_W = 288 // w-72
+    const GAP = 8 // mt-2
+    const PAD = 4
+    function update() {
+      const el = triggerRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 1024
+      const vh = typeof window !== 'undefined' ? window.innerHeight : 768
+      // Right-align to the trigger, but clamp to viewport.
+      const left = Math.max(PAD, Math.min(rect.right - PANEL_W, vw - PANEL_W - PAD))
+      // Prefer below the button; flip above if there's no room.
+      const belowTop = rect.bottom + GAP
+      const top = belowTop + 320 > vh && rect.top - GAP - 320 > 0
+        ? Math.max(PAD, rect.top - GAP - 320)
+        : belowTop
+      setAnchor({ left, top })
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
   }, [open])
 
   // Probe whether the project root is a git repo. Cheap (1 cached call), but
@@ -187,6 +227,7 @@ export default function StartSessionMenu({
     <>
       <div className="relative inline-flex items-center gap-1" ref={ref}>
         <button
+          ref={triggerRef}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
           className={`fluent-btn ${compact ? 'px-2 py-0.5' : 'px-3 py-1.5'} text-sm rounded-md border ${
@@ -212,8 +253,12 @@ export default function StartSessionMenu({
             )}
           </button>
         )}
-        {open && (
-          <div className="absolute right-0 top-full mt-2 w-72 fluent-acrylic rounded-win shadow-flyout z-20 py-1 animate-fluent-in">
+        {open && anchor && (
+          <div
+            ref={popupRef}
+            style={{ position: 'fixed', left: anchor.left, top: anchor.top, width: 288, zIndex: 50 }}
+            className="fluent-acrylic rounded-win shadow-flyout py-1 animate-fluent-in"
+          >
             <div className="px-3 pt-2 pb-1.5 border-b border-white/[0.06]">
               <label
                 className={`flex items-center gap-2 text-xs cursor-pointer select-none ${

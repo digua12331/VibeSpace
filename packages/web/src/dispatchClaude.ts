@@ -20,24 +20,13 @@ export async function dispatchClaude(opts: DispatchClaudeOpts): Promise<void> {
         const st = useStore.getState()
         st.addSession(session)
         st.setActiveSession(projectId, session.id)
-        let clipboardOk = false
-        try {
-          await navigator.clipboard.writeText(prompt)
-          clipboardOk = true
-        } catch {
-          /* fall through to dialog fallback */
-        }
-        if (clipboardOk) {
-          await alertDialog(
-            '已新建 Claude 终端并聚焦。请在终端里按 Ctrl+V 粘贴、再按回车发送。',
-            { title: successTitle },
-          )
-        } else {
-          await alertDialog(
-            `已新建 Claude 终端，但自动复制到剪贴板失败。请手动复制下面的 prompt：\n\n${prompt}`,
-            { title: successTitle },
-          )
-        }
+        st.setActiveTabKind('session')
+        // Queue the prompt into pendingInputBySession. When SessionView mounts
+        // for this new session, its drain effect (see SessionView.tsx) reads
+        // the queue and fills the floating input — same path as sendToSession
+        // for already-alive sessions. No clipboard detour, no extra dialog;
+        // the user reviews the prefilled text and presses Enter.
+        st.queuePendingInput(session.id, prompt)
       },
       { projectId, meta: { target: 'claude', kind: successTitle } },
     )
