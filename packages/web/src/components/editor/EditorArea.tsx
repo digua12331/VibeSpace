@@ -7,7 +7,7 @@ import StartSessionMenu from '../StartSessionMenu'
 import TerminalHost from '../terminal/TerminalHost'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { logAction } from '../../logs'
-import type { AgentKind } from '../../types'
+import type { AgentKind, DocTaskSummary } from '../../types'
 
 /**
  * When selectedProjectId is null (user picked "全部 sessions") we key the
@@ -339,8 +339,36 @@ function extractFeature(path: string): string {
 }
 
 function EmptyState({ projectId }: { projectId: string | null }) {
+  const docsTasks = useStore((s) => s.docsTasks)
+  const sessions = useStore((s) => s.sessions)
+  const liveStatus = useStore((s) => s.liveStatus)
+  const setActiveSession = useStore((s) => s.setActiveSession)
+  const setActiveTabKind = useStore((s) => s.setActiveTabKind)
+
+  // Top 3 unfinished tasks for the current project, by updatedAt desc. Done is
+  // intentionally hidden — there's nothing to "continue" on a finished task.
+  const unfinished: DocTaskSummary[] = useMemo(() => {
+    if (!projectId) return []
+    const list = docsTasks[projectId] ?? []
+    return list
+      .filter((t) => t.status !== 'done')
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 3)
+  }, [projectId, docsTasks])
+
+  function findOwner(taskName: string) {
+    if (!projectId) return undefined
+    return sessions
+      .filter((s) => s.projectId === projectId)
+      .filter((s) => {
+        const st = liveStatus[s.id] ?? s.status
+        return st !== 'stopped' && st !== 'crashed'
+      })
+      .find((s) => s.task === taskName)
+  }
+
   return (
-    <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6 py-8 text-sm text-muted overflow-auto">
       <div className="text-center space-y-2">
         <div className="text-[36px] opacity-40">📄</div>
         <div>从左侧「源代码更改」中选择一个文件</div>
@@ -350,6 +378,60 @@ function EmptyState({ projectId }: { projectId: string | null }) {
             : '请先在「项目」中选择一个项目再启动 session'}
         </div>
       </div>
+
+      {projectId && unfinished.length > 0 && (
+        <div className="w-full max-w-[520px] border border-border/60 rounded-md bg-white/[0.02] overflow-hidden">
+          <div className="px-3 py-2 text-[11px] uppercase tracking-[0.1em] text-subtle border-b border-border/40 flex items-center gap-2">
+            <span>📝</span>
+            <span>未完成任务</span>
+            <span className="ml-auto text-[10px] tabular-nums text-muted">
+              {unfinished.length} 条
+            </span>
+          </div>
+          <div className="divide-y divide-border/30">
+            {unfinished.map((t) => {
+              const owner = findOwner(t.name)
+              return (
+                <div
+                  key={t.name}
+                  className="flex items-center gap-2 px-3 py-2 text-[12.5px] hover:bg-white/[0.03]"
+                >
+                  <span className="flex-1 truncate font-medium text-fg">
+                    {t.name}
+                  </span>
+                  <span className="text-[10px] tabular-nums text-subtle shrink-0">
+                    {t.checked}/{t.total}
+                  </span>
+                  {owner ? (
+                    <button
+                      onClick={() => {
+                        setActiveSession(projectId, owner.id)
+                        setActiveTabKind('session')
+                      }}
+                      title={`点击进入终端 ${owner.agent} · ${owner.id}`}
+                      className="text-[11px] text-cyan-300/90 bg-cyan-400/10 border border-cyan-400/30 rounded px-2 py-0.5 hover:bg-cyan-400/20 hover:text-cyan-200 transition-colors shrink-0"
+                    >
+                      🔗 进入 {owner.agent}·{owner.id.slice(-6)}
+                    </button>
+                  ) : (
+                    <StartSessionMenu
+                      projectId={projectId}
+                      compact
+                      hideInstaller
+                      triggerLabel="▶ 启动"
+                      defaultTask={t.name}
+                      onStarted={(s) => {
+                        setActiveSession(s.projectId, s.id)
+                        setActiveTabKind('session')
+                      }}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

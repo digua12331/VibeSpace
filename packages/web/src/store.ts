@@ -6,6 +6,7 @@ import type {
   ChangesResponse,
   ChecklistDoc,
   DocTaskSummary,
+  ErrorPatternAlert,
   GitRef,
   GraphCommit,
   IssuesPayload,
@@ -40,7 +41,7 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs' | 'usage' | 'appearance'
+export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs' | 'usage' | 'appearance' | 'skills'
 
 export type EditorTabKind = 'file' | 'checklist'
 
@@ -117,6 +118,11 @@ function persistWorkbench(s: {
 import { pushLog } from './logs'
 
 const LOG_RING_CAPACITY = 500
+const ALERT_RING_CAPACITY = 50
+
+interface AlertEntry extends ErrorPatternAlert {
+  read: boolean
+}
 
 const SELECTED_PROJECT_LS_KEY = 'aimon_selected_project_v1'
 const WORKBENCH_LS_KEY = 'aimon_workbench_v3'
@@ -156,6 +162,14 @@ interface State {
   logs: LogEntry[]
   appendLog: (entry: LogEntry) => void
   clearLogs: () => void
+
+  /** Active error-loop alerts, newest first. Cleared on page reload — these
+   *  are "current process" reminders, not audit history (the JSONL has the
+   *  audit trail). Capped at ALERT_RING_CAPACITY. */
+  alerts: AlertEntry[]
+  appendAlert: (alert: ErrorPatternAlert) => void
+  dismissAlert: (id: string) => void
+  markAlertRead: (id: string) => void
 
   /** Which row is highlighted inside ChangesList (selection only, no overlay). */
   selectedChange: SelectedChange | null
@@ -333,6 +347,7 @@ export const useStore = create<State>((set, get) => ({
   notifyPerm: initialPerm(),
   notifyingSessions: new Set<string>(),
   logs: [],
+  alerts: [],
   selectedChange: null,
 
   selectChange: (c) => set({ selectedChange: c }),
@@ -580,6 +595,15 @@ export const useStore = create<State>((set, get) => ({
       ...(evicted.length > 0 ? { evictedProjectIds: evicted } : {}),
       ...(usedHeap != null ? { usedJSHeapSize: usedHeap } : {}),
     })
+
+    // Refresh docs + sessions for the newly selected project so the unfinished-
+    // task entry points (DocsView rows + EditorArea EmptyState cards) show data
+    // immediately rather than waiting for the user to click into DocsView. Both
+    // are fire-and-forget; failures are already recorded inside the actions.
+    if (id != null) {
+      void get().refreshDocs(id).catch(() => {})
+      void get().refreshSessions(id).catch(() => {})
+    }
   },
 
   refreshProjects: async () => {
@@ -745,6 +769,26 @@ export const useStore = create<State>((set, get) => ({
   },
 
   clearLogs: () => set({ logs: [] }),
+
+  appendAlert: (alert) => {
+    set((st) => {
+      // Newest first; cap at ALERT_RING_CAPACITY.
+      const entry: AlertEntry = { ...alert, read: false }
+      const next = [entry, ...st.alerts]
+      if (next.length > ALERT_RING_CAPACITY) next.length = ALERT_RING_CAPACITY
+      return { alerts: next }
+    })
+  },
+
+  dismissAlert: (id) => {
+    set((st) => ({ alerts: st.alerts.filter((a) => a.id !== id) }))
+  },
+
+  markAlertRead: (id) => {
+    set((st) => ({
+      alerts: st.alerts.map((a) => (a.id === id ? { ...a, read: true } : a)),
+    }))
+  },
 
   refreshDocs: async (projectId) => {
     set((st) => ({

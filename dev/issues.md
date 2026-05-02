@@ -20,3 +20,4 @@
 - [x] vibespace-browser-tester subagent 没有 browser-use MCP 工具可用（文件 .claude/agents/vibespace-browser-tester.md；上下文：frontmatter 用 mcp__browser-use__* 通配符，claude code 不展开；导致浏览器侧自动验收全部 SKIP，需展开成具体工具名清单）
 - [ ] 为 removeDevDocs anchor 切片逻辑加 1–2 个单测（文件 packages/server/src/routes/projects.ts；上下文：DELETE /api/projects/:id/dev-docs 用 indexOf+slice，目前无测试覆盖）
 - [ ] 清理后端死路由 GET /api/projects/:id/harness-status + service 函数 getHarnessStatus（文件 packages/server/src/routes/projects.ts、harness-template-service.ts；上下文：前端 HarnessTeamDrawer 已删除，该路由无消费方）
+- [x] web 包 build 失败：'skills' 不在 Activity 联合类型里（文件 packages/web/src/components/layout/ActivityBar.tsx:31 + PrimarySidebar.tsx:63；上下文：2026-05-02 在做"记忆结构化"任务时发现，session 起始就存在的 pre-existing 错误，应该是新加 SkillsView.tsx 的 work-in-progress 缺了 Activity 类型扩展，需要在 Activity union 里加 'skills'）
