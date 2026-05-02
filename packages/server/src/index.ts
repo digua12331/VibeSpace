@@ -38,6 +38,8 @@ import { registerRawFileRoutes } from "./routes/raw-file.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerSubagentRunsRoutes } from "./routes/subagent-runs.js";
 import { registerUsageRoutes } from "./routes/usage.js";
+import { registerSkillCatalogRoutes } from "./routes/skill-catalog.js";
+import { registerSkillMarketRoutes } from "./routes/skill-market.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
 const PORT = Number(process.env.AIMON_PORT || 8787);
@@ -160,6 +162,8 @@ async function main(): Promise<void> {
   await registerJobsRoutes(app);
   await registerSubagentRunsRoutes(app);
   await registerUsageRoutes(app);
+  await registerSkillCatalogRoutes(app);
+  await registerSkillMarketRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });

@@ -28,6 +28,7 @@ export default function ActivityBar() {
     { id: 'perf', icon: '📊', label: '性能' },
     { id: 'usage', icon: '📈', label: '使用量' },
     { id: 'jobs', icon: '🛠', label: '后台任务' },
+    { id: 'skills', icon: '🧩', label: '技能' },
     {
       id: 'logs',
       icon: '📋',

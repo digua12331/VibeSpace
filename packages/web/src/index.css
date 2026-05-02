@@ -155,6 +155,16 @@ input:focus, button:focus, textarea:focus {
   box-shadow: 0 0 6px rgb(var(--color-accent) / 0.35);
 }
 
+/* Native <select> dropdown options use the OS popup, which ignores Tailwind
+ * utility classes set on the parent. Force solid bg + readable fg here so the
+ * options don't render as faint grey-on-grey when the popup paints over the
+ * page. Targets every <select> in the app — currently only MemoryView's
+ * filter bar uses one. */
+select option {
+  background-color: rgb(var(--color-bg));
+  color: rgb(var(--color-fg));
+}
+
 /* Fluent button hover/press transition */
 .fluent-btn {
   transition:

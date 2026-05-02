@@ -45,6 +45,16 @@ import type {
   WorkflowApplyResult,
   WorkflowRemoveResult,
   WorkflowStatus,
+  SkillAgentType,
+  SkillCatalogResult,
+  SkillAddResult,
+  SkillRemoveResult,
+  MarketSearchResult,
+  SkillMarketSearchSource,
+  DownloadSkillResult,
+  LocalLibrary,
+  SetLibraryPathResult,
+  DeleteLibrarySkillResult,
 } from './types'
 
 const BASE: string =
@@ -742,4 +752,103 @@ export async function uploadPastedImage(
     throw err
   }
   return (await res.json()) as PastedImageResult
+}
+
+// ---------- Skill catalog ----------
+
+export async function scanSkillCatalog(
+  projectId: string,
+  agentType: SkillAgentType,
+): Promise<SkillCatalogResult> {
+  return request<SkillCatalogResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/skill-catalog/${encodeURIComponent(agentType)}`,
+  )
+}
+
+export async function addSkillToProject(
+  projectId: string,
+  agentType: SkillAgentType,
+  body: { srcPath: string; useSymlink?: boolean },
+): Promise<SkillAddResult> {
+  return request<SkillAddResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/skill-catalog/${encodeURIComponent(agentType)}/add`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export async function removeSkillFromProject(
+  projectId: string,
+  agentType: SkillAgentType,
+  body: { skillName: string },
+): Promise<SkillRemoveResult> {
+  return request<SkillRemoveResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/skill-catalog/${encodeURIComponent(agentType)}/remove`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+// ---------- Skill market (二期) ----------
+
+export async function searchSkillMarket(
+  q: string,
+  source: SkillMarketSearchSource = 'all',
+  page = 1,
+  limit = 20,
+): Promise<MarketSearchResult> {
+  const qs = new URLSearchParams({
+    q,
+    source,
+    page: String(page),
+    limit: String(limit),
+  })
+  return request<MarketSearchResult>(`/api/skill-market/search?${qs}`)
+}
+
+export async function downloadSkillFromMarket(body: {
+  repoUrl: string
+  skillName: string
+}): Promise<DownloadSkillResult> {
+  return request<DownloadSkillResult>(`/api/skill-market/download`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function getSkillLibrary(): Promise<LocalLibrary> {
+  return request<LocalLibrary>(`/api/skill-market/library`)
+}
+
+export async function getSkillLibraryPath(): Promise<{ path: string }> {
+  return request<{ path: string }>(`/api/skill-market/library/path`)
+}
+
+export async function setSkillLibraryPath(body: {
+  path: string
+  migrate?: boolean
+}): Promise<SetLibraryPathResult> {
+  return request<SetLibraryPathResult>(`/api/skill-market/library/path`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function deleteLibrarySkill(body: {
+  name: string
+  source: 'official' | 'custom'
+}): Promise<DeleteLibrarySkillResult> {
+  return request<DeleteLibrarySkillResult>(`/api/skill-market/library/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }

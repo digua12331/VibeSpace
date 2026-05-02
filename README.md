@@ -62,6 +62,23 @@ navigate their plan documents.
   side-buttons (shortcuts that paste a command into the terminal).
 - **All-in-page dialogs.** No native `alert` / `confirm` popups — every
   confirmation is an in-page modal with consistent ESC/Enter behaviour.
+- **Skill catalog (🧩).** Browser panel for managing the *Anthropic-standard*
+  skills folder layout — `.claude/skills/`, `.codex/skills/`,
+  `.opencode/skill[s]/` — that the underlying AI CLIs read directly. Per
+  agent: scan project + global, install global skills into the project
+  (copy or symlink with EPERM auto-fallback), uninstall, add from any
+  custom path. Note: this is **separate** from `.aimon/skills/<name>.md`
+  (single-file, trigger-keyed prompt fragments injected by VibeSpace's
+  SessionStart hook); the catalog manages the CLIs' own skill system.
+- **Skill market (🛒, inside 🧩).** Same panel, second mode: search GitHub
+  `topic:skill` and skills.sh in one query, one-click `git clone --depth 1`
+  to a local library at `~/SkillManager/` (path configurable; stored in
+  `~/.vibespace/skill-market.json`), then reuse the catalog's "install to
+  project" button. Hardened: repoUrl whitelist regex, 60s in-process cache
+  for GitHub, single-concurrent download with 60s timeout, 50 MB / 5000-file
+  size cap, `cpSync` `dereference: true` against symlink-escape, temp dir
+  finally-cleanup. Network only fires when you click search or download —
+  the panel never phones home on its own.
 
 ## Architecture
 
@@ -87,6 +104,8 @@ navigate their plan documents.
    │   ├── issues             — dev/issues.md reader
    │   ├── memory             — dev/memory/auto.md + manual.md reader
    │   ├── usage              — Claude usage statistics
+   │   ├── skill-catalog      — scan / install / uninstall .claude|.codex|.opencode/skills/
+   │   ├── skill-market       — GitHub + skills.sh search / git-clone download / local library
    │   └── health
    ├── WS hub                 — subscribe / input / resize / replay
    ├── PtyManager             — node-pty-prebuilt-multiarch
@@ -98,6 +117,8 @@ navigate their plan documents.
    ├── IssuesService          — dev/issues.md reader
    ├── MemoryService          — dev/memory management
    ├── UsageService           — Claude usage tracking
+   ├── SkillCatalogService    — folder-based skills for Claude / Codex / OpenCode
+   ├── SkillMarketService     — search/download/library + safety: regex whitelist, size cap, dereference cp
    └── SQLite                 — better-sqlite3, projects/sessions/events
         |
         | spawn / stdin / stdout

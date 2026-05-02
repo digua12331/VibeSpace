@@ -140,7 +140,6 @@ export default function Workbench() {
             collapsible
             collapsedSize="0%"
             minSize="8%"
-            maxSize="35%"
             defaultSize={`${sidebarSize}%`}
             onResize={(s: PanelSize) => setSidebarSize(s.asPercentage)}
           >

@@ -20,7 +20,10 @@
     "smoke:refresh": "node scripts/refresh-smoke.mjs",
     "smoke:git": "node scripts/git-smoke.mjs",
     "smoke:git-ops": "node scripts/git-ops-smoke.mjs",
-    "smoke:worktree": "node scripts/worktree-smoke.mjs"
+    "smoke:worktree": "node scripts/worktree-smoke.mjs",
+    "smoke:memory-parse": "node scripts/memory-parse-smoke.mjs",
+    "smoke:error-pattern": "node scripts/error-pattern-smoke.mjs",
+    "smoke:error-pattern-e2e": "node scripts/error-pattern-e2e-smoke.mjs"
   },
   "packageManager": "pnpm@10.20.0",
   "engines": {

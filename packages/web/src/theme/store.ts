@@ -57,6 +57,18 @@ function applyDataset(theme: ThemeName): void {
   document.documentElement.dataset.theme = theme
 }
 
+/**
+ * 把用户 CSS 里裸 `:root` 升格成 `:root[data-theme]`，让特异性 (0,1,1) 盖过
+ * 预设主题 `[data-theme="..."]` 的 (0,1,0)。否则用户粘贴标准 `:root { --foo }`
+ * 永远被预设主题覆盖（apply-css 日志成功但视觉无变化）。
+ *
+ * 同步副本在 packages/web/index.html 的 FOUC IIFE 兜底脚本里——改这里时也改那里。
+ */
+export function bumpRootSpecificity(css: string): string {
+  if (!css) return css
+  return css.replace(/:root\b(?![\[(])/g, ':root[data-theme]')
+}
+
 function applyUserCss(css: string): void {
   if (typeof document === 'undefined') return
   let el = document.getElementById(USER_STYLE_ID) as HTMLStyleElement | null
@@ -65,7 +77,7 @@ function applyUserCss(css: string): void {
     el.id = USER_STYLE_ID
     document.head.appendChild(el)
   }
-  el.textContent = css
+  el.textContent = bumpRootSpecificity(css)
 }
 
 interface ThemeState {

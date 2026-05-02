@@ -15,9 +15,12 @@
           var t = s && typeof s.theme === 'string' ? s.theme : 'soft-dark';
           document.documentElement.dataset.theme = t;
           if (s && typeof s.customCss === 'string' && s.customCss) {
+            // 与 packages/web/src/theme/store.ts 的 bumpRootSpecificity 保持一致：
+            // 把裸 :root 升成 :root[data-theme]，特异性 (0,1,1) 盖过预设主题 (0,1,0)。
+            var css = s.customCss.replace(/:root\b(?![\[(])/g, ':root[data-theme]');
             var st = document.createElement('style');
             st.id = 'user-theme';
-            st.textContent = s.customCss;
+            st.textContent = css;
             document.head.appendChild(st);
           }
         } catch (_) { /* localStorage disabled / quota — fall through to default */ }

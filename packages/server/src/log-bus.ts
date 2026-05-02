@@ -2,8 +2,9 @@ import { mkdirSync } from "node:fs";
 import { appendFile, readdir, stat, unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { LogEntry, LogLevel, ClientLogPayload } from "./types/log.js";
+import type { LogEntry, LogLevel, ClientLogPayload, ErrorPatternAlert } from "./types/log.js";
 import { broadcast } from "./ws-hub.js";
+import { errorPatternMonitor } from "./error-pattern-monitor.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,6 +16,35 @@ const LOG_RETENTION_MS = LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 let _nextId = 1;
 let _dirEnsured = false;
 let _appendWarnedOnce = false;
+let _monitorWarnedOnce = false;
+
+/**
+ * Hand each log entry to the error-loop monitor on next tick. Wrapped in
+ * try/catch and gated behind setImmediate so a misbehaving monitor cannot
+ * stall, throw into, or otherwise interfere with the original `serverLog` /
+ * `persistClientLog` caller. First failure surfaces as a single warn log;
+ * subsequent failures stay silent so a busted monitor cannot flood logs.
+ */
+function safeRecord(entry: LogEntry): void {
+  setImmediate(() => {
+    try {
+      errorPatternMonitor.record(entry);
+    } catch (err) {
+      if (_monitorWarnedOnce) return;
+      _monitorWarnedOnce = true;
+      // serverLog('warn', ...) here is safe: monitor.record only acts on
+      // level='error', so this warn entry will be ignored, no recursion.
+      try {
+        serverLog("warn", "error-monitor", "errorPatternMonitor.record threw", {
+          meta: { error: (err as Error).message },
+        });
+      } catch {
+        // last-ditch — avoid any chance of throwing back into this tick
+        console.warn("log-bus: monitor record threw and warn-log also failed");
+      }
+    }
+  });
+}
 
 function ensureDir(): void {
   if (_dirEnsured) return;
@@ -83,6 +113,7 @@ export function serverLog(
   });
 
   appendJsonl(entry);
+  safeRecord(entry);
 }
 
 export function persistClientLog(payload: ClientLogPayload): void {
@@ -97,6 +128,7 @@ export function persistClientLog(payload: ClientLogPayload): void {
     meta: payload.meta,
   };
   appendJsonl(entry);
+  safeRecord(entry);
 }
 
 export function handleClientLogRoundtrip(payload: ClientLogPayload): void {
@@ -112,6 +144,37 @@ export function handleClientLogRoundtrip(payload: ClientLogPayload): void {
     { meta: { source: "testBackendLog" } },
   );
 }
+
+/**
+ * Broadcast an error-loop alert to all WS clients and persist a corresponding
+ * `warn`-level log entry so it survives in the JSONL audit trail (the alert
+ * itself is in-memory, but the JSONL record lets you replay "what fired and
+ * when" from disk).
+ */
+export function broadcastAlert(alert: ErrorPatternAlert): void {
+  broadcast({ type: "error-pattern-alert", alert });
+  serverLog(
+    "warn",
+    "error-monitor",
+    "检测到错误循环（同 key 在 1h 窗口内 ≥ 3 次）",
+    {
+      projectId: alert.key.projectId,
+      meta: {
+        alert: true,
+        alertId: alert.id,
+        key: alert.key,
+        count: alert.count,
+        firstAt: alert.firstAt,
+        lastAt: alert.lastAt,
+        sampleMsg: alert.sampleMsg,
+      },
+    },
+  );
+}
+
+// Wire monitor → broadcast at module load. Only fires on level='error' entries
+// fed via safeRecord above; cooldown / dedup live inside the monitor itself.
+errorPatternMonitor.subscribe(broadcastAlert);
 
 /**
  * Delete *.log files in data/logs whose mtime is older than 30 days. Fire and
