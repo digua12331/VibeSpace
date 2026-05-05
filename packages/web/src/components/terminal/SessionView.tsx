@@ -26,6 +26,24 @@ import { BUILTIN_SHELL_AGENTS, type AgentKind, type Session } from '../../types'
 import InputMenu from './InputMenu'
 import { getSlashCommands } from './slashCommands'
 
+// 合并内置硬编码 + 动态扫描（~/.claude/skills 等）的斜杠候选。
+// built-in 永远在前，dynamic 追加；按 lowercase 去重，built-in 胜出，
+// 避免用户起一个叫 `help` 的 skill 把 `/help` 顶掉。
+function mergeSlashCommands(
+  builtIn: readonly string[],
+  dynamic: readonly string[],
+): string[] {
+  const seen = new Set<string>(builtIn.map((c) => c.toLowerCase()))
+  const out: string[] = [...builtIn]
+  for (const c of dynamic) {
+    const k = c.toLowerCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(c)
+  }
+  return out
+}
+
 // 多行裸文本送进 PTY 时，Claude Code / Codex / Gemini 等 ink-based TUI 会把
 // 内嵌的 \n 当成"用户在 prompt 里手敲多行"，光标停在最后一行，后面的 \r
 // 不算"干净的单行 Enter"所以不触发提交——表现就是文本进了 agent 的 prompt
@@ -254,12 +272,34 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   // 见 attachCustomKeyEventHandler 的 TUI passthrough 分支。
   const passthroughLoggedRef = useRef(false)
   const [menu, setMenu] = useState<MenuState>({ kind: 'none' })
+  const [dynamicSlash, setDynamicSlash] = useState<readonly string[]>([])
   const [busy, setBusy] = useState(false)
   const [showExitInfo, setShowExitInfo] = useState(true)
   const [confirmClose, setConfirmClose] = useState(false)
   const [customButtons, setCustomButtonsState] = useState<CustomButton[]>(() => getCustomButtons())
 
   useEffect(() => onCustomButtonsChange(setCustomButtonsState), [])
+
+  // 拉取本机/项目级动态斜杠候选（skills + commands 目录扫描）。
+  // 失败 silent fallback 为空数组，菜单退化为只剩 slashCommands.ts 内置项。
+  useEffect(() => {
+    if (!session.projectId) {
+      setDynamicSlash([])
+      return
+    }
+    let cancelled = false
+    api
+      .listSlashCommands(session.projectId, session.agent)
+      .then((cmds) => {
+        if (!cancelled) setDynamicSlash(cmds)
+      })
+      .catch(() => {
+        if (!cancelled) setDynamicSlash([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session.projectId, session.agent])
 
   // Poll subagent runs while this session view is active. 5s cadence matches
   // MemoryView/JobsView; subagent Task calls last 30s+ so faster polling is
@@ -717,7 +757,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         const prev = i > 0 ? v[i - 1] : ''
         const atBoundary = i === 0 || prev === ' ' || prev === '\t' || prev === '\n'
         if (!atBoundary) return { kind: 'none' }
-        if (getSlashCommands(session.agent).length === 0) return { kind: 'none' }
+        if (effectiveSlashCommands().length === 0) return { kind: 'none' }
         return {
           kind: 'slash',
           trigger: i,
@@ -742,9 +782,13 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     return { kind: 'none' }
   }
 
+  function effectiveSlashCommands(): readonly string[] {
+    return mergeSlashCommands(getSlashCommands(session.agent), dynamicSlash)
+  }
+
   function getMenuItems(state: MenuState): string[] {
     if (state.kind === 'slash') {
-      const all = getSlashCommands(session.agent)
+      const all = effectiveSlashCommands()
       const q = state.filter.toLowerCase()
       return all.filter((c) => c.toLowerCase().startsWith(q))
     }

@@ -795,6 +795,18 @@ export async function removeSkillFromProject(
   )
 }
 
+// ---------- Dynamic slash commands ----------
+
+export async function listSlashCommands(
+  projectId: string,
+  agent: string,
+): Promise<string[]> {
+  const res = await request<{ commands: string[] }>(
+    `/api/projects/${encodeURIComponent(projectId)}/slash-commands/${encodeURIComponent(agent)}`,
+  )
+  return res.commands
+}
+
 // ---------- Skill market (二期) ----------
 
 export async function searchSkillMarket(
