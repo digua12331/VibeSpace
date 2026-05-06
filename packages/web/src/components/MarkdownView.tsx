@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import { highlightToHtml } from '../highlight'
+import { useShikiVersion } from '../theme/store'
 import { extractAnchors } from '../commentAnchor'
 import { rehypeAnchorIds } from '../rehypeAnchorIds'
 
@@ -51,6 +52,7 @@ interface CodeBlockProps {
 
 function CodeBlock({ code, lang }: CodeBlockProps) {
   const [html, setHtml] = useState<string | null>(null)
+  const shikiVersion = useShikiVersion()
 
   useEffect(() => {
     let cancelled = false
@@ -64,11 +66,11 @@ function CodeBlock({ code, lang }: CodeBlockProps) {
     return () => {
       cancelled = true
     }
-  }, [code, lang])
+  }, [code, lang, shikiVersion])
 
   if (!html) {
     return (
-      <pre className="fluent-card bg-[#0d1117] text-[#c9d1d9] p-3 rounded-md overflow-auto text-[12.5px] leading-relaxed">
+      <pre className="fluent-card bg-code-bg text-code-fg p-3 rounded-md overflow-auto text-[12.5px] leading-relaxed">
         <code>{code}</code>
       </pre>
     )

@@ -1,0 +1,92 @@
+/* ---------------------------------------------------------------------------
+ * Design tokens — 全部主题化变量集中处。
+ * 默认值 = 升级前的硬编码（Win11 Fluent Dark 风格），保证不切主题时视觉零变化。
+ *
+ * 颜色用 RGB triplet 格式（"R G B"，三个数字空格分隔，不带 rgb() 包装），
+ * 这样 Tailwind opacity 修饰符（bg-bg/50）能正常工作：
+ *   colors.bg = 'rgb(var(--color-bg) / <alpha-value>)'
+ *
+ * 切预设主题在 themes.css 的 [data-theme="..."] 块里覆写这些变量。
+ * 用户自定义 CSS 也是覆写这些变量。
+ * ------------------------------------------------------------------------- */
+
+:root {
+  /* ── 颜色：RGB triplet ─────────────────────────────────────────── */
+  --color-bg: 32 32 32;            /* = #202020 */
+  --color-card: 43 43 43;          /* = #2b2b2b */
+  --color-card-2: 50 50 50;        /* = #323232 */
+  --color-border: 58 58 58;        /* = #3a3a3a */
+  --color-border-soft: 50 50 50;   /* = #323232 */
+  --color-fg: 255 255 255;         /* = #ffffff */
+  --color-muted: 199 199 199;      /* = #c7c7c7 */
+  --color-subtle: 138 138 138;     /* = #8a8a8a */
+  --color-accent: 96 205 255;      /* = #60cdff */
+  --color-accent-2: 76 194 255;    /* = #4cc2ff */
+  --color-accent-deep: 0 120 212;  /* = #0078d4 */
+  --color-on-accent: 0 50 80;      /* = #003250 — accent 背景上需要的对比文字色 */
+
+  /* 代码渲染回退色（GitHub Dark 风格，shiki 兜底前/不渲染时显示） */
+  --color-code-bg: 13 17 23;       /* = #0d1117 */
+  --color-code-fg: 201 209 217;    /* = #c9d1d9 */
+
+  /* xterm 终端独立颜色（默认值 = SessionView.tsx 旧硬编码） */
+  --color-xterm-bg: 28 28 28;      /* = #1c1c1c */
+  --color-xterm-fg: 255 255 255;   /* = #ffffff */
+  --color-xterm-cursor: 96 205 255;/* = #60cdff */
+
+  --color-placeholder: 138 138 138;/* = #8a8a8a */
+  --color-focus-ring: 96 205 255;  /* = #60cdff */
+
+  /* ── 表面材质（三组分别控制 surface / acrylic / mica） ─────────
+   * surface = 通用卡片/.fluent-card 等"层"的默认表面（默认实色，glass 主题切半透明）
+   * acrylic = .fluent-acrylic（flyout/menu/popover）的强半透明 + 中模糊
+   * mica    = .fluent-mica（app chrome 大背景）的弱半透明 + 大模糊
+   * 默认值与升级前的硬编码完全等价（fluent-acrylic 原 rgba(44,44,44,0.78) + blur 30px、
+   * fluent-mica 原 rgba(32,32,32,0.85) + blur 60px、fluent-card 实色）。
+   */
+  --surface-bg: rgb(var(--color-card));
+  --surface-fg: rgb(var(--color-fg));
+  --surface-border: rgb(var(--color-border));
+  --surface-blur: 0px;             /* glass 主题 = 24px */
+  --surface-saturate: 100%;        /* glass 主题 = 140% */
+  --surface-shadow: 0 2px 4px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0, 0, 0, 0.28);
+
+  --acrylic-bg: rgb(var(--color-card) / 0.78);
+  --acrylic-border: rgb(255 255 255 / 0.08);
+  --acrylic-blur: 30px;
+  --acrylic-saturate: 140%;
+
+  --mica-bg: rgb(var(--color-bg) / 0.85);
+  --mica-blur: 60px;
+  --mica-saturate: 150%;
+
+  /* ── 圆角（覆盖 Tailwind 默认 borderRadius scale） ─────────────── */
+  --radius-none: 0;
+  --radius-sm:   0.125rem;          /* 2px */
+  --radius:      0.25rem;           /* 4px = Tailwind DEFAULT */
+  --radius-md:   0.375rem;          /* 6px */
+  --radius-lg:   0.5rem;            /* 8px */
+  --radius-xl:   0.75rem;           /* 12px */
+  --radius-2xl:  1rem;              /* 16px */
+  --radius-3xl:  1.5rem;            /* 24px */
+  --radius-full: 9999px;
+  --radius-win:  8px;               /* Fluent Win11 默认 */
+
+  /* ── 阴影 ─────────────────────────────────────────────────────── */
+  --shadow-tile:   0 2px 4px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0, 0, 0, 0.28);
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0, 0, 0, 0.28);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.36), 0 0 8px rgba(0, 0, 0, 0.28);
+
+  /* ── 边框宽度 ─────────────────────────────────────────────────── */
+  --border-width: 1px;
+
+  /* ── 字体 ─────────────────────────────────────────────────────── */
+  --font-sans:    'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI',
+                  system-ui, -apple-system, ui-sans-serif, Roboto, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI',
+                  system-ui, sans-serif;
+  --font-mono:    'Cascadia Mono', 'Cascadia Code', Consolas, Menlo, monospace;
+
+  /* ── shiki 代码高亮主题名 ────────────────────────────────────── */
+  --shiki-theme-name: 'github-dark-dimmed';
+}

@@ -8,6 +8,7 @@ import { MemoryView } from './MemoryView'
 import { logAction, pushLog } from '../../logs'
 import { dispatchClaude } from '../../dispatchClaude'
 import { pickClaudeTarget, sendToSession } from '../../sendToSession'
+import StartSessionMenu from '../StartSessionMenu'
 
 const EMPTY_TASKS: DocTaskSummary[] = []
 const EMPTY_ISSUES: IssueItem[] = []
@@ -126,6 +127,8 @@ export default function DocsView() {
   const sessions = useStore((s) => s.sessions)
   const liveStatus = useStore((s) => s.liveStatus)
   const setSessionTaskLocal = useStore((s) => s.setSessionTaskLocal)
+  const setActiveSession = useStore((s) => s.setActiveSession)
+  const setActiveTabKind = useStore((s) => s.setActiveTabKind)
   const [view, setView] = useState<DocsViewMode>('tasks')
   const memoryPollRef = useRef<{ id: ReturnType<typeof setTimeout> | null; stopped: boolean }>({ id: null, stopped: false })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -610,13 +613,43 @@ export default function DocsView() {
                 <span className="flex-1 truncate font-medium">{t.name}</span>
                 {(() => {
                   const owner = findOwnerOfTask(t.name)
-                  if (!owner) return null
+                  if (owner) {
+                    // Alive owner exists — clicking jumps to its session tab.
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!projectId) return
+                          setActiveSession(projectId, owner.id)
+                          setActiveTabKind('session')
+                        }}
+                        title={`点击进入终端 ${owner.agent} · ${owner.id}`}
+                        className="text-[10px] text-cyan-300/90 bg-cyan-400/10 border border-cyan-400/30 rounded px-1 py-0 leading-4 whitespace-pre hover:bg-cyan-400/20 hover:text-cyan-200 transition-colors"
+                      >
+                        🔗 {owner.agent}·{owner.id.slice(-6)}
+                      </button>
+                    )
+                  }
+                  // No alive owner — for unfinished tasks, surface a "▶ 启动"
+                  // dropdown that pre-fills the task name. Done tasks get
+                  // nothing (no point starting a terminal for completed work).
+                  if (t.status === 'done') return null
                   return (
                     <span
-                      className="text-[10px] text-cyan-300/90 bg-cyan-400/10 border border-cyan-400/30 rounded px-1 py-0 leading-4 whitespace-pre"
-                      title={`绑定到 session: ${owner.agent} · ${owner.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      onContextMenu={(e) => e.stopPropagation()}
                     >
-                      🔗 {owner.agent}·{owner.id.slice(-6)}
+                      <StartSessionMenu
+                        projectId={projectId}
+                        compact
+                        hideInstaller
+                        triggerLabel="▶ 启动"
+                        defaultTask={t.name}
+                        onStarted={(s) => {
+                          setActiveSession(s.projectId, s.id)
+                          setActiveTabKind('session')
+                        }}
+                      />
                     </span>
                   )
                 })()}

@@ -35,11 +35,15 @@ export default function StartSessionMenu({
   onStarted,
   triggerLabel = '▶ 启动',
   compact = false,
+  defaultTask,
+  hideInstaller = false,
 }: {
   projectId: string | null
   onStarted?: (s: Session) => void
   triggerLabel?: string
   compact?: boolean
+  defaultTask?: string
+  hideInstaller?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [installerOpen, setInstallerOpen] = useState(false)
@@ -51,7 +55,7 @@ export default function StartSessionMenu({
   const [isolationOn, setIsolationOn] = useState(false)
   /** null = haven't probed yet; true/false once getProjectChanges replied */
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
-  const [taskName, setTaskName] = useState('')
+  const [taskName, setTaskName] = useState(defaultTask ?? '')
   const [projectSkills, setProjectSkills] = useState<
     { name: string; triggers: string[] }[]
   >([])
@@ -190,22 +194,24 @@ export default function StartSessionMenu({
               ? 'border-border text-muted cursor-not-allowed opacity-50'
               : compact
                 ? 'border-border text-muted hover:text-fg hover:bg-white/[0.04]'
-                : 'bg-accent text-[#003250] font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+                : 'bg-accent text-on-accent font-medium hover:bg-accent-2 border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
           }`}
           title={disabled ? '先在左侧选择一个项目' : '启动新 session'}
         >
           {triggerLabel}
         </button>
-        <button
-          onClick={() => setInstallerOpen(true)}
-          className="fluent-btn px-2 py-1.5 text-sm rounded-md border border-border bg-white/[0.03] hover:bg-white/[0.08]"
-          title="安装 / 管理 AI CLI"
-        >
-          📦
-          {missingCount > 0 && (
-            <span className="ml-1 text-[10px] text-amber-300">+{missingCount}</span>
-          )}
-        </button>
+        {!hideInstaller && (
+          <button
+            onClick={() => setInstallerOpen(true)}
+            className="fluent-btn px-2 py-1.5 text-sm rounded-md border border-border bg-white/[0.03] hover:bg-white/[0.08]"
+            title="安装 / 管理 AI CLI"
+          >
+            📦
+            {missingCount > 0 && (
+              <span className="ml-1 text-[10px] text-amber-300">+{missingCount}</span>
+            )}
+          </button>
+        )}
         {open && (
           <div className="absolute right-0 top-full mt-2 w-72 fluent-acrylic rounded-win shadow-flyout z-20 py-1 animate-fluent-in">
             <div className="px-3 pt-2 pb-1.5 border-b border-white/[0.06]">
@@ -228,7 +234,7 @@ export default function StartSessionMenu({
                 />
                 <span>🌿 工作区隔离（独立 worktree + 分支）</span>
               </label>
-              {projectSkills.length > 0 && (
+              {(projectSkills.length > 0 || !!defaultTask) && (
                 <div className="mt-2">
                   <div className="text-[10px] text-subtle mb-0.5">
                     🔗 绑定到任务（可选）

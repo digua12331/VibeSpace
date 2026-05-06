@@ -1,36 +1,32 @@
 @import '@xterm/xterm/css/xterm.css';
+@import './theme/tokens.css';
+@import './theme/themes.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
- * Windows 11 — Fluent Design dark theme
- *
- * Base surface is a Mica-style neutral; chrome layers (header/sidebar/dialogs)
- * sit on top at a slightly lighter tone. Typography prioritizes Segoe UI
- * Variable; accent is the Win11 dark-mode default blue.
+ * Global shell — 默认走 tokens.css 里的 design tokens；切预设主题
+ * 由 [data-theme="..."] 块覆写（themes.css），用户自定义 CSS 可再次覆写。
  * ------------------------------------------------------------------------- */
 
 html, body, #root {
   height: 100%;
   margin: 0;
-  background: #202020;
-  color: #ffffff;
-  font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI",
-    system-ui, -apple-system, ui-sans-serif, Roboto, sans-serif;
+  background: rgb(var(--color-bg));
+  color: rgb(var(--color-fg));
+  font-family: var(--font-sans);
   font-feature-settings: "ss01", "calt", "liga";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Subtle Mica-ish vignette on the app body — a very faint gradient that
- * emulates the warm/cool shift of Win11's Mica material without needing
- * real background blur (which only works behind transparent windows). */
+/* Subtle Mica-ish vignette: 用 accent 色点缀，跟着主题色走 */
 body {
   background-image:
-    radial-gradient(1200px 800px at 0% 0%, rgba(96, 205, 255, 0.04), transparent 60%),
-    radial-gradient(1000px 700px at 100% 100%, rgba(149, 103, 255, 0.04), transparent 60%);
+    radial-gradient(1200px 800px at 0% 0%, rgb(var(--color-accent) / 0.04), transparent 60%),
+    radial-gradient(1000px 700px at 100% 100%, rgb(var(--color-accent-deep) / 0.04), transparent 60%);
   background-attachment: fixed;
 }
 
@@ -48,22 +44,20 @@ input:focus, button:focus, textarea:focus {
 }
 
 ::placeholder {
-  color: #8a8a8a;
+  color: rgb(var(--color-placeholder));
 }
 
 /* ---- Focus ring — Fluent "reveal" style (2px accent outline) -------------- */
 :focus-visible {
-  outline: 2px solid #60cdff;
+  outline: 2px solid rgb(var(--color-focus-ring));
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* ---- Win11 scrollbar ------------------------------------------------------
- * Thin, auto-hide feel, rounded thumb, transparent track. Matches the
- * "overlay scrollbar" used across WinUI surfaces. */
+/* ---- Win11 scrollbar ----------------------------------------------------- */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #5a5a5a transparent;
+  scrollbar-color: rgb(var(--color-subtle)) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -74,13 +68,13 @@ input:focus, button:focus, textarea:focus {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgb(var(--color-fg) / 0.18);
   border-radius: 10px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.32);
+  background: rgb(var(--color-fg) / 0.32);
   background-clip: padding-box;
   border: 2px solid transparent;
 }
@@ -88,11 +82,11 @@ input:focus, button:focus, textarea:focus {
   background: transparent;
 }
 
-/* ---- xterm host ----------------------------------------------------------- */
+/* ---- xterm host ---------------------------------------------------------- */
 .xterm,
 .xterm .xterm-viewport,
 .xterm .xterm-screen {
-  background-color: #1c1c1c !important;
+  background-color: rgb(var(--color-xterm-bg)) !important;
 }
 .xterm .xterm-viewport::-webkit-scrollbar-track {
   background: transparent;
@@ -101,34 +95,50 @@ input:focus, button:focus, textarea:focus {
   opacity: 0.35;
 }
 
-/* ---- Fluent helper utilities ---------------------------------------------- */
+/* ---- Surface utility ----------------------------------------------------- */
+/* 通用"层"utility（卡片/弹窗/侧栏头），等价于 .fluent-card 但语义更清晰。
+ * 默认 --surface-blur=0px → backdrop-filter 等同 noop，零性能开销；
+ * glass-dark 主题里 --surface-blur=24px + --surface-bg 半透明 → 玻璃感。 */
+.surface {
+  background-color: var(--surface-bg);
+  color: var(--surface-fg);
+  border: var(--border-width) solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: saturate(var(--surface-saturate)) blur(var(--surface-blur));
+  -webkit-backdrop-filter: saturate(var(--surface-saturate)) blur(var(--surface-blur));
+}
 
-/* Acrylic: translucent, blurred overlay used on flyouts / context menus. */
+/* ---- Fluent material classes (走 acrylic/mica/surface 三组变量) ---------- */
+
+/* Acrylic: translucent + medium blur (flyouts/menus/popovers) */
 .fluent-acrylic {
-  background-color: rgba(44, 44, 44, 0.78);
-  backdrop-filter: saturate(140%) blur(30px);
-  -webkit-backdrop-filter: saturate(140%) blur(30px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--acrylic-bg);
+  backdrop-filter: saturate(var(--acrylic-saturate)) blur(var(--acrylic-blur));
+  -webkit-backdrop-filter: saturate(var(--acrylic-saturate)) blur(var(--acrylic-blur));
+  border: var(--border-width) solid var(--acrylic-border);
 }
 
-/* Mica: opaque-ish tinted surface used on app chrome. */
+/* Mica: weak translucent + large blur (app chrome large surfaces) */
 .fluent-mica {
-  background-color: rgba(32, 32, 32, 0.85);
-  backdrop-filter: saturate(150%) blur(60px);
-  -webkit-backdrop-filter: saturate(150%) blur(60px);
+  background-color: var(--mica-bg);
+  backdrop-filter: saturate(var(--mica-saturate)) blur(var(--mica-blur));
+  -webkit-backdrop-filter: saturate(var(--mica-saturate)) blur(var(--mica-blur));
 }
 
-/* Reveal border — a 1px top highlight that simulates Fluent's layer stroke. */
+/* Card: 实色 + 边框 + 轻阴影（layer 卡片）；glass 主题下 --surface-bg 半透明 */
 .fluent-card {
-  background-color: #2b2b2b;
-  border: 1px solid #3a3a3a;
-  border-radius: 8px;
+  background-color: var(--surface-bg);
+  border: var(--border-width) solid var(--surface-border);
+  border-radius: var(--radius-lg);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 2px 4px rgba(0, 0, 0, 0.14);
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    var(--shadow-tile);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
 }
 
-/* Nav selection indicator: vertical accent pill on the left side. */
+/* Nav selection indicator: vertical accent pill */
 .fluent-selection-indicator {
   position: relative;
 }
@@ -141,11 +151,21 @@ input:focus, button:focus, textarea:focus {
   width: 3px;
   height: 16px;
   border-radius: 2px;
-  background: #60cdff;
-  box-shadow: 0 0 6px rgba(96, 205, 255, 0.35);
+  background: rgb(var(--color-accent));
+  box-shadow: 0 0 6px rgb(var(--color-accent) / 0.35);
 }
 
-/* Fluent button hover/press ripple substitute: background brightens slightly. */
+/* Native <select> dropdown options use the OS popup, which ignores Tailwind
+ * utility classes set on the parent. Force solid bg + readable fg here so the
+ * options don't render as faint grey-on-grey when the popup paints over the
+ * page. Targets every <select> in the app — currently only MemoryView's
+ * filter bar uses one. */
+select option {
+  background-color: rgb(var(--color-bg));
+  color: rgb(var(--color-fg));
+}
+
+/* Fluent button hover/press transition */
 .fluent-btn {
   transition:
     background-color 120ms cubic-bezier(0.1, 0.9, 0.2, 1),
@@ -164,10 +184,9 @@ input:focus, button:focus, textarea:focus {
  * ------------------------------------------------------------------------- */
 
 .shiki-wrap pre {
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
-/* Line numbers gutter for CodeView / MarkdownView code blocks. */
 .shiki-wrap.with-linenos pre code {
   counter-reset: step;
   counter-increment: step 0;
@@ -184,7 +203,6 @@ input:focus, button:focus, textarea:focus {
   width: 2.5rem;
   margin-right: 0.75rem;
   text-align: right;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgb(var(--color-fg) / 0.25);
   user-select: none;
 }
-

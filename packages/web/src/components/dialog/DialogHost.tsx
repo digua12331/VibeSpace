@@ -254,7 +254,7 @@ export default function DialogHost() {
             className={`fluent-btn px-4 py-1.5 text-sm rounded-md border shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] font-medium ${
               danger
                 ? 'bg-rose-500 text-white border-rose-400 hover:bg-rose-400'
-                : 'bg-accent text-[#003250] border-accent/60 hover:bg-accent-2'
+                : 'bg-accent text-on-accent border-accent/60 hover:bg-accent-2'
             }`}
           >
             {top.confirmLabel}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import { logAction } from '../logs'
 import { useStore, type SelectedChange } from '../store'
@@ -6,6 +6,7 @@ import type { ChangeEntry, ChangeStatus, ChangesResponse } from '../types'
 import { alertDialog, confirmDialog } from './dialog/DialogHost'
 import { openContextMenu } from './ContextMenu'
 import { buildFileContextItems, type FileContextSession } from './fileContextMenu'
+import BranchPopover from './BranchPopover'
 
 interface Props {
   projectId: string
@@ -35,11 +36,22 @@ function StatusBadge({ status }: { status: ChangeStatus }) {
 type Kind = 'staged' | 'unstaged' | 'untracked'
 
 export default function ChangesList({ projectId }: Props) {
-  const [data, setData] = useState<ChangesResponse | null>(null)
+  // SWR：data 直接派生自 store 缓存，跨项目切换瞬间用上次的 changes 撑画面，
+  // load() 后台静默刷新写回 cache 触发重渲染。无 cache 时为 null，沿用原 loading 路径。
+  const data = useStore(
+    (s) => s.projectChangesCache[projectId] ?? null,
+  ) as ChangesResponse | null
+  const setProjectChangesCache = useStore((s) => s.setProjectChangesCache)
   const [loading, setLoading] = useState(false)
+  // 用缓存撑画面期间的"后台刷新中"标记，给右上角小角标用，防止用户基于旧数据点错。
+  const [refreshing, setRefreshing] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState<null | 'stage-all' | 'commit' | string>(null)
   const [message, setMessage] = useState('')
+  const [stashCount, setStashCount] = useState(0)
+  const [branchOpen, setBranchOpen] = useState(false)
+  const [branchAnchor, setBranchAnchor] = useState<{ left: number; top: number; bottom: number } | null>(null)
+  const branchChipRef = useRef<HTMLButtonElement | null>(null)
 
   const selected = useStore((s) => s.selectedChange)
   const selectChange = useStore((s) => s.selectChange)
@@ -49,21 +61,35 @@ export default function ChangesList({ projectId }: Props) {
   const bumpFilesRefresh = useStore((s) => s.bumpFilesRefresh)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    const hasCache =
+      useStore.getState().projectChangesCache[projectId] != null
+    if (hasCache) setRefreshing(true)
+    else setLoading(true)
     setErr(null)
     try {
       const changes = await api.getProjectChanges(projectId)
-      setData(changes)
+      setProjectChangesCache(projectId, changes)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
+      setRefreshing(false)
+    }
+  }, [projectId, setProjectChangesCache])
+
+  const loadStashCount = useCallback(async () => {
+    try {
+      const list = await api.gitListStashes(projectId)
+      setStashCount(list.length)
+    } catch {
+      setStashCount(0)
     }
   }, [projectId])
 
   useEffect(() => {
     void load()
-  }, [load])
+    void loadStashCount()
+  }, [load, loadStashCount])
 
   function aliveSessions(): FileContextSession[] {
     return sessions
@@ -122,9 +148,12 @@ export default function ChangesList({ projectId }: Props) {
     meta?: Record<string, unknown>,
   ): Promise<T | null> {
     setBusy(tag)
+    setErr(null)
     try {
       const r = await logAction('git', action, fn, { projectId, meta })
       await load()
+      // Stash count may have changed (push/pop/reset). Cheap, fire-and-forget.
+      void loadStashCount()
       return r
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -133,6 +162,55 @@ export default function ChangesList({ projectId }: Props) {
     } finally {
       setBusy(null)
     }
+  }
+
+  // ---- remote ops ----
+
+  async function onPull() {
+    await withBusy('pull', 'pull', () => api.gitPull(projectId))
+  }
+
+  async function onPush() {
+    await withBusy('push', 'push', () => api.gitPush(projectId))
+  }
+
+  async function onFetch() {
+    await withBusy('fetch', 'fetch', () => api.gitFetch(projectId))
+  }
+
+  // ---- stash / undo commit ----
+
+  async function onStash() {
+    if (!data || data.enabled !== true) return
+    if (data.staged.length + data.unstaged.length + data.untracked.length === 0) {
+      await alertDialog('当前没有可暂存到草稿的改动。', { title: '草稿暂存' })
+      return
+    }
+    await withBusy('stash', 'stash-create', () => api.gitCreateStash(projectId))
+  }
+
+  async function onStashPop() {
+    if (stashCount === 0) return
+    await withBusy('stash-pop', 'stash-pop', () => api.gitPopStash(projectId))
+  }
+
+  async function onUndoCommit() {
+    const ok = await confirmDialog(
+      '撤销最后一次提交？提交记录会回退一步，但代码会保留在「已暂存」区，方便你重新提交。',
+      { title: '撤销最后一次提交', confirmLabel: '撤销' },
+    )
+    if (!ok) return
+    await withBusy('reset-soft', 'reset-soft', () => api.gitResetSoftLastCommit(projectId))
+  }
+
+  // ---- branch popover ----
+
+  function openBranchPopover() {
+    const el = branchChipRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setBranchAnchor({ left: rect.left, top: rect.top, bottom: rect.bottom })
+    setBranchOpen(true)
   }
 
   async function onStage(paths: string[]) {
@@ -260,20 +338,66 @@ export default function ChangesList({ projectId }: Props) {
   const totalChanges = data.staged.length + data.unstaged.length + data.untracked.length
   const workingChanges = data.unstaged.length + data.untracked.length
 
+  const detached = data.detached === true || data.branch == null
+  const remoteOpsDisabled = busy != null || detached
+  const remoteHint = detached ? '当前不在分支上 (detached HEAD)' : ''
+
   return (
     <div className="flex flex-col h-full text-sm">
-      {/* branch + refresh header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
+      {/* branch + remote ops header (row 1) */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 gap-1">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs text-muted">🌿</span>
-          <span className="font-mono text-fg truncate">
-            {data.branch ?? '(detached)'}
-          </span>
-          {(data.ahead > 0 || data.behind > 0) && (
-            <span className="text-[10px] text-muted">↑{data.ahead} ↓{data.behind}</span>
+          <button
+            ref={branchChipRef}
+            onClick={openBranchPopover}
+            disabled={busy != null}
+            title="切换 / 新建 / 删除 / 合并分支"
+            className="fluent-btn flex items-center gap-1 min-w-0 px-2 py-0.5 rounded-md border border-border/60 hover:border-accent/60 hover:bg-white/[0.04] disabled:opacity-50"
+          >
+            <span className="text-xs text-muted">🌿</span>
+            <span className="font-mono text-fg truncate text-[12.5px]">
+              {data.branch ?? '(detached)'}
+            </span>
+            {(data.ahead > 0 || data.behind > 0) && (
+              <span className="text-[10px] text-muted whitespace-nowrap">↑{data.ahead} ↓{data.behind}</span>
+            )}
+            <span className="text-[9px] text-muted">▾</span>
+          </button>
+          {refreshing && (
+            <span
+              title="正在后台刷新这份变更列表（你看到的是上次切走时的快照）"
+              className="text-[10px] text-amber-400/80 animate-pulse-soft whitespace-nowrap"
+            >
+              ⟳ 刷新中
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => void onPull()}
+            disabled={remoteOpsDisabled}
+            title={remoteHint || '从远程拉取并快进合并 (pull --ff-only)'}
+            className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
+          >
+            {busy === 'pull' ? '…' : '⬇'}
+          </button>
+          <button
+            onClick={() => void onPush()}
+            disabled={remoteOpsDisabled}
+            title={remoteHint || '推送当前分支到远程'}
+            className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
+          >
+            {busy === 'push' ? '…' : '⬆'}
+          </button>
+          <button
+            onClick={() => void onFetch()}
+            disabled={busy != null}
+            title="获取远程更新但不合并 (fetch --all --prune)"
+            className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
+          >
+            {busy === 'fetch' ? '…' : '⤵'}
+          </button>
+          <span className="w-1" />
           <button
             onClick={() => void onStageAll()}
             disabled={busy != null || workingChanges === 0}
@@ -283,7 +407,10 @@ export default function ChangesList({ projectId }: Props) {
             ＋ 全部
           </button>
           <button
-            onClick={() => void load()}
+            onClick={() => {
+              void load()
+              void loadStashCount()
+            }}
             disabled={busy != null}
             title="刷新"
             className="fluent-btn px-2 py-0.5 rounded-md border border-border text-muted hover:text-fg text-xs disabled:opacity-40"
@@ -292,6 +419,18 @@ export default function ChangesList({ projectId }: Props) {
           </button>
         </div>
       </div>
+
+      {branchOpen && branchAnchor && (
+        <BranchPopover
+          projectId={projectId}
+          currentBranch={data.branch ?? null}
+          anchor={branchAnchor}
+          onClose={() => setBranchOpen(false)}
+          onChanged={() => {
+            void load()
+          }}
+        />
+      )}
 
       {/* commit message + commit button */}
       <div className="px-3 py-2 border-b border-border/60 space-y-2">
@@ -306,10 +445,37 @@ export default function ChangesList({ projectId }: Props) {
         <button
           onClick={() => void onCommit()}
           disabled={busy != null || !message.trim()}
-          className="fluent-btn w-full px-3 py-1.5 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="fluent-btn w-full px-3 py-1.5 text-sm rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {busy === 'commit' ? '提交中…' : `✓ 提交 (${data.staged.length > 0 ? data.staged.length : workingChanges})`}
         </button>
+        {/* Secondary row: stash / unstash / undo last commit */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => void onStash()}
+            disabled={busy != null || totalChanges === 0}
+            title="把当前所有改动收进草稿抽屉 (git stash)，腾出干净工作区"
+            className="fluent-btn flex-1 px-2 py-1 text-[11.5px] rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 disabled:opacity-40"
+          >
+            {busy === 'stash' ? '…' : '草稿暂存'}
+          </button>
+          <button
+            onClick={() => void onStashPop()}
+            disabled={busy != null || stashCount === 0}
+            title={stashCount === 0 ? '没有草稿可取出' : '取出最新一个草稿 (git stash pop)'}
+            className="fluent-btn flex-1 px-2 py-1 text-[11.5px] rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 disabled:opacity-40"
+          >
+            {busy === 'stash-pop' ? '…' : `取出草稿 (${stashCount})`}
+          </button>
+          <button
+            onClick={() => void onUndoCommit()}
+            disabled={busy != null}
+            title="把最后一次提交退回到「已暂存」状态，代码不会丢 (reset --soft HEAD~1)"
+            className="fluent-btn flex-1 px-2 py-1 text-[11.5px] rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 disabled:opacity-40"
+          >
+            {busy === 'reset-soft' ? '…' : '撤销提交'}
+          </button>
+        </div>
         {err && (
           <div className="text-[11px] text-rose-300 whitespace-pre-wrap break-words">{err}</div>
         )}

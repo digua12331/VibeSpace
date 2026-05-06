@@ -1,5 +1,6 @@
 import type {
   AgentKind,
+  BranchOpResult,
   BranchRef,
   ChangesResponse,
   CliConfigSavePayload,
@@ -13,6 +14,13 @@ import type {
   CommitResult,
   CommitSummary,
   DiffResult,
+  FetchResult,
+  MergeResult,
+  PullResult,
+  PushResult,
+  ResetResult,
+  StashEntry,
+  StashOpResult,
   ChecklistDoc,
   DocFileContent,
   DocFileKind,
@@ -37,6 +45,16 @@ import type {
   WorkflowApplyResult,
   WorkflowRemoveResult,
   WorkflowStatus,
+  SkillAgentType,
+  SkillCatalogResult,
+  SkillAddResult,
+  SkillRemoveResult,
+  MarketSearchResult,
+  SkillMarketSearchSource,
+  DownloadSkillResult,
+  LocalLibrary,
+  SetLibraryPathResult,
+  DeleteLibrarySkillResult,
 } from './types'
 
 const BASE: string =
@@ -377,6 +395,101 @@ export function createCommit(
   )
 }
 
+// ---------- Git: remote / branch / stash / reset ops ----------
+
+export function gitPull(projectId: string): Promise<PullResult> {
+  return request<PullResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/pull`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitPush(projectId: string): Promise<PushResult> {
+  return request<PushResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/push`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitFetch(projectId: string): Promise<FetchResult> {
+  return request<FetchResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/fetch`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitCreateBranch(
+  projectId: string,
+  branch: string,
+  opts: { checkout?: boolean } = {},
+): Promise<BranchOpResult> {
+  return request<BranchOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/branches/create`,
+    jsonInit('POST', { branch, checkout: opts.checkout === true }),
+  )
+}
+
+export function gitDeleteBranch(
+  projectId: string,
+  branch: string,
+  opts: { force?: boolean } = {},
+): Promise<BranchOpResult> {
+  return request<BranchOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/branches/delete`,
+    jsonInit('POST', { branch, force: opts.force === true }),
+  )
+}
+
+export function gitCheckoutBranch(
+  projectId: string,
+  branch: string,
+): Promise<BranchOpResult> {
+  return request<BranchOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/branches/checkout`,
+    jsonInit('POST', { branch }),
+  )
+}
+
+export function gitMergeBranch(
+  projectId: string,
+  branch: string,
+): Promise<MergeResult> {
+  return request<MergeResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/merge`,
+    jsonInit('POST', { branch }),
+  )
+}
+
+export function gitListStashes(projectId: string): Promise<StashEntry[]> {
+  return request<StashEntry[]>(
+    `/api/projects/${encodeURIComponent(projectId)}/stashes`,
+  )
+}
+
+export function gitCreateStash(
+  projectId: string,
+  message?: string,
+): Promise<StashOpResult> {
+  return request<StashOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/stash`,
+    jsonInit('POST', message ? { message } : {}),
+  )
+}
+
+export function gitPopStash(projectId: string): Promise<StashOpResult> {
+  return request<StashOpResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/stash/pop`,
+    jsonInit('POST', {}),
+  )
+}
+
+export function gitResetSoftLastCommit(projectId: string): Promise<ResetResult> {
+  return request<ResetResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/reset-soft`,
+    jsonInit('POST', {}),
+  )
+}
+
 export function initProjectCliConfig(
   projectId: string,
   variants: Array<'claude' | 'codex'>,
@@ -639,4 +752,103 @@ export async function uploadPastedImage(
     throw err
   }
   return (await res.json()) as PastedImageResult
+}
+
+// ---------- Skill catalog ----------
+
+export async function scanSkillCatalog(
+  projectId: string,
+  agentType: SkillAgentType,
+): Promise<SkillCatalogResult> {
+  return request<SkillCatalogResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/skill-catalog/${encodeURIComponent(agentType)}`,
+  )
+}
+
+export async function addSkillToProject(
+  projectId: string,
+  agentType: SkillAgentType,
+  body: { srcPath: string; useSymlink?: boolean },
+): Promise<SkillAddResult> {
+  return request<SkillAddResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/skill-catalog/${encodeURIComponent(agentType)}/add`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export async function removeSkillFromProject(
+  projectId: string,
+  agentType: SkillAgentType,
+  body: { skillName: string },
+): Promise<SkillRemoveResult> {
+  return request<SkillRemoveResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/skill-catalog/${encodeURIComponent(agentType)}/remove`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+// ---------- Skill market (二期) ----------
+
+export async function searchSkillMarket(
+  q: string,
+  source: SkillMarketSearchSource = 'all',
+  page = 1,
+  limit = 20,
+): Promise<MarketSearchResult> {
+  const qs = new URLSearchParams({
+    q,
+    source,
+    page: String(page),
+    limit: String(limit),
+  })
+  return request<MarketSearchResult>(`/api/skill-market/search?${qs}`)
+}
+
+export async function downloadSkillFromMarket(body: {
+  repoUrl: string
+  skillName: string
+}): Promise<DownloadSkillResult> {
+  return request<DownloadSkillResult>(`/api/skill-market/download`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function getSkillLibrary(): Promise<LocalLibrary> {
+  return request<LocalLibrary>(`/api/skill-market/library`)
+}
+
+export async function getSkillLibraryPath(): Promise<{ path: string }> {
+  return request<{ path: string }>(`/api/skill-market/library/path`)
+}
+
+export async function setSkillLibraryPath(body: {
+  path: string
+  migrate?: boolean
+}): Promise<SetLibraryPathResult> {
+  return request<SetLibraryPathResult>(`/api/skill-market/library/path`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function deleteLibrarySkill(body: {
+  name: string
+  source: 'official' | 'custom'
+}): Promise<DeleteLibrarySkillResult> {
+  return request<DeleteLibrarySkillResult>(`/api/skill-market/library/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }

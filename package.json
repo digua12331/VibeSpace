@@ -8,7 +8,7 @@
     "dev:server": "pnpm --filter @aimon/server dev",
     "dev:web": "pnpm --filter @aimon/web dev",
     "dev:all": "pnpm -r --parallel run dev",
-    "dev:alt": "cross-env AIMON_PORT=9787 AIMON_WEB_PORT=9788 AIMON_SKIP_HOOK_INSTALL=1 AIMON_WEB_ORIGIN=http://127.0.0.1:9788,http://localhost:9788 AIMON_BACKEND_URL=http://127.0.0.1:9787 VITE_AIMON_BACKEND=http://127.0.0.1:9787 VITE_AIMON_INSTANCE_LABEL=开发 pnpm -r --parallel run dev",
+    "dev:alt": "node scripts/dev-alt.mjs",
     "build": "pnpm -r build",
     "build:stable": "cross-env VITE_AIMON_INSTANCE_LABEL=稳定 pnpm -r build",
     "start:stable": "concurrently \"pnpm --filter @aimon/server start\" \"pnpm --filter @aimon/web preview\"",
@@ -19,7 +19,11 @@
     "smoke:persistence": "node scripts/persistence-check.mjs",
     "smoke:refresh": "node scripts/refresh-smoke.mjs",
     "smoke:git": "node scripts/git-smoke.mjs",
-    "smoke:worktree": "node scripts/worktree-smoke.mjs"
+    "smoke:git-ops": "node scripts/git-ops-smoke.mjs",
+    "smoke:worktree": "node scripts/worktree-smoke.mjs",
+    "smoke:memory-parse": "node scripts/memory-parse-smoke.mjs",
+    "smoke:error-pattern": "node scripts/error-pattern-smoke.mjs",
+    "smoke:error-pattern-e2e": "node scripts/error-pattern-e2e-smoke.mjs"
   },
   "packageManager": "pnpm@10.20.0",
   "engines": {

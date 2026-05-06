@@ -41,7 +41,7 @@ export const HTML_PREVIEW_PICKER_SCRIPT = `
     prevEl = el;
     prevOutline = el.style.outline;
     prevOutlineOffset = el.style.outlineOffset;
-    el.style.outline = '2px solid #3b82f6';
+    el.style.outline = '2px solid rgb(var(--color-accent))';
     el.style.outlineOffset = '-2px';
   }
 

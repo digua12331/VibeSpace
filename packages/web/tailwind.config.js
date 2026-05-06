@@ -2,36 +2,46 @@
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
+    // borderRadius 全量覆盖（不是 extend）：让所有 rounded-* 跟随 --radius-* 变量。
+    // 默认值与 Tailwind 默认 scale 完全一致（在 tokens.css 内），保证升级前后零视觉漂移。
+    borderRadius: {
+      none: 'var(--radius-none)',
+      sm: 'var(--radius-sm)',
+      DEFAULT: 'var(--radius)',
+      md: 'var(--radius-md)',
+      lg: 'var(--radius-lg)',
+      xl: 'var(--radius-xl)',
+      '2xl': 'var(--radius-2xl)',
+      '3xl': 'var(--radius-3xl)',
+      full: 'var(--radius-full)',
+      win: 'var(--radius-win)',
+    },
     extend: {
       colors: {
-        // Windows 11 Fluent Design — dark theme palette.
-        // bg = Mica base (app body). card = layered chrome (header/sidebar/dialogs).
-        // Values picked to match WinUI Dark "Solid Background Base" tokens.
-        bg: '#202020',
-        card: '#2b2b2b',
-        'card-2': '#323232',
-        border: '#3a3a3a',
-        'border-soft': '#323232',
-        fg: '#ffffff',
-        muted: '#c7c7c7',
-        subtle: '#8a8a8a',
-        // Fluent accent (Windows 11 dark default).
-        accent: '#60cdff',
-        'accent-2': '#4cc2ff',
-        'accent-deep': '#0078d4',
-      },
-      borderRadius: {
-        // Win11 uses 8px for cards, 4px for buttons/chips.
-        win: '8px',
+        // RGB triplet + <alpha-value> 让 Tailwind opacity 修饰符（bg-bg/50）正常工作。
+        // 默认值在 tokens.css :root 内 = 升级前的硬编码 hex。
+        bg: 'rgb(var(--color-bg) / <alpha-value>)',
+        card: 'rgb(var(--color-card) / <alpha-value>)',
+        'card-2': 'rgb(var(--color-card-2) / <alpha-value>)',
+        border: 'rgb(var(--color-border) / <alpha-value>)',
+        'border-soft': 'rgb(var(--color-border-soft) / <alpha-value>)',
+        fg: 'rgb(var(--color-fg) / <alpha-value>)',
+        muted: 'rgb(var(--color-muted) / <alpha-value>)',
+        subtle: 'rgb(var(--color-subtle) / <alpha-value>)',
+        accent: 'rgb(var(--color-accent) / <alpha-value>)',
+        'accent-2': 'rgb(var(--color-accent-2) / <alpha-value>)',
+        'accent-deep': 'rgb(var(--color-accent-deep) / <alpha-value>)',
+        'on-accent': 'rgb(var(--color-on-accent) / <alpha-value>)',
+        'code-bg': 'rgb(var(--color-code-bg) / <alpha-value>)',
+        'code-fg': 'rgb(var(--color-code-fg) / <alpha-value>)',
       },
       boxShadow: {
-        // Fluent elevation: layered, soft, slightly cool.
-        flyout:
-          '0 8px 16px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0, 0, 0, 0.28)',
-        dialog:
-          '0 32px 64px rgba(0, 0, 0, 0.36), 0 0 8px rgba(0, 0, 0, 0.28)',
-        tile:
-          '0 2px 4px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0, 0, 0, 0.28)',
+        flyout: 'var(--shadow-flyout)',
+        dialog: 'var(--shadow-dialog)',
+        tile: 'var(--shadow-tile)',
+      },
+      borderWidth: {
+        DEFAULT: 'var(--border-width)',
       },
       keyframes: {
         pulseSoft: {
@@ -53,25 +63,9 @@ export default {
         'fluent-in': 'fluentFadeIn 180ms cubic-bezier(0.1, 0.9, 0.2, 1)',
       },
       fontFamily: {
-        // Win11 system stack — Segoe UI Variable first, then fallbacks.
-        sans: [
-          '"Segoe UI Variable Text"',
-          '"Segoe UI Variable"',
-          '"Segoe UI"',
-          'system-ui',
-          '-apple-system',
-          'ui-sans-serif',
-          'Roboto',
-          'sans-serif',
-        ],
-        display: [
-          '"Segoe UI Variable Display"',
-          '"Segoe UI Variable"',
-          '"Segoe UI"',
-          'system-ui',
-          'sans-serif',
-        ],
-        mono: ['"Cascadia Mono"', '"Cascadia Code"', 'Consolas', 'Menlo', 'monospace'],
+        sans: ['var(--font-sans)'],
+        display: ['var(--font-display)'],
+        mono: ['var(--font-mono)'],
       },
     },
   },

@@ -4,6 +4,8 @@ import { join, resolve as resolvePath, relative as relativePath, sep } from "nod
 
 export type MemoryFileKind = "auto" | "manual" | "rejected";
 
+export type LessonSeverity = "info" | "warn" | "error";
+
 export interface MemoryEntry {
   /** `lesson` = single-line entry parsed by LINE_RE；`raw` = 其他行（标题 / 空行 / 自由文本） */
   kind: "lesson" | "raw";
@@ -15,6 +17,14 @@ export interface MemoryEntry {
   date?: string;
   /** Parsed task name when kind === "lesson" */
   task?: string;
+  /** Lesson body with the trailing `[k=v;...]` tag segment stripped. Falls back to the
+   *  raw match when no valid tag segment is present. */
+  body?: string;
+  /** Optional structured tag — present only when the line has a valid trailing
+   *  `[category=...; severity=...; files=...]` segment with at least one known key. */
+  category?: string;
+  severity?: LessonSeverity;
+  files?: string[];
 }
 
 export interface MemoryPayload {
@@ -48,6 +58,95 @@ const HEADERS: Record<MemoryFileKind, string> = {
 };
 
 const LINE_RE = /^- \[(\d{4}-\d{2}-\d{2}) \/ ([^\]]+)\] (.+)$/;
+
+/** Match the *last* `[...]` segment at end-of-string. Non-greedy body lets the
+ *  trailing bracket capture win even when the body contains earlier brackets
+ *  (e.g. "看到 [error] 时…(结论) [category=约定]"). */
+const TRAILING_TAG_RE = /^(.*?)\s*\[([^\[\]]+)\]\s*$/;
+
+interface ParsedTagSegment {
+  category?: string;
+  severity?: LessonSeverity;
+  files?: string[];
+}
+
+function isLessonSeverity(value: string): value is LessonSeverity {
+  return value === "info" || value === "warn" || value === "error";
+}
+
+/**
+ * Parse the inside of a trailing `[...]` segment. Returns `null` when the
+ * segment cannot be interpreted as a tag (no `=`, no recognised keys, etc.) —
+ * in that case the caller keeps the original body text intact (the brackets
+ * stay as plain content).
+ *
+ * Wide-in / strict-out:
+ *   - unknown keys are silently dropped
+ *   - invalid `severity` values are dropped (other valid keys still apply)
+ *   - any segment with at least one *recognised* key is considered a valid tag
+ *   - `files=` splits on `,` and trims; empty entries are dropped (paths
+ *     containing `,` are not supported by the schema and will be split)
+ */
+function parseTagSegment(tagStr: string): ParsedTagSegment | null {
+  const parts = tagStr.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+  if (parts.length === 0) return null;
+  const out: ParsedTagSegment = {};
+  let recognised = false;
+  for (const p of parts) {
+    const eq = p.indexOf("=");
+    if (eq < 0) return null;
+    const key = p.slice(0, eq).trim();
+    const val = p.slice(eq + 1).trim();
+    if (!key || !val) continue;
+    if (key === "category") {
+      out.category = val;
+      recognised = true;
+    } else if (key === "severity") {
+      if (isLessonSeverity(val)) {
+        out.severity = val;
+        recognised = true;
+      }
+    } else if (key === "files") {
+      const arr = val.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+      if (arr.length > 0) {
+        out.files = arr;
+        recognised = true;
+      }
+    }
+  }
+  return recognised ? out : null;
+}
+
+function splitLessonBody(rawBody: string): { body: string; tag?: ParsedTagSegment } {
+  const m = TRAILING_TAG_RE.exec(rawBody);
+  if (!m) return { body: rawBody };
+  const tag = parseTagSegment(m[2]);
+  if (!tag) return { body: rawBody };
+  return { body: m[1].trim(), tag };
+}
+
+/**
+ * Render a lesson line with optional structured tags. Used by callers that
+ * want to write a typed entry without hand-rolling the wire format.
+ */
+export function formatLessonLine(
+  date: string,
+  task: string,
+  body: string,
+  opts?: { category?: string; severity?: LessonSeverity; files?: string[] },
+): string {
+  const segs: string[] = [];
+  if (opts?.category) segs.push(`category=${opts.category}`);
+  if (opts?.severity && isLessonSeverity(opts.severity)) segs.push(`severity=${opts.severity}`);
+  if (opts?.files && opts.files.length > 0) {
+    const cleaned = opts.files
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0 && !f.includes(","));
+    if (cleaned.length > 0) segs.push(`files=${cleaned.join(",")}`);
+  }
+  const tail = segs.length > 0 ? ` [${segs.join("; ")}]` : "";
+  return `- [${date} / ${task}] ${body.trim()}${tail}`;
+}
 
 function memoryDirAbs(projectPath: string): string {
   return join(projectPath, "dev", "memory");
@@ -87,12 +186,17 @@ function parseEntries(content: string): MemoryEntry[] {
     const text = lines[i];
     const m = LINE_RE.exec(text);
     if (m) {
+      const split = splitLessonBody(m[3]);
       out.push({
         kind: "lesson",
         line: i + 1,
         text,
         date: m[1],
         task: m[2],
+        body: split.body,
+        category: split.tag?.category,
+        severity: split.tag?.severity,
+        files: split.tag?.files,
       });
     } else {
       out.push({ kind: "raw", line: i + 1, text });

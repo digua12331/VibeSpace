@@ -31,6 +31,9 @@ function laneColor(laneIdx: number): string {
   return LANE_COLORS[laneIdx % LANE_COLORS.length]
 }
 
+// 缓存未命中时 selector 必须返回引用稳定的空数组，否则每次 useStore 都拿到新 [] 触发重渲染。
+const EMPTY_COMMITS: GraphCommit[] = []
+
 interface LaneRow {
   commit: GraphCommit
   commitLane: number
@@ -139,8 +142,14 @@ function shortDate(iso: string): string {
 }
 
 export default function GitGraph({ projectId }: Props) {
-  const [commits, setCommits] = useState<GraphCommit[]>([])
+  // SWR：commits 直接派生自 store 缓存。切回老项目立刻拿上次的图撑画面，
+  // 后台 idle 时再静默刷新写回 cache。
+  const commits = useStore(
+    (s) => s.projectGraphCache[projectId] ?? EMPTY_COMMITS,
+  )
+  const setProjectGraphCache = useStore((s) => s.setProjectGraphCache)
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const selectedChange = useStore((s) => s.selectedChange)
@@ -148,20 +157,43 @@ export default function GitGraph({ projectId }: Props) {
   const openFile = useStore((s) => s.openFile)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    const hasCache =
+      useStore.getState().projectGraphCache[projectId] != null
+    if (hasCache) setRefreshing(true)
+    else setLoading(true)
     setErr(null)
     try {
       const g = await api.getProjectGraph(projectId, { limit: 200, all: true })
-      setCommits(g)
+      setProjectGraphCache(projectId, g)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [projectId])
+  }, [projectId, setProjectGraphCache])
 
+  // git log 200 条 + --all 在大仓库不便宜；不阻塞切项目的关键路径，等浏览器空闲再发。
   useEffect(() => {
-    void load()
+    type IdleHandle = number
+    type IdleCallback = (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: IdleCallback, opts?: { timeout: number }) => IdleHandle
+      cancelIdleCallback?: (h: IdleHandle) => void
+    }
+    let idleHandle: IdleHandle | null = null
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+    if (typeof w.requestIdleCallback === 'function') {
+      idleHandle = w.requestIdleCallback(() => void load(), { timeout: 500 })
+    } else {
+      timeoutHandle = setTimeout(() => void load(), 50)
+    }
+    return () => {
+      if (idleHandle != null && typeof w.cancelIdleCallback === 'function') {
+        w.cancelIdleCallback(idleHandle)
+      }
+      if (timeoutHandle != null) clearTimeout(timeoutHandle)
+    }
   }, [load])
 
   const { rows, maxLane } = useMemo(() => assignLanes(commits), [commits])
@@ -205,7 +237,17 @@ export default function GitGraph({ projectId }: Props) {
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60 text-xs">
-        <span className="text-muted">图表 · {commits.length} 提交</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-muted">图表 · {commits.length} 提交</span>
+          {refreshing && (
+            <span
+              title="正在后台刷新提交图（你看到的是上次切走时的快照）"
+              className="text-[10px] text-amber-400/80 animate-pulse-soft whitespace-nowrap"
+            >
+              ⟳ 刷新中
+            </span>
+          )}
+        </div>
         <button
           onClick={() => void load()}
           className="fluent-btn px-2 py-0.5 rounded border border-border text-muted hover:text-fg"
@@ -242,7 +284,7 @@ export default function GitGraph({ projectId }: Props) {
                     cx={cx}
                     cy={cy}
                     r={DOT_RADIUS}
-                    fill={row.commit.isHead ? '#ffffff' : color}
+                    fill={row.commit.isHead ? 'rgb(var(--color-fg))' : color}
                     stroke={color}
                     strokeWidth={1.5}
                   />

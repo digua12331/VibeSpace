@@ -43,6 +43,9 @@ aimonWS.onMessage((msg) => {
         _fromServer: true,
       })
       break
+    case 'error-pattern-alert':
+      st.appendAlert(msg.alert)
+      break
     default:
       break
   }

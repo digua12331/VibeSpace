@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>VibeSpace · Direction C · 实验先锋派</title>
+<style>
+  /* ============================================================
+   * VibeSpace Direction C — Bret Victor / Field.io 式 实验先锋派
+   * 设计哲学：会话即光点 / agent 即性格 / 工具即乐器
+   * ============================================================ */
+
+  :root {
+    /* 深空底色系 ----------------------------------------------- */
+    --bg-void:        #070A12;     /* 最深的底，宇宙背景 */
+    --bg-elevated:    #0E1320;     /* 浮起的面板 */
+    --bg-floating:    #141A2E;     /* 卡片 / 输入框 */
+    --bg-glass:       rgba(20, 26, 46, 0.6);
+
+    /* 文字 ----------------------------------------------------- */
+    --ink-primary:    #E6EDFB;
+    --ink-secondary:  #7B8AAB;
+    --ink-tertiary:   #3D4866;
+    --ink-faint:      #232B40;
+
+    /* 边线（极弱，几乎不可见，只在悬停时显形）---------------- */
+    --line:           rgba(255, 255, 255, 0.04);
+    --line-strong:    rgba(255, 255, 255, 0.10);
+
+    /* Agent 性格色（每个 AI 一种气质，不是装饰）-------------- */
+    --agent-claude:   #FFB454;     /* 琥珀 — 温暖、可靠 */
+    --agent-codex:    #5EE5D7;     /* 青 — 冷静、精确 */
+    --agent-gemini:   #E96BC8;     /* 品红 — 灵动、跳跃 */
+    --agent-shell:    #84E184;     /* 翠绿 — 朴实、扎实 */
+    --agent-idle:     #4A5470;     /* 灰 — 空闲 */
+
+    /* 字体 ----------------------------------------------------- */
+    --font-mono:      'Berkeley Mono', 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    --font-display:   'Inter', -apple-system, 'PingFang SC', 'Source Han Sans', sans-serif;
+    --font-numeric:   'Berkeley Mono', 'JetBrains Mono', monospace;
+
+    /* 节奏 ----------------------------------------------------- */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 14px;
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-void);
+    color: var(--ink-primary);
+    font-family: var(--font-display);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'calt';
+  }
+
+  /* 全局星空噪点（极弱，不抢戏）---------------------------------- */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4), transparent),
+      radial-gradient(1px 1px at 70% 80%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(1px 1px at 40% 50%, rgba(255,255,255,0.25), transparent),
+      radial-gradient(1.5px 1.5px at 90% 20%, rgba(255,255,255,0.2), transparent),
+      radial-gradient(1px 1px at 10% 70%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(1px 1px at 60% 10%, rgba(255,255,255,0.2), transparent);
+    background-size: 800px 600px;
+    background-repeat: repeat;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* 环境光晕（两团慢速 drift 的低饱和色光） ---------------------- */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(800px 600px at 15% 80%, rgba(94, 229, 215, 0.06), transparent 60%),
+      radial-gradient(900px 700px at 85% 20%, rgba(255, 180, 84, 0.05), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+    animation: ambientDrift 30s ease-in-out infinite alternate;
+  }
+
+  @keyframes ambientDrift {
+    0%   { transform: translate(0, 0); }
+    100% { transform: translate(-40px, 30px); }
+  }
+
+  /* ============================================================
+   * 主布局：顶栏 + 三栏 + 底栏
+   * ============================================================ */
+  .app {
+    position: relative;
+    z-index: 1;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 44px 1fr 28px;
+    grid-template-columns: 240px 1fr 320px;
+    grid-template-areas:
+      "topbar topbar  topbar"
+      "side   main    aside"
+      "status status  status";
+  }
+
+  /* ============================================================
+   * 顶栏
+   * ============================================================ */
+  .topbar {
+    grid-area: topbar;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--line);
+    -webkit-app-region: drag;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-right: 24px;
+  }
+  .brand-mark {
+    width: 22px; height: 22px;
+    position: relative;
+  }
+  .brand-mark::before, .brand-mark::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--agent-codex) 0%, transparent 70%);
+    animation: brandBreathe 4s ease-in-out infinite;
+  }
+  .brand-mark::after {
+    background: radial-gradient(circle, var(--agent-claude) 0%, transparent 70%);
+    animation-delay: 2s;
+    transform: translate(4px, 0);
+  }
+  @keyframes brandBreathe {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.1); }
+  }
+  .brand-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    color: var(--ink-primary);
+    font-weight: 500;
+  }
+
+  .project-switcher {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: var(--radius-md);
+    background: var(--bg-floating);
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    transition: border-color 200ms var(--ease);
+  }
+  .project-switcher:hover { border-color: var(--line-strong); }
+  .project-switcher .arrow { color: var(--ink-tertiary); font-size: 9px; }
+  .project-switcher .name  { color: var(--ink-primary); }
+
+  .topbar-spacer { flex: 1; }
+
+  .global-meter {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-right: 18px;
+  }
+  .meter {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .meter-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+  }
+  .meter-bar {
+    width: 60px; height: 3px;
+    background: var(--ink-faint);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+  .meter-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, var(--agent-codex), var(--agent-claude));
+    border-radius: 2px;
+  }
+  .meter-fill.tokens { width: 38%; }
+  .meter-fill.cpu    { width: 22%; background: var(--agent-shell); }
+
+  .meter-value {
+    font-family: var(--font-numeric);
+    font-size: 10px;
+    color: var(--ink-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .topbar-actions { display: flex; gap: 4px; }
+  .icon-btn {
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    border: none;
+    background: transparent;
+    color: var(--ink-tertiary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 150ms var(--ease);
+  }
+  .icon-btn:hover {
+    background: var(--bg-floating);
+    color: var(--ink-primary);
+  }
+  .icon-btn svg { width: 14px; height: 14px; }
+
+  /* ============================================================
+   * 左侧：会话即光点
+   * ============================================================ */
+  .side {
+    grid-area: side;
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 18px 0;
+  }
+
+  .side-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px 14px;
+  }
+  .side-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+  }
+  .side-count {
+    font-family: var(--font-numeric);
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .session-list {
+    list-style: none;
+    padding: 0 8px;
+  }
+
+  .session {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    position: relative;
+    transition: background-color 200ms var(--ease);
+  }
+  .session:hover {
+    background: rgba(255, 255, 255, 0.025);
+  }
+  .session.active {
+    background: var(--bg-floating);
+  }
+  .session.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 2px; height: 22px;
+    background: var(--accent, var(--agent-claude));
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 12px var(--accent, var(--agent-claude));
+  }
+
+  /* 节点：圆心 + halo + breathing pulse */
+  .node {
+    width: 28px; height: 28px;
+    position: relative;
+    display: grid;
+    place-items: center;
+  }
+  .node-core {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent, var(--agent-claude));
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 0 8px var(--accent, var(--agent-claude));
+  }
+  .node-halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent, var(--agent-claude)) 0%, transparent 65%);
+    opacity: 0.35;
+    animation: halo 3s ease-in-out infinite;
+  }
+  .session.active .node-halo {
+    animation: haloActive 2.4s ease-in-out infinite;
+  }
+  .session.idle .node-halo { display: none; }
+  .session.idle .node-core {
+    background: transparent;
+    border: 1px solid var(--agent-idle);
+    box-shadow: none;
+    width: 6px; height: 6px;
+  }
+
+  @keyframes halo {
+    0%, 100% { opacity: 0.25; transform: scale(0.85); }
+    50%      { opacity: 0.45; transform: scale(1); }
+  }
+  @keyframes haloActive {
+    0%, 100% { opacity: 0.4; transform: scale(0.9); }
+    50%      { opacity: 0.7; transform: scale(1.15); }
+  }
+
+  .session-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .session-name {
+    font-family: var(--font-display);
+    font-size: 12px;
+    color: var(--ink-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .session.idle .session-name { color: var(--ink-secondary); }
+  .session-tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+  }
+  .session.active .session-tag { color: var(--accent, var(--agent-claude)); }
+
+  .session-pulse {
+    width: 14px; height: 14px;
+    display: grid;
+    place-items: center;
+  }
+  .pulse-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent, var(--agent-claude));
+    animation: pulseDot 1.2s ease-in-out infinite;
+  }
+  .session.idle .session-pulse { display: none; }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+  }
+
+  .side-divider {
+    margin: 18px 18px 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  /* New session button */
+  .new-session-btn {
+    margin: 14px 16px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--line-strong);
+    background: transparent;
+    color: var(--ink-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 200ms var(--ease);
+  }
+  .new-session-btn:hover {
+    border-color: var(--ink-secondary);
+    color: var(--ink-primary);
+    background: var(--bg-floating);
+  }
+  .new-session-btn .plus { font-size: 14px; line-height: 1; }
+
+  /* ============================================================
+   * 中央：终端 + 能量场
+   * ============================================================ */
+  .main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    position: relative;
+    background: var(--bg-void);
+  }
+
+  .tabs {
+    display: flex;
+    align-items: stretch;
+    height: 38px;
+    padding: 0 8px;
+    gap: 2px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-elevated);
+    flex-shrink: 0;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    position: relative;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    margin-top: 6px;
+    transition: all 150ms var(--ease);
+  }
+  .tab:hover { color: var(--ink-primary); }
+  .tab.active {
+    color: var(--ink-primary);
+    background: var(--bg-void);
+  }
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    background: var(--accent, var(--agent-claude));
+    box-shadow: 0 0 12px var(--accent, var(--agent-claude));
+  }
+  .tab-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent, var(--agent-claude));
+    box-shadow: 0 0 6px var(--accent, var(--agent-claude));
+  }
+  .tab-close {
+    color: var(--ink-tertiary);
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+  .tab-close:hover { background: rgba(255,255,255,0.06); color: var(--ink-primary); }
+
+  .tab-add {
+    margin-top: 6px;
+    padding: 0 10px;
+    color: var(--ink-tertiary);
+    font-size: 14px;
+    cursor: pointer;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+  }
+  .tab-add:hover { color: var(--ink-primary); }
+
+  /* 终端容器：周围有 accent 色微辉光（"能量场"）*/
+  .terminal-shell {
+    flex: 1;
+    margin: 16px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, #050810 0%, #08101F 100%);
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px var(--line-strong),
+      0 0 60px -10px rgba(255, 180, 84, 0.18),
+      0 0 120px -30px rgba(255, 180, 84, 0.12),
+      0 20px 60px -20px rgba(0, 0, 0, 0.6);
+  }
+
+  .terminal-shell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(120% 60% at 50% 0%, rgba(255, 180, 84, 0.06), transparent 50%);
+    pointer-events: none;
+  }
+
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .term-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .term-title-mark {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent, var(--agent-claude));
+    box-shadow: 0 0 8px var(--accent, var(--agent-claude));
+  }
+  .term-meta {
+    display: flex;
+    gap: 18px;
+  }
+  .term-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .term-meta-item .v {
+    color: var(--ink-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .terminal-body {
+    padding: 22px 24px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ink-primary);
+    height: calc(100% - 100px);
+    overflow-y: auto;
+  }
+
+  .term-line { white-space: pre-wrap; }
+  .term-dim   { color: var(--ink-secondary); }
+  .term-faint { color: var(--ink-tertiary); }
+  .term-accent { color: var(--accent, var(--agent-claude)); }
+  .term-codex  { color: var(--agent-codex); }
+  .term-claude { color: var(--agent-claude); }
+  .term-success { color: var(--agent-shell); }
+
+  .term-block {
+    margin: 14px 0;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 2px solid var(--accent, var(--agent-claude));
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  .term-thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent, var(--agent-claude));
+    font-style: italic;
+  }
+  .thinking-bars {
+    display: inline-flex;
+    gap: 2px;
+    align-items: flex-end;
+    height: 12px;
+  }
+  .thinking-bars span {
+    display: block;
+    width: 2px;
+    background: currentColor;
+    border-radius: 1px;
+    animation: thinkBar 1.2s ease-in-out infinite;
+  }
+  .thinking-bars span:nth-child(1) { height: 50%; animation-delay: 0s;   }
+  .thinking-bars span:nth-child(2) { height: 80%; animation-delay: 0.15s;}
+  .thinking-bars span:nth-child(3) { height: 60%; animation-delay: 0.3s; }
+  .thinking-bars span:nth-child(4) { height: 90%; animation-delay: 0.45s;}
+  @keyframes thinkBar {
+    0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+    50%      { transform: scaleY(1);   opacity: 1; }
+  }
+
+  /* 输入区 */
+  .composer {
+    margin: 0 16px 16px;
+    padding: 14px 18px;
+    background: var(--bg-floating);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color 200ms var(--ease), box-shadow 200ms var(--ease);
+  }
+  .composer:focus-within {
+    border-color: var(--accent, var(--agent-claude));
+    box-shadow: 0 0 0 3px rgba(255, 180, 84, 0.08);
+  }
+  .composer-prefix {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent, var(--agent-claude));
+    font-weight: 500;
+  }
+  .composer-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--ink-primary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .composer-input::placeholder { color: var(--ink-tertiary); }
+  .composer-hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    letter-spacing: 0.08em;
+  }
+  .composer-hint kbd {
+    font-family: inherit;
+    padding: 2px 6px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--ink-secondary);
+  }
+
+  /* ============================================================
+   * 右侧：上下文面板
+   * ============================================================ */
+  .aside {
+    grid-area: aside;
+    background: var(--bg-elevated);
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .aside-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .aside-tab {
+    flex: 1;
+    padding: 12px 0;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+    cursor: pointer;
+    position: relative;
+    transition: color 150ms var(--ease);
+  }
+  .aside-tab:hover { color: var(--ink-secondary); }
+  .aside-tab.active { color: var(--ink-primary); }
+  .aside-tab.active::after {
+    content: '';
+    position: absolute;
+    left: 25%; right: 25%; bottom: 0;
+    height: 1px;
+    background: var(--ink-primary);
+  }
+
+  .aside-section {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .aside-section-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Token 用量：水平能量条 */
+  .energy-bar {
+    height: 4px;
+    background: var(--ink-faint);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 6px;
+  }
+  .energy-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--from), var(--to));
+    box-shadow: 0 0 8px var(--to);
+    position: relative;
+  }
+  .energy-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 12px;
+    background: linear-gradient(90deg, transparent, var(--to));
+    animation: energyPulse 2s ease-in-out infinite;
+  }
+  @keyframes energyPulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+  }
+  .energy-row {
+    display: grid;
+    grid-template-columns: 80px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .energy-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-secondary);
+  }
+  .energy-value {
+    font-family: var(--font-numeric);
+    font-size: 11px;
+    color: var(--ink-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Worktree 拓扑（光河）*/
+  .worktree-graph {
+    position: relative;
+    height: 92px;
+  }
+  .worktree-graph svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .branch-label {
+    position: absolute;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-secondary);
+    letter-spacing: 0.06em;
+  }
+
+  /* 文件树 */
+  .files {
+    padding: 10px 12px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    transition: all 120ms var(--ease);
+  }
+  .file-row:hover {
+    background: var(--bg-floating);
+    color: var(--ink-primary);
+  }
+  .file-row.dir { color: var(--ink-primary); }
+  .file-row .indent { display: inline-block; width: 14px; }
+  .file-row .glyph {
+    width: 10px; height: 10px;
+    flex-shrink: 0;
+    color: var(--ink-tertiary);
+  }
+  .file-row.dir .glyph { color: var(--agent-codex); }
+  .file-row.touched { color: var(--agent-claude); }
+  .file-row.touched::after {
+    content: '●';
+    margin-left: auto;
+    font-size: 6px;
+    color: var(--agent-claude);
+    text-shadow: 0 0 4px var(--agent-claude);
+  }
+
+  /* ============================================================
+   * 底栏
+   * ============================================================ */
+  .statusbar {
+    grid-area: status;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    gap: 16px;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .status-item { display: flex; align-items: center; gap: 6px; }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--agent-shell);
+    box-shadow: 0 0 6px var(--agent-shell);
+    animation: pulseDot 2.5s ease-in-out infinite;
+  }
+  .status-spacer { flex: 1; }
+  .status-link { color: var(--ink-secondary); cursor: pointer; }
+  .status-link:hover { color: var(--ink-primary); }
+
+  /* ============================================================
+   * 漂浮粒子（5 个，CSS 动画，控制密度不喧宾夺主）
+   * ============================================================ */
+  .particle {
+    position: fixed;
+    width: 2px; height: 2px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0.6;
+  }
+  .particle.p1 { background: var(--agent-claude); top: 30%; left: 28%; box-shadow: 0 0 6px var(--agent-claude); animation: drift1 18s linear infinite; }
+  .particle.p2 { background: var(--agent-codex);  top: 60%; left: 45%; box-shadow: 0 0 6px var(--agent-codex);  animation: drift2 22s linear infinite; }
+  .particle.p3 { background: var(--agent-gemini); top: 20%; left: 70%; box-shadow: 0 0 6px var(--agent-gemini); animation: drift3 25s linear infinite; }
+  .particle.p4 { background: var(--agent-shell);  top: 75%; left: 30%; box-shadow: 0 0 6px var(--agent-shell);  animation: drift1 20s linear infinite; animation-delay: -8s; }
+  .particle.p5 { background: var(--agent-claude); top: 50%; left: 80%; box-shadow: 0 0 6px var(--agent-claude); animation: drift2 24s linear infinite; animation-delay: -12s; }
+
+  @keyframes drift1 {
+    0%   { transform: translate(0, 0); }
+    50%  { transform: translate(80px, -40px); }
+    100% { transform: translate(0, 0); }
+  }
+  @keyframes drift2 {
+    0%   { transform: translate(0, 0); }
+    50%  { transform: translate(-60px, 50px); }
+    100% { transform: translate(0, 0); }
+  }
+  @keyframes drift3 {
+    0%   { transform: translate(0, 0); }
+    50%  { transform: translate(40px, 60px); }
+    100% { transform: translate(0, 0); }
+  }
+
+  /* Skill 推广水印（按 skill 规则：动画/视觉作品角落） ----- */
+  .signature {
+    position: fixed;
+    bottom: 36px;
+    right: 18px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: rgba(230, 237, 251, 0.18);
+    pointer-events: none;
+    z-index: 5;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- 漂浮粒子 -->
+<div class="particle p1"></div>
+<div class="particle p2"></div>
+<div class="particle p3"></div>
+<div class="particle p4"></div>
+<div class="particle p5"></div>
+
+<div class="app">
+
+  <!-- ===================== 顶栏 ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">VIBESPACE</div>
+    </div>
+
+    <div class="project-switcher" title="切换项目">
+      <span class="name">AIkanban-main</span>
+      <span class="arrow">▾</span>
+    </div>
+
+    <div class="topbar-spacer"></div>
+
+    <div class="global-meter">
+      <div class="meter">
+        <span class="meter-label">Tokens</span>
+        <div class="meter-bar"><div class="meter-fill tokens"></div></div>
+        <span class="meter-value">38%</span>
+      </div>
+      <div class="meter">
+        <span class="meter-label">CPU</span>
+        <div class="meter-bar"><div class="meter-fill cpu"></div></div>
+        <span class="meter-value">22%</span>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="icon-btn" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <button class="icon-btn" title="日志">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+      </button>
+      <button class="icon-btn" title="后台任务">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===================== 左侧：会话列表 ===================== -->
+  <aside class="side">
+    <div class="side-header">
+      <span class="side-title">Sessions</span>
+      <span class="side-count">04 / 04</span>
+    </div>
+
+    <ul class="session-list">
+      <li class="session active" style="--accent: var(--agent-claude);">
+        <div class="node">
+          <div class="node-halo"></div>
+          <div class="node-core"></div>
+        </div>
+        <div class="session-meta">
+          <div class="session-name">UI 重设计</div>
+          <div class="session-tag">Claude · Opus</div>
+        </div>
+        <div class="session-pulse"><div class="pulse-dot"></div></div>
+      </li>
+
+      <li class="session" style="--accent: var(--agent-codex);">
+        <div class="node">
+          <div class="node-halo"></div>
+          <div class="node-core"></div>
+        </div>
+        <div class="session-meta">
+          <div class="session-name">迁移脚本重写</div>
+          <div class="session-tag">Codex · GPT-5</div>
+        </div>
+        <div class="session-pulse"><div class="pulse-dot"></div></div>
+      </li>
+
+      <li class="session" style="--accent: var(--agent-gemini);">
+        <div class="node">
+          <div class="node-halo"></div>
+          <div class="node-core"></div>
+        </div>
+        <div class="session-meta">
+          <div class="session-name">长文档审阅</div>
+          <div class="session-tag">Gemini · 2.5 Pro</div>
+        </div>
+        <div class="session-pulse"><div class="pulse-dot"></div></div>
+      </li>
+
+      <li class="session idle" style="--accent: var(--agent-shell);">
+        <div class="node">
+          <div class="node-halo"></div>
+          <div class="node-core"></div>
+        </div>
+        <div class="session-meta">
+          <div class="session-name">归档评审</div>
+          <div class="session-tag">Shell · Idle</div>
+        </div>
+      </li>
+    </ul>
+
+    <button class="new-session-btn">
+      <span class="plus">+</span><span>新建会话</span>
+    </button>
+
+    <div class="side-divider"></div>
+
+    <div class="side-header">
+      <span class="side-title">Projects</span>
+    </div>
+    <ul class="session-list">
+      <li class="session idle" style="--accent: var(--agent-idle);">
+        <div class="node">
+          <div class="node-halo"></div>
+          <div class="node-core"></div>
+        </div>
+        <div class="session-meta">
+          <div class="session-name">ExcelGen</div>
+          <div class="session-tag">F:\VibeSpace\ExcelGen</div>
+        </div>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- ===================== 中央：终端 ===================== -->
+  <section class="main">
+    <div class="tabs">
+      <div class="tab active" style="--accent: var(--agent-claude);">
+        <div class="tab-dot"></div>
+        <span>claude</span>
+        <span class="tab-close">×</span>
+      </div>
+      <div class="tab" style="--accent: var(--agent-codex);">
+        <div class="tab-dot"></div>
+        <span>codex-3a02fp</span>
+        <span class="tab-close">×</span>
+      </div>
+      <div class="tab" style="--accent: var(--agent-gemini);">
+        <div class="tab-dot"></div>
+        <span>gemini-review</span>
+        <span class="tab-close">×</span>
+      </div>
+      <div class="tab-add">+</div>
+    </div>
+
+    <div class="terminal-shell" style="--accent: var(--agent-claude);">
+      <div class="terminal-header">
+        <div class="term-title">
+          <div class="term-title-mark"></div>
+          <span>Claude · Opus 4.7 (1M)</span>
+        </div>
+        <div class="term-meta">
+          <div class="term-meta-item"><span>worktree:</span><span class="v">main</span></div>
+          <div class="term-meta-item"><span>uptime:</span><span class="v">04:21</span></div>
+          <div class="term-meta-item"><span>turns:</span><span class="v">17</span></div>
+        </div>
+      </div>
+
+      <div class="terminal-body">
+<div class="term-line term-faint">F:\VibeSpace\KB\AIkanban-main &gt; claude</div>
+<div class="term-line term-faint"></div>
+<div class="term-line"><span class="term-claude">●</span>&nbsp;<span class="term-accent">Claude Code</span> <span class="term-faint">v2.1.11k</span> <span class="term-dim">·  Opus 4.7 (1M context) · Max</span></div>
+<div class="term-line term-dim">  Welcome to Opus 4.7 "high" — /effort to tune speed vs. intelligence</div>
+<div class="term-line"></div>
+
+<div class="term-line term-dim">&gt; 重新设计 vibespace 的界面 UI，给出主题 UI 设定</div>
+<div class="term-line"></div>
+
+<div class="term-line">
+  <span class="term-thinking">
+    <span class="thinking-bars"><span></span><span></span><span></span><span></span></span>
+    构思中 · 在 5 流派 × 20 哲学里挑差异化的三个方向
+  </span>
+</div>
+<div class="term-line"></div>
+
+<div class="term-block">
+<div class="term-line"><span class="term-accent">方向 A</span>　<span class="term-dim">Linear / Vercel · 信息建筑派</span> — 安全选择</div>
+<div class="term-line"><span class="term-accent">方向 B</span>　<span class="term-dim">Kenya Hara · 东方极简派</span> — 差异化选择</div>
+<div class="term-line"><span class="term-accent">方向 C</span>　<span class="term-dim">Bret Victor / Field.io · 实验先锋派</span> — 大胆选择</div>
+</div>
+
+<div class="term-line term-dim">&gt; 试一下 C</div>
+<div class="term-line"></div>
+
+<div class="term-line"><span class="term-success">✓</span>&nbsp;<span class="term-dim">已生成 hi-fi 原型</span>　<span class="term-faint">_design-explorations/vibespace-ui-direction-c/index.html</span></div>
+<div class="term-line"><span class="term-success">✓</span>&nbsp;<span class="term-dim">主题色板已落地</span>　<span class="term-faint">深空底 #070A12 + 4 色 agent 性格色</span></div>
+<div class="term-line"><span class="term-success">✓</span>&nbsp;<span class="term-dim">关键组件样式规范已写入注释</span></div>
+<div class="term-line"></div>
+
+<div class="term-line term-faint">即将进入下一步：等你在浏览器看完截图，告诉我喜欢哪些 / 不喜欢哪些 ▍</div>
+      </div>
+
+      <div class="composer">
+        <span class="composer-prefix">›</span>
+        <input class="composer-input" placeholder="按下 Enter 发送 · Shift+Enter 换行" />
+        <span class="composer-hint"><kbd>⏎</kbd> 发送</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 右侧：上下文面板 ===================== -->
+  <aside class="aside">
+    <div class="aside-tabs">
+      <div class="aside-tab active">Context</div>
+      <div class="aside-tab">Files</div>
+      <div class="aside-tab">Logs</div>
+    </div>
+
+    <!-- Token 用量 -->
+    <div class="aside-section">
+      <div class="aside-section-title">
+        <span>Energy · 本会话</span>
+        <span style="color: var(--ink-secondary); font-family: var(--font-numeric); text-transform: none; letter-spacing: 0;">76,420 / 200,000</span>
+      </div>
+
+      <div class="energy-row">
+        <span class="energy-label">Input</span>
+        <div class="energy-bar">
+          <div class="energy-fill" style="--from: #2A4060; --to: var(--agent-codex); width: 62%;"></div>
+        </div>
+        <span class="energy-value">47.4k</span>
+      </div>
+      <div class="energy-row">
+        <span class="energy-label">Output</span>
+        <div class="energy-bar">
+          <div class="energy-fill" style="--from: #5A4020; --to: var(--agent-claude); width: 38%;"></div>
+        </div>
+        <span class="energy-value">29.0k</span>
+      </div>
+      <div class="energy-row">
+        <span class="energy-label">Cache</span>
+        <div class="energy-bar">
+          <div class="energy-fill" style="--from: #205040; --to: var(--agent-shell); width: 88%;"></div>
+        </div>
+        <span class="energy-value">88%</span>
+      </div>
+    </div>
+
+    <!-- Worktree 拓扑 -->
+    <div class="aside-section">
+      <div class="aside-section-title">
+        <span>Worktrees · 4 active</span>
+      </div>
+      <div class="worktree-graph">
+        <svg viewBox="0 0 280 92" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="g-claude" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#FFB454" stop-opacity="0.2"/>
+              <stop offset="1" stop-color="#FFB454" stop-opacity="0.9"/>
+            </linearGradient>
+            <linearGradient id="g-codex" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#5EE5D7" stop-opacity="0.2"/>
+              <stop offset="1" stop-color="#5EE5D7" stop-opacity="0.9"/>
+            </linearGradient>
+            <linearGradient id="g-gemini" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#E96BC8" stop-opacity="0.2"/>
+              <stop offset="1" stop-color="#E96BC8" stop-opacity="0.9"/>
+            </linearGradient>
+          </defs>
+
+          <!-- main 主干 -->
+          <path d="M 10 46 L 270 46" stroke="rgba(255,255,255,0.08)" stroke-width="1" fill="none"/>
+          <text x="10" y="58" fill="#7B8AAB" font-family="Berkeley Mono, monospace" font-size="9">main</text>
+
+          <!-- Claude 分叉 -->
+          <path d="M 60 46 Q 100 18, 180 18 L 260 18" stroke="url(#g-claude)" stroke-width="2" fill="none"/>
+          <circle cx="60" cy="46" r="3" fill="#FFB454"/>
+          <circle cx="260" cy="18" r="3.5" fill="#FFB454"/>
+          <text x="180" y="12" fill="#FFB454" font-family="Berkeley Mono, monospace" font-size="9" opacity="0.85">ui-redesign</text>
+
+          <!-- Codex 分叉 -->
+          <path d="M 100 46 Q 140 76, 200 76 L 260 76" stroke="url(#g-codex)" stroke-width="2" fill="none"/>
+          <circle cx="100" cy="46" r="3" fill="#5EE5D7"/>
+          <circle cx="260" cy="76" r="3.5" fill="#5EE5D7"/>
+          <text x="200" y="88" fill="#5EE5D7" font-family="Berkeley Mono, monospace" font-size="9" opacity="0.85">migration</text>
+
+          <!-- Gemini 分叉 -->
+          <path d="M 150 46 Q 180 32, 230 32 L 260 32" stroke="url(#g-gemini)" stroke-width="2" fill="none"/>
+          <circle cx="150" cy="46" r="3" fill="#E96BC8"/>
+          <circle cx="260" cy="32" r="3.5" fill="#E96BC8"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 文件树 -->
+    <div class="files">
+      <div class="aside-section-title" style="padding: 0 6px 8px;">
+        <span>Touched · 3 files</span>
+      </div>
+      <div class="file-row dir">
+        <span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 2A1.75 1.75 0 0 0 0 3.75v8.5C0 13.216.784 14 1.75 14h12.5A1.75 1.75 0 0 0 16 12.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2H1.75z"/></svg>
+        <span>_design-explorations</span>
+      </div>
+      <div class="file-row dir">
+        <span class="indent"></span><span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 2A1.75 1.75 0 0 0 0 3.75v8.5C0 13.216.784 14 1.75 14h12.5A1.75 1.75 0 0 0 16 12.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2H1.75z"/></svg>
+        <span>vibespace-ui-direction-c</span>
+      </div>
+      <div class="file-row touched">
+        <span class="indent"></span><span class="indent"></span><span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25V1.75z"/></svg>
+        <span>index.html</span>
+      </div>
+      <div class="file-row dir" style="margin-top: 6px;">
+        <span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 2A1.75 1.75 0 0 0 0 3.75v8.5C0 13.216.784 14 1.75 14h12.5A1.75 1.75 0 0 0 16 12.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2H1.75z"/></svg>
+        <span>packages</span>
+      </div>
+      <div class="file-row dir">
+        <span class="indent"></span><span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 2A1.75 1.75 0 0 0 0 3.75v8.5C0 13.216.784 14 1.75 14h12.5A1.75 1.75 0 0 0 16 12.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2H1.75z"/></svg>
+        <span>web</span>
+      </div>
+      <div class="file-row touched">
+        <span class="indent"></span><span class="indent"></span><span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25V1.75z"/></svg>
+        <span>index.css</span>
+      </div>
+      <div class="file-row touched">
+        <span class="indent"></span><span class="indent"></span><span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25V1.75z"/></svg>
+        <span>App.tsx</span>
+      </div>
+      <div class="file-row" style="margin-top: 6px;">
+        <span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25V1.75z"/></svg>
+        <span>CLAUDE.md</span>
+      </div>
+      <div class="file-row">
+        <span class="indent"></span>
+        <svg class="glyph" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25V1.75z"/></svg>
+        <span>package.json</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== 底栏 ===================== -->
+  <footer class="statusbar">
+    <div class="status-item"><div class="status-dot"></div><span>Connected</span></div>
+    <div class="status-item"><span style="color: var(--ink-secondary);">main</span></div>
+    <div class="status-item"><span>3 worktrees · 4 sessions</span></div>
+    <div class="status-spacer"></div>
+    <div class="status-item status-link">Logs</div>
+    <div class="status-item status-link">Granted · 47</div>
+    <div class="status-item"><span style="color: var(--agent-shell);">●</span><span style="color: var(--ink-secondary);">v0.6.0</span></div>
+  </footer>
+</div>
+
+<div class="signature">VIBESPACE · DIRECTION C · EXPERIMENTAL</div>
+
+</body>
+</html>

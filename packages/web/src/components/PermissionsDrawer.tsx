@@ -246,7 +246,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
                 onClick={() => void onSave()}
                 disabled={saving || !dirty}
                 title={!dirty ? '没有未保存的改动' : '写入 .claude/settings.local.json 和 .codex/config.toml'}
-                className="fluent-btn px-3 py-1 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="fluent-btn px-3 py-1 text-sm rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {saving ? '保存中…' : '💾 保存'}
               </button>
@@ -1192,7 +1192,7 @@ function WorkflowTab({ project }: { project: Project }) {
                   type="button"
                   disabled={busy}
                   onClick={() => void applyWorkflowClick()}
-                  className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {busy ? '处理中…' : '应用剩余'}
                 </button>
@@ -1210,7 +1210,7 @@ function WorkflowTab({ project }: { project: Project }) {
                 type="button"
                 disabled={busy}
                 onClick={() => void applyWorkflowClick()}
-                className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy ? '处理中…' : '应用'}
               </button>
@@ -1303,7 +1303,7 @@ function PostSaveRestartDialog({
           <button
             onClick={() => void restartSelected()}
             disabled={busy || picked.size === 0}
-            className="fluent-btn px-3 py-1.5 text-sm rounded-md bg-accent text-[#003250] font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
+            className="fluent-btn px-3 py-1.5 text-sm rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
           >
             {busy ? '重启中…' : `重启选中 (${picked.size})`}
           </button>

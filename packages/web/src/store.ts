@@ -3,9 +3,12 @@ import * as api from './api'
 import { aimonWS } from './ws'
 import { isPageFocused, notifyWaitingInput, type NotificationPermissionState } from './notify'
 import type {
+  ChangesResponse,
   ChecklistDoc,
   DocTaskSummary,
+  ErrorPatternAlert,
   GitRef,
+  GraphCommit,
   IssuesPayload,
   MemoryPayload,
   MemoryRollbackSelection,
@@ -17,6 +20,13 @@ import type {
   SubagentRun,
   WSConnState,
 } from './types'
+import {
+  KEEPALIVE_LRU_LIMIT,
+  KEEPALIVE_MEM_THRESHOLD,
+  markProjectSwitchEnd,
+  markProjectSwitchStart,
+  readUsedJSHeapSize,
+} from './perf-marks'
 
 export interface SelectedChange {
   path: string
@@ -31,7 +41,7 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs' | 'usage'
+export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs' | 'usage' | 'appearance' | 'skills'
 
 export type EditorTabKind = 'file' | 'checklist'
 
@@ -108,6 +118,11 @@ function persistWorkbench(s: {
 import { pushLog } from './logs'
 
 const LOG_RING_CAPACITY = 500
+const ALERT_RING_CAPACITY = 50
+
+interface AlertEntry extends ErrorPatternAlert {
+  read: boolean
+}
 
 const SELECTED_PROJECT_LS_KEY = 'aimon_selected_project_v1'
 const WORKBENCH_LS_KEY = 'aimon_workbench_v3'
@@ -147,6 +162,14 @@ interface State {
   logs: LogEntry[]
   appendLog: (entry: LogEntry) => void
   clearLogs: () => void
+
+  /** Active error-loop alerts, newest first. Cleared on page reload — these
+   *  are "current process" reminders, not audit history (the JSONL has the
+   *  audit trail). Capped at ALERT_RING_CAPACITY. */
+  alerts: AlertEntry[]
+  appendAlert: (alert: ErrorPatternAlert) => void
+  dismissAlert: (id: string) => void
+  markAlertRead: (id: string) => void
 
   /** Which row is highlighted inside ChangesList (selection only, no overlay). */
   selectedChange: SelectedChange | null
@@ -231,6 +254,18 @@ interface State {
     patch: Record<string, unknown>,
   ) => Promise<void>
 
+  /** ----- 切项目保活 / 缓存 ----- */
+  /** 最近切到的 projectId，最新在前。null（"全部 sessions"视图）不入栈。 */
+  recentProjectOrder: string[]
+  /** 内存超阈值后置为 true，到刷新页面前不再回退。 */
+  keepAliveDegraded: boolean
+  /** ChangesList 按 projectId 缓存的快照（SWR：先渲染缓存再后台刷新）。 */
+  projectChangesCache: Record<string, ChangesResponse>
+  setProjectChangesCache: (projectId: string, data: ChangesResponse) => void
+  /** GitGraph 按 projectId 缓存的快照。 */
+  projectGraphCache: Record<string, GraphCommit[]>
+  setProjectGraphCache: (projectId: string, data: GraphCommit[]) => void
+
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
   setNotifyPerm: (p: NotificationPermissionState) => void
@@ -312,6 +347,7 @@ export const useStore = create<State>((set, get) => ({
   notifyPerm: initialPerm(),
   notifyingSessions: new Set<string>(),
   logs: [],
+  alerts: [],
   selectedChange: null,
 
   selectChange: (c) => set({ selectedChange: c }),
@@ -346,6 +382,22 @@ export const useStore = create<State>((set, get) => ({
   checklists: {},
   checklistsLoading: {},
   checklistsError: {},
+
+  recentProjectOrder: (() => {
+    const sel = readSelectedProject()
+    return sel ? [sel] : []
+  })(),
+  keepAliveDegraded: false,
+  projectChangesCache: {},
+  setProjectChangesCache: (projectId, data) =>
+    set((st) => ({
+      projectChangesCache: { ...st.projectChangesCache, [projectId]: data },
+    })),
+  projectGraphCache: {},
+  setProjectGraphCache: (projectId, data) =>
+    set((st) => ({
+      projectGraphCache: { ...st.projectGraphCache, [projectId]: data },
+    })),
 
   setActivity: (a) => {
     set((st) => (st.activity === a ? st : { activity: a }))
@@ -460,27 +512,58 @@ export const useStore = create<State>((set, get) => ({
   setServerVersion: (v) => set({ serverVersion: v }),
   setNotifyPerm: (p) => set({ notifyPerm: p }),
   selectProject: (id) => {
+    const before = get()
+    const fromId = before.selectedProjectId
+    if (fromId === id) return
+
+    markProjectSwitchStart()
     writeSelectedProject(id)
+
+    // 维护最近项目栈：把当前 id 提到最前；id=null 不入栈（"全部 sessions"视图不算）。
+    const recentNext =
+      id != null
+        ? [id, ...before.recentProjectOrder.filter((p) => p !== id)]
+        : before.recentProjectOrder
+
+    // 内存阈值检测——只在还没降级时检查；触发后单向不回。
+    let degradedNext = before.keepAliveDegraded
+    let usedHeap: number | undefined
+    let evicted: string[] = []
+    if (!degradedNext) {
+      usedHeap = readUsedJSHeapSize()
+      if (usedHeap != null && usedHeap > KEEPALIVE_MEM_THRESHOLD) {
+        degradedNext = true
+        const keep = new Set<string>(recentNext.slice(0, KEEPALIVE_LRU_LIMIT))
+        if (id != null) keep.add(id)
+        const allProjectIds = Array.from(
+          new Set(before.sessions.map((s) => s.projectId)),
+        )
+        evicted = allProjectIds.filter((p) => !keep.has(p))
+        pushLog({
+          level: 'warn',
+          scope: 'perf',
+          msg: 'keepalive-degraded 触发',
+          meta: {
+            usedJSHeapSize: usedHeap,
+            threshold: KEEPALIVE_MEM_THRESHOLD,
+            evictedProjectIds: evicted,
+            keepProjectIds: [...keep],
+          },
+        })
+      }
+    }
+
     set((st) => {
-      // File tabs are single-instance and tied to a specific project; once the
-      // user switches to a different project, any open file tab belonging to
-      // the previous project is stale and should be closed. When id is null
-      // ("全部 sessions"), leave the current file tab alone — the user has
-      // not committed to a specific project context.
       const nextOpenFiles =
         id != null ? st.openFiles.filter((f) => f.projectId === id) : st.openFiles
       const fileDropped = nextOpenFiles.length !== st.openFiles.length
       const nextActiveFileKey = fileDropped
         ? (nextOpenFiles[0]?.key ?? null)
         : st.activeFileKey
-      // If the active tab kind was 'file' and we just dropped the file, fall
-      // back so the EditorArea doesn't render stale state.
       const nextActiveTabKind =
         fileDropped && nextActiveFileKey == null && st.activeTabKind === 'file'
           ? null
           : st.activeTabKind
-      // Also drop any selectedChange referring to the old project — it would
-      // otherwise keep highlighting a row in the new ChangesList by accident.
       const nextSelectedChange =
         id != null && st.selectedChange ? null : st.selectedChange
       return {
@@ -489,8 +572,38 @@ export const useStore = create<State>((set, get) => ({
         activeFileKey: nextActiveFileKey,
         activeTabKind: nextActiveTabKind,
         selectedChange: nextSelectedChange,
+        recentProjectOrder: recentNext,
+        keepAliveDegraded: degradedNext,
       }
     })
+
+    // 估算"切完后实际还会渲染多少 SessionView"——给 LogsView 看的诊断信息，
+    // 不参与任何控制流。
+    const after = get()
+    let visibleCount = after.sessions.length
+    if (degradedNext) {
+      const keep = new Set<string>(after.recentProjectOrder.slice(0, KEEPALIVE_LRU_LIMIT))
+      if (id != null) keep.add(id)
+      visibleCount = after.sessions.filter((s) => keep.has(s.projectId)).length
+    }
+
+    markProjectSwitchEnd({
+      fromProjectId: fromId,
+      toProjectId: id,
+      sessionsCount: visibleCount,
+      degraded: degradedNext,
+      ...(evicted.length > 0 ? { evictedProjectIds: evicted } : {}),
+      ...(usedHeap != null ? { usedJSHeapSize: usedHeap } : {}),
+    })
+
+    // Refresh docs + sessions for the newly selected project so the unfinished-
+    // task entry points (DocsView rows + EditorArea EmptyState cards) show data
+    // immediately rather than waiting for the user to click into DocsView. Both
+    // are fire-and-forget; failures are already recorded inside the actions.
+    if (id != null) {
+      void get().refreshDocs(id).catch(() => {})
+      void get().refreshSessions(id).catch(() => {})
+    }
   },
 
   refreshProjects: async () => {
@@ -656,6 +769,26 @@ export const useStore = create<State>((set, get) => ({
   },
 
   clearLogs: () => set({ logs: [] }),
+
+  appendAlert: (alert) => {
+    set((st) => {
+      // Newest first; cap at ALERT_RING_CAPACITY.
+      const entry: AlertEntry = { ...alert, read: false }
+      const next = [entry, ...st.alerts]
+      if (next.length > ALERT_RING_CAPACITY) next.length = ALERT_RING_CAPACITY
+      return { alerts: next }
+    })
+  },
+
+  dismissAlert: (id) => {
+    set((st) => ({ alerts: st.alerts.filter((a) => a.id !== id) }))
+  },
+
+  markAlertRead: (id) => {
+    set((st) => ({
+      alerts: st.alerts.map((a) => (a.id === id ? { ...a, read: true } : a)),
+    }))
+  },
 
   refreshDocs: async (projectId) => {
     set((st) => ({

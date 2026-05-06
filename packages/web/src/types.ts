@@ -220,6 +220,7 @@ export type ServerMsg =
       sessionId?: string
       meta?: unknown
     }
+  | { type: 'error-pattern-alert'; alert: ErrorPatternAlert }
 
 export type WSConnState = 'connecting' | 'open' | 'closed'
 
@@ -241,6 +242,26 @@ export interface LogEntry {
   sessionId?: string
   msg: string
   meta?: unknown
+}
+
+/**
+ * Mirror of `packages/server/src/types/log.ts::ErrorPatternAlert`.
+ * Surfaced when the backend ErrorPatternMonitor detects the same
+ * (scope, action, projectId?) key tripping its threshold.
+ */
+export interface ErrorPatternAlert {
+  id: string
+  ts: number
+  key: {
+    scope: string
+    action: string
+    actionIsFallback: boolean
+    projectId?: string
+  }
+  count: number
+  firstAt: number
+  lastAt: number
+  sampleMsg: string
 }
 
 // ---------- CLI config (permissions panel) ----------
@@ -419,6 +440,44 @@ export interface CommitResult {
   summary: string
 }
 
+// ---------- Git: remote / branch / stash / reset ops ----------
+
+export interface PullResult {
+  output: string
+  ok: true
+}
+export interface PushResult {
+  output: string
+  ok: true
+}
+export interface FetchResult {
+  output: string
+  ok: true
+}
+export interface MergeResult {
+  output: string
+  ok: true
+  branch: string
+}
+export interface BranchOpResult {
+  branch: string
+  action: 'created' | 'deleted' | 'checked-out' | 'merged'
+}
+export interface StashEntry {
+  ref: string
+  branch: string | null
+  subject: string
+  date: string
+}
+export interface StashOpResult {
+  output: string
+  ok: true
+}
+export interface ResetResult {
+  head: string
+  previousHead: string
+}
+
 export interface CliConfigSavePayload {
   claude?: {
     selections: Record<string, TriState>
@@ -492,6 +551,8 @@ export interface CommentsList {
 
 export type MemoryFileKind = 'auto' | 'manual' | 'rejected'
 
+export type LessonSeverity = 'info' | 'warn' | 'error'
+
 export interface MemoryEntry {
   /** `lesson` = 按 LINE_RE 解析出的结构化条目；`raw` = 标题 / 空行 / 自由文本 */
   kind: 'lesson' | 'raw'
@@ -500,6 +561,15 @@ export interface MemoryEntry {
   text: string
   date?: string
   task?: string
+  /** Lesson body with the trailing `[k=v;...]` tag segment stripped. Falls
+   *  back to the raw match when no valid tag segment is present. */
+  body?: string
+  /** Optional structured tag fields parsed from a trailing `[category=...;
+   *  severity=...; files=...]` segment. Absent when the line has no tag, or
+   *  when the tag could not be interpreted (no recognised keys). */
+  category?: string
+  severity?: LessonSeverity
+  files?: string[]
 }
 
 export interface MemoryPayload {
@@ -650,4 +720,111 @@ export interface ClaudeUsage {
   entriesScanned: number
   asOf: number
   note?: string
+}
+
+// ---------- Skill catalog (.claude|.codex|.opencode/skills/) ----------
+
+export type SkillAgentType = 'claude-code' | 'codex' | 'opencode'
+export const SKILL_AGENT_TYPES: readonly SkillAgentType[] = [
+  'claude-code',
+  'codex',
+  'opencode',
+]
+export const SKILL_AGENT_LABELS: Record<SkillAgentType, string> = {
+  'claude-code': 'Claude',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+}
+
+export interface SkillEntry {
+  id: string
+  name: string
+  description: string
+  path: string
+  source: 'project' | 'global'
+  isSymlink: boolean
+}
+
+export interface SkillCatalogResult {
+  project: SkillEntry[]
+  global: SkillEntry[]
+}
+
+export interface SkillAddResult {
+  mode: 'copy' | 'symlink'
+  targetPath: string
+  fellBackToCopy: boolean
+}
+
+export interface SkillRemoveResult {
+  removedPath: string
+  wasSymlink: boolean
+}
+
+// ---------- Skill market (二期：联网搜索 + 下载 + 本地库) ----------
+
+export type SkillMarketSource = 'github' | 'skills-sh'
+export type SkillMarketSearchSource = 'github' | 'skills-sh' | 'all'
+
+export interface MarketSkill {
+  id: string
+  name: string
+  description: string
+  source: SkillMarketSource
+  author: string
+  stars: number
+  repoUrl: string
+  updatedAt?: string
+}
+
+export interface GitHubSearchOk {
+  items: MarketSkill[]
+  total: number
+  rateLimitRemaining: number | null
+}
+
+export interface SkillsShSearchOk {
+  items: MarketSkill[]
+  total: number
+}
+
+export interface MarketSearchResult {
+  source: SkillMarketSearchSource
+  github: GitHubSearchOk | null
+  skillsSh: SkillsShSearchOk | null
+  cached: boolean
+}
+
+export interface LibrarySkillEntry {
+  id: string
+  name: string
+  description: string
+  path: string
+  source: 'official' | 'custom'
+}
+
+export interface LocalLibrary {
+  path: string
+  official: LibrarySkillEntry[]
+  custom: LibrarySkillEntry[]
+}
+
+export interface DownloadSkillResult {
+  success: true
+  path: string
+  skillName: string
+  sizeBytes: number
+  fileCount: number
+}
+
+export interface SetLibraryPathResult {
+  path: string
+  migrated: { from: string; to: string; fileCount: number } | null
+}
+
+export interface DeleteLibrarySkillResult {
+  deleted: true
+  name: string
+  source: 'official' | 'custom'
+  path: string
 }

@@ -41,6 +41,7 @@ export function broadcast(msg: Record<string, unknown>): void {
  *     { type: 'replay', sessionId, data }
  *     { type: 'error',  message }
  *     { type: 'log',    level, scope, msg, projectId?, sessionId?, meta? }
+ *     { type: 'error-pattern-alert', alert: ErrorPatternAlert }
  */
 export function registerWsHub(app: FastifyInstance): void {
   // ---- PTY → broadcast ----

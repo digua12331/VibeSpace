@@ -101,9 +101,18 @@ async function buildPrompt(
     "Output format — each lesson on ONE line, exactly this shape:",
     "- [<YYYY-MM-DD> / <task-name>] <one-sentence conclusion>（上下文：<why this repeats>）",
     "",
+    "Optional structured tag — append at the very end of the line, in this exact form:",
+    "  ` [category=<word>; severity=<info|warn|error>; files=<rel,paths,comma-separated>]`",
+    "  - category examples: 约定 / 踩坑 / 操作流程 / 性能 / 兼容性 / 测试 / 工具链",
+    "  - severity must be exactly one of `info` (普通经验) / `warn` (容易踩坑) / `error` (会真的出故障)",
+    "  - files: comma-separated relative paths from repo root; paths must NOT contain commas",
+    "  - All three keys are OPTIONAL — omit any field you are unsure about (do NOT guess)",
+    "  - Lessons without a tag are still fully accepted",
+    "",
     "Rules:",
     "- Write in Chinese (the main repo language).",
     "- Output 0–5 lessons. Empty output is acceptable.",
+    "- Each lesson MUST stay on a single line, even with the tag — no wrapping, no markdown tables, no fenced blocks.",
     "- No headings, no code fences, no extra commentary. Just lines starting with `- [`.",
     "- If nothing worth carrying, output: (no lessons)",
     "",
@@ -263,7 +272,7 @@ async function runCli(
 
 // ---------- Lesson extraction ----------
 
-function extractLessons(raw: string, taskName: string, today: string): string[] {
+export function extractLessons(raw: string, taskName: string, today: string): string[] {
   const out: string[] = [];
   for (const rawLine of raw.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -279,7 +288,7 @@ function extractLessons(raw: string, taskName: string, today: string): string[] 
  * Keep the model's conclusion but force date and task name to the values the
  * runner knows, so a hallucinated date / task doesn't pollute the memory file.
  */
-function normalizeLesson(line: string, taskName: string, today: string): string {
+export function normalizeLesson(line: string, taskName: string, today: string): string {
   const m = /^- \[\d{4}-\d{2}-\d{2} \/ [^\]]+\] (.+)$/.exec(line);
   if (!m) return line;
   return `- [${today} / ${taskName}] ${m[1]}`;
