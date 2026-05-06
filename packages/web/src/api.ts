@@ -76,8 +76,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let errorCode: string | undefined
     try {
       const body = (await res.json()) as { error?: string; detail?: string; message?: string }
-      errorCode = body.error ?? body.message
-      detail = body.detail
+      errorCode = body.error
+      // 后端有的路由用 detail（如 zod issues），有的用 message（如 git_failed 的原始错误）。
+      // 不要让二者互相吞掉——优先 detail，缺失时回落到 message，避免具体原因被丢。
+      detail = body.detail ?? body.message
     } catch {
       try {
         detail = await res.text()
