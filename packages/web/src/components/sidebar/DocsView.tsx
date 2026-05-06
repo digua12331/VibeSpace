@@ -8,7 +8,6 @@ import { MemoryView } from './MemoryView'
 import { logAction, pushLog } from '../../logs'
 import { dispatchClaude } from '../../dispatchClaude'
 import { pickClaudeTarget, sendToSession } from '../../sendToSession'
-import StartSessionMenu from '../StartSessionMenu'
 
 const EMPTY_TASKS: DocTaskSummary[] = []
 const EMPTY_ISSUES: IssueItem[] = []
@@ -630,28 +629,9 @@ export default function DocsView() {
                       </button>
                     )
                   }
-                  // No alive owner — for unfinished tasks, surface a "▶ 启动"
-                  // dropdown that pre-fills the task name. Done tasks get
-                  // nothing (no point starting a terminal for completed work).
-                  if (t.status === 'done') return null
-                  return (
-                    <span
-                      onClick={(e) => e.stopPropagation()}
-                      onContextMenu={(e) => e.stopPropagation()}
-                    >
-                      <StartSessionMenu
-                        projectId={projectId}
-                        compact
-                        hideInstaller
-                        triggerLabel="▶ 启动"
-                        defaultTask={t.name}
-                        onStarted={(s) => {
-                          setActiveSession(s.projectId, s.id)
-                          setActiveTabKind('session')
-                        }}
-                      />
-                    </span>
-                  )
+                  // No alive owner — show nothing inline. Use the row's
+                  // right-click menu ("派 Claude 继续任务") to start work.
+                  return null
                 })()}
                 <StatusPill task={t} />
                 <span className="text-[10px] text-subtle tabular-nums shrink-0">
