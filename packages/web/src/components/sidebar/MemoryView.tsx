@@ -278,7 +278,7 @@ function formatAlertDraft(a: AlertEntryShape): string {
   const span = Math.max(1, Math.round((a.lastAt - a.firstAt) / 1000))
   const sample = (a.sampleMsg || '').replace(/\s+/g, ' ').trim().slice(0, 120)
   const actionLabel = a.key.actionIsFallback ? `${a.key.action}*` : a.key.action
-  return `- [${today} / error-loop:${a.key.scope}/${actionLabel}] [建议主理人确认并改写为正式经验] 同一类错误 ${a.count} 次 / ${span}s（最近：${sample}）（上下文：检测自动告警，重启后状态清零）[category=踩坑; severity=warn]`
+  return `- [${today} / error-loop:${a.key.scope}/${actionLabel}] [建议大哥确认并改写为正式经验] 同一类错误 ${a.count} 次 / ${span}s（最近：${sample}）（上下文：检测自动告警，重启后状态清零）[category=踩坑; severity=warn]`
 }
 
 function AlertsBar({

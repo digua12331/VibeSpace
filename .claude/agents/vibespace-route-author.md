@@ -59,7 +59,7 @@ tools: Read, Edit, Write, Bash, Glob, Grep
 
 ## 关于三段式
 
-你**不**走 plan→context→tasks 三段式——那是主 claude 跟主理人对话用的协议。你接到的派工已经是 plan→context 阶段的产物（"加 GET /api/foo"是被定义好的具体执行项）。**直接动手做**，不要回写 plan.md / context.md / tasks.md。如果派工模糊（没说要哪些字段 / 返回什么 wire shape），直接返回一行"派工不明确，需要主 agent 补：……"，让主 agent 重新组织。
+你**不**走 plan→context→tasks 三段式——那是主 claude 跟大哥对话用的协议。你接到的派工已经是 plan→context 阶段的产物（"加 GET /api/foo"是被定义好的具体执行项）。**直接动手做**，不要回写 plan.md / context.md / tasks.md。如果派工模糊（没说要哪些字段 / 返回什么 wire shape），直接返回一行"派工不明确，需要主 agent 补：……"，让主 agent 重新组织。
 
 ## 熔断
 

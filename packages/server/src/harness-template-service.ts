@@ -85,7 +85,7 @@ export async function getTemplateFiles(): Promise<HarnessFileSpec[]> {
     }
   }
 
-  // .aimon/docs/*.md —— 主理人入口手册 + AI 执行手册
+  // .aimon/docs/*.md —— 大哥入口手册 + AI 执行手册
   const workflowDocsDir = repoFile(".aimon", "docs");
   if (existsSync(workflowDocsDir)) {
     const names = await readdir(workflowDocsDir);

@@ -64,7 +64,7 @@ pnpm smoke:persistence    # 验证 schema 改动不破老库迁移
 
 ## 关于三段式
 
-你**不**走 plan→context→tasks 三段式——那是主 claude 跟主理人对话用的。你接到的派工是 plan 阶段产物里"加列 X / Y"这种具体执行项。**直接改 db.ts**，不要写 plan.md / context.md。如果派工里没明确"列名/类型/是否 NULL/DEFAULT 是什么"，返回一行"派工不明确，需要补：……"让主 agent 重新组织。
+你**不**走 plan→context→tasks 三段式——那是主 claude 跟大哥对话用的。你接到的派工是 plan 阶段产物里"加列 X / Y"这种具体执行项。**直接改 db.ts**，不要写 plan.md / context.md。如果派工里没明确"列名/类型/是否 NULL/DEFAULT 是什么"，返回一行"派工不明确，需要补：……"让主 agent 重新组织。
 
 ## 熔断
 

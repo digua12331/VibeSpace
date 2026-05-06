@@ -1,6 +1,6 @@
 /**
  * "项目工作流" 聚合层 —— Dev Docs（写 CLAUDE.md 工作流段）+ Harness（拷
- * .aimon / .claude / dev 文件夹）原本是两件事，但主理人视角下"装这套"就是
+ * .aimon / .claude / dev 文件夹）原本是两件事，但大哥视角下"装这套"就是
  * 一件事；本文件把两套子能力包成一对统一 API：apply / remove / status。
  *
  * 两个子能力的实现：

@@ -10,7 +10,7 @@
 
 ## 记忆基础设施（后端）
 
-- [x] T3. 新建 `dev/memory/auto.md`、`dev/memory/manual.md`、`dev/memory/rejected.md` 三个骨架文件 → verify: `ls dev/memory/` 出三个 md；每份文件首行分别是 `# 自动沉淀（归档评审产出）` / `# 手动沉淀（长期经验，主理人写）` / `# 已撤回（从 auto.md 移过来的历史）`，下面留一两行说明
+- [x] T3. 新建 `dev/memory/auto.md`、`dev/memory/manual.md`、`dev/memory/rejected.md` 三个骨架文件 → verify: `ls dev/memory/` 出三个 md；每份文件首行分别是 `# 自动沉淀（归档评审产出）` / `# 手动沉淀（长期经验，大哥写）` / `# 已撤回（从 auto.md 移过来的历史）`，下面留一两行说明
 - [x] T4. 新建 `packages/server/src/memory-service.ts`：导出 `readMemory(projectPath)`、`appendLessons(projectPath, kind, entries)`、`rollbackLessons(projectPath, kind, selections)` 三个函数；`readMemory` 返回 `{ auto: Entry[], manual: Entry[], rejected: Entry[] }`；Entry 含 `{ kind: 'lesson'|'raw', text, date?, task?, line }`；行解析用正则 `^- \[(\d{4}-\d{2}-\d{2}) \/ ([^\]]+)\] (.+)$` → verify: 在 `packages/server` 下写一次性 tsx 脚本：向测试项目 append 两条自动条目、读回来 kind=lesson 数量=2；rollback 第 1 条 → auto 剩 1 条、rejected 有 1 条带撤回时间注释 ✅ `poc/memory-service-smoke.ts` 全部断言通过（append 2 → read 2 → rollback 1 → auto 剩 1、rejected 1+1 注释）。
 - [x] T5. 新建 `packages/server/src/routes/memory.ts`：`GET /api/projects/:id/memory` 返回 T4 的 payload；`POST /api/projects/:id/memory/rollback` body `{ items: [{ kind:'auto'|'manual', line: number }] }` → 调 rollbackLessons；注册进 `src/index.ts` → verify: curl GET 测试项目的 memory → 返回三段列表；curl POST rollback 某条 → 再 GET 看到少一条、rejected.md 有注释行 ✅ 以 AIkanban-main（dev db id `q1speOAF-4c8`）为测试项目跑 `poc/route-smoke.ts`：启临时 fastify 挂 `registerMemoryRoutes`，GET 返回 2 条标记 lesson、POST rollback 后 auto 剩 1、rejected 新增 1 条 lesson + 1 条 rollback 注释；脚本末尾自动把 auto.md / rejected.md 还原到测试前状态。顺便已注册到 `src/index.ts` 路由列表。
 

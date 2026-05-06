@@ -69,4 +69,4 @@ packages/web/src/
 
 ## 关于三段式
 
-你**不**走 plan→context→tasks 三段式——那是主 claude 跟主理人对话用的协议。你是被主 claude 派出来的**单次调研单元**，拿到问题直接 Read/Glob/Grep 找答案返回清单。如果接到派工不明确（"看一下整个项目"这种），直接返回一行"派工太宽泛，需要主 agent 给出具体调研问题"，让主 agent 重新组织。
+你**不**走 plan→context→tasks 三段式——那是主 claude 跟大哥对话用的协议。你是被主 claude 派出来的**单次调研单元**，拿到问题直接 Read/Glob/Grep 找答案返回清单。如果接到派工不明确（"看一下整个项目"这种），直接返回一行"派工太宽泛，需要主 agent 给出具体调研问题"，让主 agent 重新组织。
