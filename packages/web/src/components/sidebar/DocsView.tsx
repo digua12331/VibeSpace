@@ -612,6 +612,7 @@ export default function DocsView() {
                 <span className="flex-1 truncate font-medium">{t.name}</span>
                 {(() => {
                   const owner = findOwnerOfTask(t.name)
+                  // 没活着的 owner —— 不渲染内联按钮，由行的右键菜单"派 Claude 继续任务"承担启动入口
                   if (!owner) return null
                   return (
                     <button

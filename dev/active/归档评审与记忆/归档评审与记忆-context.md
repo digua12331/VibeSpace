@@ -122,7 +122,7 @@ task-name 和日期在 runner 里拼接注入，不让模型"想象"这些字段
 
 **对策**：
 - hook 只注入**第一次** SessionStart（不重复）—— 这本就是 SessionStart 的语义，无需特殊处理
-- 如果 lessons 超过 10 KB，只注入最新 30 条（用 tail 30）。足够覆盖主理人近期踩过的坑，不把上下文挤爆
+- 如果 lessons 超过 10 KB，只注入最新 30 条（用 tail 30）。足够覆盖大哥近期踩过的坑，不把上下文挤爆
 
 **资深工程师检视**：10 KB / 30 条是拍脑袋数字，可能偏紧。但先紧后松是对的 —— 发现条数不够再放宽，比反过来清理污染容易。
 
@@ -179,4 +179,4 @@ task-name 和日期在 runner 里拼接注入，不让模型"想象"这些字段
 
 ## 我在写这份 context 时顺手看到的无关问题
 
-- CLAUDE.md 第 150 行提到的 `dev/learnings.md` 从未在项目中创建过，但 CLAUDE.md 里把它当"存在的参考选项"。本 plan 决定保留 `dev/learnings.md` 作为主理人可选手动笔记（不强制），新系统用 `dev/memory/`。若后续发现 `learnings.md` 纯粹噪声，另起任务一键合并到 `manual.md` 并删除 CLAUDE.md 那行描述。这条判断足够小，**不追加到 issues.md**。
+- CLAUDE.md 第 150 行提到的 `dev/learnings.md` 从未在项目中创建过，但 CLAUDE.md 里把它当"存在的参考选项"。本 plan 决定保留 `dev/learnings.md` 作为大哥可选手动笔记（不强制），新系统用 `dev/memory/`。若后续发现 `learnings.md` 纯粹噪声，另起任务一键合并到 `manual.md` 并删除 CLAUDE.md 那行描述。这条判断足够小，**不追加到 issues.md**。

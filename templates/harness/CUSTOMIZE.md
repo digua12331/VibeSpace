@@ -170,4 +170,4 @@ VibeSpace 的 smoke 模板是 `node scripts/*-smoke.mjs` + 起 server + curl。*
 - 有前端：加 `*-ui-decorator`
 - 有 e2e 测试：加 `*-smoke-author` 或 `*-browser-tester`（二选一，不要都装）
 
-用 1-2 个月再决定要不要扩。**agent 太多 = 主理人在 Task 工具菜单里选困难症**，反而拖累 vibe coding 节奏。
+用 1-2 个月再决定要不要扩。**agent 太多 = 大哥在 Task 工具菜单里选困难症**，反而拖累 vibe coding 节奏。

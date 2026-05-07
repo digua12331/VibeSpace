@@ -26,9 +26,6 @@ echo [VibeSpace] identity=!VIBE_ID!  backend=!VIBE_BACKEND!  web=!VIBE_WEB!  scr
 echo [VibeSpace] project root: %~dp0
 echo.
 
-set FIRST_RUN=
-if not exist node_modules set FIRST_RUN=1
-
 echo [VibeSpace] running pnpm install (refresh workspace symlinks) ...
 call pnpm install
 if errorlevel 1 (
@@ -36,8 +33,13 @@ if errorlevel 1 (
   pause >nul
   exit /b 1
 )
-if defined FIRST_RUN (
-  echo [VibeSpace] rebuilding native modules for Windows ...
+
+REM Rebuild native modules when the better-sqlite3 .node binding is missing
+REM (covers fresh install, Node ABI upgrade, pnpm cache wipe, cross-machine sync).
+set "BSQLITE_BIN_FOUND="
+for /f "delims=" %%F in ('dir /s /b "node_modules\.pnpm\better-sqlite3@*\node_modules\better-sqlite3\build\Release\better_sqlite3.node" 2^>nul') do set "BSQLITE_BIN_FOUND=1"
+if not defined BSQLITE_BIN_FOUND (
+  echo [VibeSpace] rebuilding native modules for Windows ^(better-sqlite3 binding missing^) ...
   call pnpm --filter @aimon/server rebuild @homebridge/node-pty-prebuilt-multiarch better-sqlite3
 )
 
