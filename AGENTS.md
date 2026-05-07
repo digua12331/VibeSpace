@@ -145,13 +145,28 @@
 {
   "task": "<任务名>",
   "steps": [
-    { "id": 1, "title": "步骤 1", "verify": "...", "status": "todo" },
-    { "id": 2, "title": "步骤 2", "verify": "...", "status": "todo" }
+    {
+      "id": 1,
+      "title": "步骤 1",
+      "verify": "...",
+      "status": "todo",
+      "read_files": ["packages/server/src/foo.ts", "packages/web/src/bar.tsx"],
+      "write_files": ["packages/server/src/foo.ts"]
+    },
+    {
+      "id": 2,
+      "title": "步骤 2",
+      "verify": "...",
+      "status": "todo",
+      "read_files": ["..."],
+      "write_files": ["..."]
+    }
   ]
 }
 ```
 
 - `status` 取值：`todo | doing | done | blocked`。
+- `read_files` / `write_files`：**默认档/UI 改动/跨多文件任务必填**；极小档/小档可省。允许 glob（如 `packages/server/src/routes/*.ts`），AI 自查时心算判断越界。详见下方 `### 执行时的硬性规则` 中的"读写白名单"段。
 - **tasks.md 与 tasks.json 的状态必须始终一致**：每次把某行 `- [ ]` 改成 `- [x]`，同一步骤的 json `status` 也要同步改成 `done`；卡住时改成 `blocked` 并把原因写进对应步骤的 md 行尾。
 - tasks.json 是 tasks.md 的派生物：**以 md 为真源**，冲突时以 md 为准，回头修 json。
 
@@ -170,6 +185,15 @@
 - **不要加投机性代码**：别写"以后可能用到"的抽象、配置点、错误处理。当下不需要就不写。
 - **熔断：同一步骤连续失败 2–3 次就停**：如果 `verify` 没通过、报错没解决，**修改 2 次仍然不过就停手**。不要越改越大、不要为了凑绿灯去动任务范围之外的底层代码或测试用例。停下来，把错误日志、你试过的方案和当前的疑惑打印给用户，等人介入再继续。
 - **静态类型语言必须过类型检查**：如果项目使用 TypeScript / Rust / Go / Kotlin / Swift 等带静态类型的语言，且当前步骤改动了源码，`verify` 至少包含一次**项目层面的类型检查命令**并且结果为成功（具体命令参见项目 README、`package.json` scripts、`Makefile`、`justfile` 或构建配置）。不允许用"人工看过"替代；"单测通过"也不等于类型检查通过。
+- **读写白名单**（默认档/UI 改动/跨多文件任务必填；极小档/小档可省）：tasks.json 每步声明 `read_files`（允许读）和 `write_files`（允许改）。verify 通过后、勾完成前必须跑 `git diff --name-only HEAD` 与本步骤 `write_files` 比对——越界文件不算完成，要么回滚越界改动、要么停下来回 plan 扩范围。glob 写法允许（如 `packages/server/src/routes/*.ts`），AI 自己心算判断。**目的**：堵住"AI 顺手改无关代码"的老问题。
+- **破坏性变更协议**：本步若涉及以下任一事项，**必须先 grep 引用图、列受影响清单给大哥、等大哥点头才动手**：
+  1. 删除任意源码文件
+  2. 删除任一文件中 ≥5 行连续业务代码（注释、空行、配置文件不计）
+  3. 修改、重命名或删除任一被跨文件 import 的导出符号（`type` / `interface` / `function` / `class` / `const` / `default export`）
+  4. 修改、删除或重命名任一 HTTP 路由 / WebSocket 消息类型 / IPC 通道
+  5. 修改 SQLite 表结构（列增删改、索引、约束变化）
+
+  触发后该步 `verify` 必须额外包含一次"修改后 grep 同符号 / 同路径，确认无残留旧引用"。**目的**：防止"删了 API 但前端还在调"这类事故（参见 `dev/memory/auto.md` 2026-05-01 / 项目工作流统一装配 那条经验）。
 
 ## 操作日志规则（硬性）
 
@@ -257,7 +281,7 @@
 - `tasks.md` 由你 (AI) 独占维护，人类只读，不要等用户手动勾选。
 - `plan.md` 和 `context.md` 两边都可改；用户若手动编辑了，以他们的版本为准。
 - 任务完成（所有 `- [ ]` → `- [x]`）后 **不要自动归档**，等用户在 UI 的「Dev Docs」侧栏里点归档。
-- **全部完成后要输出 handoff 摘要（写给大哥看，不是工程笔记）**：最后一条任务打勾的那一轮回复末尾，给一段 ≤ 10 行的完成摘要。**第一行必须是验收指引**——白话告诉大哥"现在去哪里点哪里能看到效果"。后面再列改动涉及的主要文件、跑了什么命令、遗留 TODO（如有）。术语括号解释。没有这段摘要不算交付完成。
+- **全部完成后要输出 handoff 摘要（写给大哥看，不是工程笔记）**：最后一条任务打勾的那一轮回复末尾，给一段 ≤ 10 行的完成摘要。**第一行必须是验收指引**——白话告诉大哥"现在去哪里点哪里能看到效果"。后面再列改动涉及的主要文件、跑了什么命令、遗留 TODO（如有）。术语括号解释。没有这段摘要不算交付完成。**末尾必须附一行 `git diff --name-only HEAD` 真实输出**（或 `(已提交，diff 为空)` 短结论），证明本次改动都在本任务的 `write_files` 白名单内；极小档/小档可省 diff 行。
 - 若用户在对话里明确说"小改动"/"就一行"/"按你想法做"/"按你想法直接做"，可以**跳过 Plan 阶段的等待确认**：plan/context/tasks 三个文件仍然要写（用于归档评审、记忆衔接），但**全程不停下等用户**，直接做完再交付 handoff。**最小档**——纯文案修改、改一个菜单项标题、加一个不影响现有数据的小路由，可以连三个文件都不写，直接动手（参见 manual.md 里 2026-04-24 大哥偏好那条）。
 
 ## 跨任务知识沉淀
@@ -273,7 +297,7 @@
 
 本项目开启了"可持续记忆"：`dev/memory/auto.md`（自动评审产出）、`dev/memory/manual.md`（大哥手动写）、`dev/memory/rejected.md`（撤回历史）。它是上面"跨任务知识沉淀"的 **补强**，不是替换 —— 原规则里"自觉写 AGENTS.md / dev/learnings.md"照旧。
 
-- **Plan 阶段的第一步**：在读代码之前先扫一遍 `dev/memory/auto.md` 和 `dev/memory/manual.md`。如果里面有与本任务主题相关的条目，在 `plan.md` 里 **显式引用**（抄一句或带编号指向），证明你看过；无关则一句"memory 扫过无相关条目"即可。不要装作没这个文件。
+- **Plan 阶段的第一步**：在读代码之前先扫三份"项目常量"——`dev/memory/auto.md` / `dev/memory/manual.md` / `dev/ARCHITECTURE.md`（项目架构地图，长期稳定）。前两份找跟本任务相关的经验条目，在 `plan.md` 里 **显式引用**（抄一句或带编号指向），证明你看过；`ARCHITECTURE.md` 找跟本任务相关的章节（如 `@dev/ARCHITECTURE.md#packages拓扑`），让 plan 不用从零摸代码。无相关条目/章节则一句"memory 扫过无相关条目 / ARCHITECTURE 扫过无相关章节"即可。不要装作没这些文件。
 - **归档会自动触发评审**：每次点归档按钮，后端 fire-and-forget 拉起 codex（失败回退 gemini）读刚归档的 plan/context/tasks，把"换个任务还会用到"的经验按单行格式 append 到 `auto.md`。UI「记忆」tab 3 秒轮询，新条目会在 2 分钟内出现；评审失败则在 `rejected.md` 留一条 `review-failed:<任务名>`。归档本身永远不被评审阻塞。
 - **SessionStart hook 自动注入**：新开 Codex 会话时 `aimon-hook.mjs` 会通过 `hookSpecificOutput.additionalContext` 协议把 `auto.md` 最近 30 条 + `manual.md` 全部内容（合计 ≤10KB 截断）塞进系统上下文。也就是说你在本会话早期就 **已经看到** 这些记忆——读不到等于 hook 故障，自行排查。
 - **UI 撤回是唯一的修复手段**：auto.md 里写歪了 → 在「记忆」tab 勾选条目 → 点"撤回选中" → 后端把它移到 `rejected.md`（保留历史，不删除）。不要直接手动编辑 auto.md；它是机器产出的文件。

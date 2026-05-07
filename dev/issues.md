@@ -21,3 +21,4 @@
 - [ ] 为 removeDevDocs anchor 切片逻辑加 1–2 个单测（文件 packages/server/src/routes/projects.ts；上下文：DELETE /api/projects/:id/dev-docs 用 indexOf+slice，目前无测试覆盖）
 - [ ] 清理后端死路由 GET /api/projects/:id/harness-status + service 函数 getHarnessStatus（文件 packages/server/src/routes/projects.ts、harness-template-service.ts；上下文：前端 HarnessTeamDrawer 已删除，该路由无消费方）
 - [x] web 包 build 失败：'skills' 不在 Activity 联合类型里（文件 packages/web/src/components/layout/ActivityBar.tsx:31 + PrimarySidebar.tsx:63；上下文：2026-05-02 在做"记忆结构化"任务时发现，session 起始就存在的 pre-existing 错误，应该是新加 SkillsView.tsx 的 work-in-progress 缺了 Activity 类型扩展，需要在 Activity union 里加 'skills'）
+- [ ] AGENTS.md "Codex 配置分层" 段 Claude→Codex 替换不彻底，引用了不存在的 docs/Codex-config-tiers.md（文件 AGENTS.md:316-322；上下文：本仓 AGENTS.md 是 CLAUDE.md 的 Codex 副本，但配置分层段把 "Claude Code" 机械替换成 "Codex"，含混了 Claude Code 与 Codex CLI 两个不同工具；文档路径也被替换成不存在的文件名。建议这一段恢复成"Claude Code"原文，并加一句"AGENTS.md 中其它 Claude→Codex 替换照旧；本节例外"）

@@ -100,7 +100,7 @@ Plan 文件**第一段必须是大哥摘要**，3-5 行白话：
 
 Plan 还必须包含：
 
-- `memory 扫过`：开 plan 之前先看 `dev/memory/auto.md` + `dev/memory/manual.md`，相关条目显式引用，无关一句“扫过无相关条目”。
+- `memory + ARCHITECTURE 扫过`：开 plan 之前先看 `dev/memory/auto.md` + `dev/memory/manual.md` + `dev/ARCHITECTURE.md`（项目架构地图，长期稳定）。前两份相关条目显式引用，ARCHITECTURE 相关章节用 `@dev/ARCHITECTURE.md#章节` 形式引用；无关一句“扫过无相关条目/章节”。
 - 目标
 - 验收标准（UI 改动必须至少含一条“浏览器里能看到/能点出来”的行为描述）
 - 非目标
@@ -146,10 +146,20 @@ Context 记录：
 要求：
 
 - 每一步都有 `verify:`。
+- 每一步声明 `read_files`（允许读）和 `write_files`（允许改）。**默认档/UI 改动/跨多文件任务必填**；极小档/小档可省。允许 glob。具体 json 字段见 `CLAUDE.md` 的 tasks.json 模板。
 - `tasks.md` 是人类可读真源。
 - `tasks.json` 是 UI/脚本可读状态。
 - 每完成一步立即同步 md/json。
 - 卡住时标 `blocked`，并写明原因。
+
+### 2.5 执行时硬性规则补充
+
+外科式改动（`CLAUDE.md` 已列）之外，本项目额外约束两条：
+
+- **读写白名单**：tasks.json 每步声明的 `read_files` / `write_files` 即本步改动边界。verify 通过后、勾完成前必须跑 `git diff --name-only HEAD` 与 `write_files` 比对——越界文件不算完成，要么回滚越界改动、要么停下来回 plan 扩范围。极小档/小档可省。
+- **破坏性变更协议**：本步若涉及 ① 删源码文件 / ② 删 ≥5 行连续业务代码 / ③ 改跨文件 import 的导出符号（type/interface/function/class/const/default export）/ ④ 改 HTTP 路由 / WebSocket 消息类型 / IPC 通道 / ⑤ 改 SQLite 表结构（列增删改/索引/约束），**必须先 grep 引用图、列受影响清单、等大哥点头才动手**，并在该步 `verify` 加一次"修改后 grep 同符号确认无残留旧引用"。目的是防止"删了 API 但前端还在调"这类事故。
+
+handoff 摘要末尾必须附一行 `git diff --name-only HEAD` 真实输出，证明改动都在本任务 `write_files` 白名单内（极小档/小档可省）。
 
 ## 3. 打断大哥的条件
 
@@ -333,7 +343,7 @@ dev/issues.md
 
 这些不属于每次任务自动顺手修的范围，应单独立项：
 
-1. 同步 `CLAUDE.md` 与 `packages/server/src/dev-docs-guidelines.ts`，避免 UI 应用到新项目时写入旧版 Dev Docs 规则。
+1. ~~同步 `CLAUDE.md` 与 `packages/server/src/dev-docs-guidelines.ts`，避免 UI 应用到新项目时写入旧版 Dev Docs 规则。~~（✅ 已于 2026-05-07 解决：本仓 dev-docs-guidelines.ts 已与 CLAUDE.md 当前版本同步，任务"工作流模板同步"）
 2. 把 `CLAUDE.md` 里的 `AIMON_SESSION_PROMPT_PATH` 读取规则同步到模板和 harness 安装文档。
 3. 若 browser-use MCP 未来升级工具名，同步更新 `vibespace-browser-tester` 的具体工具清单。
 4. 评估是否恢复施工边界（scope 阻断），用于保护核心目录和数据文件。
