@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
 import FilePreview from '../FilePreview'
@@ -7,6 +7,8 @@ import StartSessionMenu from '../StartSessionMenu'
 import TerminalHost from '../terminal/TerminalHost'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { logAction } from '../../logs'
+import { dispatchClaude } from '../../dispatchClaude'
+import { pickClaudeTarget, sendToSession } from '../../sendToSession'
 import type { AgentKind, DocTaskSummary } from '../../types'
 
 /**
@@ -344,6 +346,7 @@ function EmptyState({ projectId }: { projectId: string | null }) {
   const liveStatus = useStore((s) => s.liveStatus)
   const setActiveSession = useStore((s) => s.setActiveSession)
   const setActiveTabKind = useStore((s) => s.setActiveTabKind)
+  const [dispatching, setDispatching] = useState(false)
 
   // Top 3 unfinished tasks for the current project, by updatedAt desc. Done is
   // intentionally hidden — there's nothing to "continue" on a finished task.
@@ -365,6 +368,35 @@ function EmptyState({ projectId }: { projectId: string | null }) {
         return st !== 'stopped' && st !== 'crashed'
       })
       .find((s) => s.task === taskName)
+  }
+
+  async function onContinueTask(taskName: string) {
+    if (!projectId || dispatching) return
+    setDispatching(true)
+    const prompt = `继续 ${taskName}\n\n任务文档：dev/active/${taskName}/`
+    try {
+      // Same routing as DocsView's "派 Claude 继续任务": prefer injecting into
+      // an alive claude session's floating input so the user can review before
+      // hitting Enter; fall back to spawning a new claude with clipboard paste
+      // when nothing's alive.
+      const target = pickClaudeTarget(projectId)
+      if (target) {
+        await sendToSession(projectId, target, prompt, {
+          scope: 'docs',
+          meta: { kind: '从空白页继续任务', task: taskName },
+        })
+      } else {
+        await dispatchClaude({
+          projectId,
+          prompt,
+          successTitle: '已派 Claude 继续任务',
+        })
+      }
+    } catch {
+      /* alertDialog already surfaced by dispatchClaude / logAction */
+    } finally {
+      setDispatching(false)
+    }
   }
 
   return (
@@ -414,17 +446,14 @@ function EmptyState({ projectId }: { projectId: string | null }) {
                       🔗 进入 {owner.agent}·{owner.id.slice(-6)}
                     </button>
                   ) : (
-                    <StartSessionMenu
-                      projectId={projectId}
-                      compact
-                      hideInstaller
-                      triggerLabel="▶ 启动"
-                      defaultTask={t.name}
-                      onStarted={(s) => {
-                        setActiveSession(s.projectId, s.id)
-                        setActiveTabKind('session')
-                      }}
-                    />
+                    <button
+                      onClick={() => void onContinueTask(t.name)}
+                      disabled={dispatching}
+                      title={`点击：把"继续 ${t.name} + 任务路径"塞进 Claude 终端的输入框（已开 Claude 则直接注入；未开则新开一个）`}
+                      className="text-[11px] text-fg bg-white/[0.04] border border-border rounded px-2 py-0.5 hover:bg-white/[0.08] hover:text-accent transition-colors shrink-0 disabled:opacity-50"
+                    >
+                      {dispatching ? '…' : '▶ 启动'}
+                    </button>
                   )}
                 </div>
               )

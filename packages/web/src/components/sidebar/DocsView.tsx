@@ -279,7 +279,7 @@ export default function DocsView() {
   }
 
   function buildContinueTaskPrompt(task: string): string {
-    return `继续 ${task}`
+    return `继续 ${task}\n\n任务文档：dev/active/${task}/`
   }
 
   function buildAllIssuesPrompt(items: IssueItem[]): string {
@@ -612,26 +612,22 @@ export default function DocsView() {
                 <span className="flex-1 truncate font-medium">{t.name}</span>
                 {(() => {
                   const owner = findOwnerOfTask(t.name)
-                  if (owner) {
-                    // Alive owner exists — clicking jumps to its session tab.
-                    return (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!projectId) return
-                          setActiveSession(projectId, owner.id)
-                          setActiveTabKind('session')
-                        }}
-                        title={`点击进入终端 ${owner.agent} · ${owner.id}`}
-                        className="text-[10px] text-cyan-300/90 bg-cyan-400/10 border border-cyan-400/30 rounded px-1 py-0 leading-4 whitespace-pre hover:bg-cyan-400/20 hover:text-cyan-200 transition-colors"
-                      >
-                        🔗 {owner.agent}·{owner.id.slice(-6)}
-                      </button>
-                    )
-                  }
-                  // No alive owner — show nothing inline. Use the row's
-                  // right-click menu ("派 Claude 继续任务") to start work.
-                  return null
+                  // 没活着的 owner —— 不渲染内联按钮，由行的右键菜单"派 Claude 继续任务"承担启动入口
+                  if (!owner) return null
+                  return (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!projectId) return
+                        setActiveSession(projectId, owner.id)
+                        setActiveTabKind('session')
+                      }}
+                      title={`点击进入终端 ${owner.agent} · ${owner.id}`}
+                      className="text-[10px] text-cyan-300/90 bg-cyan-400/10 border border-cyan-400/30 rounded px-1 py-0 leading-4 whitespace-pre hover:bg-cyan-400/20 hover:text-cyan-200 transition-colors"
+                    >
+                      🔗 {owner.agent}·{owner.id.slice(-6)}
+                    </button>
+                  )
                 })()}
                 <StatusPill task={t} />
                 <span className="text-[10px] text-subtle tabular-nums shrink-0">
