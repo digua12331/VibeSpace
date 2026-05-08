@@ -44,6 +44,10 @@ function isProjectLayout(v: unknown): v is ProjectLayout {
   );
 }
 
+function isWorkflowMode(v: unknown): v is WorkflowMode {
+  return v === "dev-docs" || v === "openspec";
+}
+
 function loadProjectsJson(): Project[] {
   if (!existsSync(PROJECTS_JSON_PATH)) return [];
   try {
@@ -60,9 +64,13 @@ function loadProjectsJson(): Project[] {
       )
       .map((p) => {
         const layout = (p as Project).layout;
-        return isProjectLayout(layout)
-          ? { id: p.id, name: p.name, path: p.path, createdAt: p.createdAt, layout }
-          : { id: p.id, name: p.name, path: p.path, createdAt: p.createdAt };
+        const wfRaw = (p as Project).workflowMode;
+        const workflowMode: WorkflowMode | null = isWorkflowMode(wfRaw) ? wfRaw : null;
+        const base: Project = { id: p.id, name: p.name, path: p.path, createdAt: p.createdAt };
+        if (isProjectLayout(layout)) base.layout = layout;
+        // 缺字段或非法值都序列化成 null（前端可据此判断"未设置"）
+        base.workflowMode = workflowMode;
+        return base;
       });
   } catch {
     return [];
@@ -243,12 +251,17 @@ export interface ProjectLayout {
   updatedAt: number;
 }
 
+export type WorkflowMode = "dev-docs" | "openspec";
+
 export interface Project {
   id: string;
   name: string;
   path: string;
   createdAt: number;
   layout?: ProjectLayout;
+  /** 项目级"开发流程"模式；null 等同未设置（侧栏既不显示 Dev Docs 也不显示 OpenSpec tab）。
+   *  存 projects.json 真源，不进 SQLite 影子表（与 layout 同模式，详 dev/active D11）。 */
+  workflowMode?: WorkflowMode | null;
 }
 
 export type SessionIsolation = "shared" | "worktree";
@@ -346,6 +359,20 @@ export function updateProjectLayout(id: string, layout: ProjectLayout): boolean 
   if (idx < 0) return false;
   const next = list.slice();
   next[idx] = { ...next[idx], layout };
+  saveProjectsJson(next);
+  return true;
+}
+
+/** 把 workflowMode 写进 projects.json 真源；null 表示清空（侧栏既不显 Dev Docs 也不显 OpenSpec）。 */
+export function updateProjectWorkflowMode(
+  id: string,
+  mode: WorkflowMode | null,
+): boolean {
+  const list = loadProjectsJson();
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx < 0) return false;
+  const next = list.slice();
+  next[idx] = { ...next[idx], workflowMode: mode };
   saveProjectsJson(next);
   return true;
 }

@@ -74,6 +74,8 @@ export interface ProjectLayout {
   updatedAt: number
 }
 
+export type WorkflowMode = 'dev-docs' | 'openspec'
+
 export interface Project {
   id: string
   name: string
@@ -81,6 +83,8 @@ export interface Project {
   /** epoch ms */
   createdAt: number
   layout?: ProjectLayout
+  /** 项目级"开发流程"模式；null 等同未设置（侧栏既不显 Dev Docs 也不显 OpenSpec tab）。 */
+  workflowMode?: WorkflowMode | null
 }
 
 export type SessionIsolation = 'shared' | 'worktree'
@@ -134,26 +138,119 @@ export interface HarnessStatusShape {
   gitignoreHasRuntime: boolean
 }
 
+export interface OpenSpecApplyShape {
+  created: string[]
+  skipped: string[]
+}
+
+export interface OpenSpecUninstallShape {
+  removedCount: number
+  preservedPaths: string[]
+  failedPaths: string[]
+}
+
+export interface OpenSpecStatusShape {
+  rootExists: boolean
+  applied: 'none' | 'partial' | 'full'
+  changesCount: number
+}
+
+export interface WorkflowApplyOptions {
+  mode?: WorkflowMode
+  superpowers?: boolean
+}
+
+export interface WorkflowRemoveOptions {
+  mode?: WorkflowMode
+  superpowers?: boolean
+}
+
 export interface WorkflowApplyResult {
-  devDocs: { ok: true; wrote: boolean } | { ok: false; error: string }
+  mode: WorkflowMode
+  devDocs:
+    | null
+    | { ok: true; wrote: boolean }
+    | { ok: false; error: string }
+  openspec:
+    | null
+    | ({ ok: true } & OpenSpecApplyShape)
+    | { ok: false; error: string }
   harness:
     | null
     | ({ ok: true } & HarnessApplyShape)
+    | { ok: false; error: string }
+  superpowers:
+    | null
+    | { ok: true; wrote: boolean }
     | { ok: false; error: string }
   partial: boolean
 }
 
 export interface WorkflowRemoveResult {
   ok?: boolean
-  devDocs: { changed: boolean; reason?: string }
+  mode: WorkflowMode
+  devDocs: null | { changed: boolean; reason?: string }
+  openspec:
+    | null
+    | ({ ok: true } & OpenSpecUninstallShape)
+    | { ok: false; error: string }
   harness: HarnessUninstallShape
+  superpowers: null | { changed: boolean; reason?: string }
   partial: boolean
 }
 
 export interface WorkflowStatus {
+  detectedMode: WorkflowMode | null
   devDocs: { enabled: boolean; claudeMdExists: boolean }
+  openspec: OpenSpecStatusShape
   harness: HarnessStatusShape
+  superpowers: { enabled: boolean; claudeMdExists: boolean }
   applied: 'none' | 'partial' | 'full'
+}
+
+// ---------- OpenSpec changes ----------
+
+export type OpenSpecChangeFile = 'proposal' | 'design' | 'tasks'
+
+export interface OpenSpecChangeFiles {
+  proposal: boolean
+  design: boolean
+  tasks: boolean
+}
+
+export interface OpenSpecChange {
+  name: string
+  files: OpenSpecChangeFiles
+  /** epoch ms */
+  updatedAt: number
+}
+
+// ---------- gstack（外部工具集） ----------
+
+export interface GstackStatus {
+  installed: boolean
+  location: string
+  version: string | null
+  bunAvailable: boolean
+  gitAvailable: boolean
+  repoUrl: string
+}
+
+export type GstackErrorCode =
+  | 'git_unavailable'
+  | 'bun_unavailable'
+  | 'repo_unreachable'
+  | 'git_clone_failed'
+  | 'bun_setup_failed'
+  | 'uninstall_failed'
+  | 'internal'
+
+export interface GstackInstallResult {
+  ok: boolean
+  status: GstackStatus
+  errorCode?: GstackErrorCode
+  errorMessage?: string
+  trailingLog?: string
 }
 
 // ---------- Subagent runs (claude Task 工具调用卡片) ----------

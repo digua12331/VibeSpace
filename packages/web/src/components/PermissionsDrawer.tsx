@@ -1067,12 +1067,17 @@ function WorkflowTab({ project }: { project: Project }) {
         () => api.applyWorkflow(project.id),
         { projectId: project.id },
       )
-      // 子结果分别报：先看 devDocs，再看 harness。
-      const devDocsLine = result.devDocs.ok
-        ? result.devDocs.wrote
-          ? '✓ Dev Docs 工作流段落已写入 CLAUDE.md'
-          : '○ CLAUDE.md 中工作流段落已存在，未重复追加'
-        : `✗ Dev Docs 写入失败：${result.devDocs.error}`
+      // 子结果分别报：现在 devDocs 在 mode === 'dev-docs' 时填，否则 null。
+      // 当前 PermissionsDrawer 默认调 applyWorkflow（不传 mode）走 dev-docs，所以 devDocs 一定不为 null。
+      // 但类型签名允许 null（mode === 'openspec' 时），代码加 ?? 兜底。
+      const devDocs = result.devDocs
+      const devDocsLine = !devDocs
+        ? '— 本次未应用 Dev Docs 模式'
+        : devDocs.ok
+          ? devDocs.wrote
+            ? '✓ Dev Docs 工作流段落已写入 CLAUDE.md'
+            : '○ CLAUDE.md 中工作流段落已存在，未重复追加'
+          : `✗ Dev Docs 写入失败：${devDocs.error}`
       const harnessLine =
         result.harness === null
           ? '— 因 Dev Docs 失败已跳过文件夹拷贝'
@@ -1084,14 +1089,15 @@ function WorkflowTab({ project }: { project: Project }) {
                   : '   .gitignore 已含 runtime 行',
               ].join('\n')
             : `✗ 文件夹拷贝失败：${result.harness.error}`
+      const devDocsOk = devDocs !== null && devDocs.ok
       const title = result.partial
         ? '工作流应用部分失败'
-        : result.devDocs.ok && result.harness && result.harness.ok
+        : devDocsOk && result.harness && result.harness.ok
           ? '工作流应用结果'
           : '工作流应用失败'
       await alertDialog([devDocsLine, harnessLine].join('\n'), {
         title,
-        variant: result.partial || !result.devDocs.ok ? 'danger' : undefined,
+        variant: result.partial || !devDocsOk ? 'danger' : undefined,
       })
       await refresh()
     } catch (e: unknown) {

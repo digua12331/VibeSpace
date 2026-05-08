@@ -42,9 +42,15 @@ import type {
   Session,
   SessionIsolation,
   SubagentRun,
+  WorkflowApplyOptions,
   WorkflowApplyResult,
+  WorkflowRemoveOptions,
   WorkflowRemoveResult,
   WorkflowStatus,
+  OpenSpecChange,
+  OpenSpecChangeFile,
+  GstackStatus,
+  GstackInstallResult,
   SkillAgentType,
   SkillCatalogResult,
   SkillAddResult,
@@ -118,17 +124,33 @@ export function createProject(input: {
   return request<Project>('/api/projects', jsonInit('POST', input))
 }
 
-export function applyWorkflow(projectId: string): Promise<WorkflowApplyResult> {
+export function applyWorkflow(
+  projectId: string,
+  opts: WorkflowApplyOptions = {},
+): Promise<WorkflowApplyResult> {
+  const hasOpts = opts.mode !== undefined || opts.superpowers !== undefined
   return request<WorkflowApplyResult>(
     `/api/projects/${encodeURIComponent(projectId)}/workflow`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      headers: hasOpts ? { 'content-type': 'application/json' } : undefined,
+      body: hasOpts ? JSON.stringify(opts) : undefined,
+    },
   )
 }
 
-export function removeWorkflow(projectId: string): Promise<WorkflowRemoveResult> {
+export function removeWorkflow(
+  projectId: string,
+  opts: WorkflowRemoveOptions = {},
+): Promise<WorkflowRemoveResult> {
+  const hasOpts = opts.mode !== undefined || opts.superpowers !== undefined
   return request<WorkflowRemoveResult>(
     `/api/projects/${encodeURIComponent(projectId)}/workflow`,
-    { method: 'DELETE' },
+    {
+      method: 'DELETE',
+      headers: hasOpts ? { 'content-type': 'application/json' } : undefined,
+      body: hasOpts ? JSON.stringify(opts) : undefined,
+    },
   )
 }
 
@@ -136,6 +158,92 @@ export function getWorkflowStatus(projectId: string): Promise<WorkflowStatus> {
   return request<WorkflowStatus>(
     `/api/projects/${encodeURIComponent(projectId)}/workflow-status`,
   )
+}
+
+// ---------- OpenSpec changes ----------
+
+export function listOpenSpecChanges(
+  projectId: string,
+): Promise<{ changes: OpenSpecChange[] }> {
+  return request<{ changes: OpenSpecChange[] }>(
+    `/api/projects/${encodeURIComponent(projectId)}/openspec/changes`,
+  )
+}
+
+export function readOpenSpecChangeFile(
+  projectId: string,
+  name: string,
+  kind: OpenSpecChangeFile,
+): Promise<{ content: string; name: string; kind: OpenSpecChangeFile }> {
+  const qs = new URLSearchParams({ kind })
+  return request<{ content: string; name: string; kind: OpenSpecChangeFile }>(
+    `/api/projects/${encodeURIComponent(projectId)}/openspec/changes/${encodeURIComponent(name)}/file?${qs}`,
+  )
+}
+
+export function writeOpenSpecChangeFile(
+  projectId: string,
+  name: string,
+  kind: OpenSpecChangeFile,
+  content: string,
+): Promise<{ ok: true }> {
+  const qs = new URLSearchParams({ kind })
+  return request<{ ok: true }>(
+    `/api/projects/${encodeURIComponent(projectId)}/openspec/changes/${encodeURIComponent(name)}/file?${qs}`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content }),
+    },
+  )
+}
+
+export function createOpenSpecChange(
+  projectId: string,
+  name: string,
+): Promise<{ ok: true; name: string }> {
+  return request<{ ok: true; name: string }>(
+    `/api/projects/${encodeURIComponent(projectId)}/openspec/changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    },
+  )
+}
+
+export function archiveOpenSpecChange(
+  projectId: string,
+  name: string,
+): Promise<{ archivedTo: string }> {
+  return request<{ archivedTo: string }>(
+    `/api/projects/${encodeURIComponent(projectId)}/openspec/changes/${encodeURIComponent(name)}/archive`,
+    { method: 'POST' },
+  )
+}
+
+// ---------- 外部工具集（gstack） ----------
+
+export function getGstackStatus(): Promise<GstackStatus> {
+  return request<GstackStatus>(`/api/external-tools/gstack/status`)
+}
+
+export function installGstack(): Promise<GstackInstallResult> {
+  return request<GstackInstallResult>(`/api/external-tools/gstack/install`, {
+    method: 'POST',
+  })
+}
+
+export function updateGstack(): Promise<GstackInstallResult> {
+  return request<GstackInstallResult>(`/api/external-tools/gstack/update`, {
+    method: 'POST',
+  })
+}
+
+export function uninstallGstack(): Promise<GstackInstallResult> {
+  return request<GstackInstallResult>(`/api/external-tools/gstack`, {
+    method: 'DELETE',
+  })
 }
 
 export function deleteProject(id: string): Promise<void> {
