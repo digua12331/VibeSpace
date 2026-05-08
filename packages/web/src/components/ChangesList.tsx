@@ -296,8 +296,25 @@ export default function ChangesList({ projectId }: Props) {
       () => api.createCommit(projectId, { message: msg }),
       { message: msg.slice(0, 200) },
     )
-    if (r) {
-      setMessage('')
+    if (!r) return
+    setMessage('')
+
+    // 本地 commit 后顺手 push；失败保留本地提交，错误前缀明示状态让用户能手动重试。
+    const onBranch = data.detached !== true && data.branch != null
+    if (!onBranch) return
+    setBusy('push')
+    try {
+      await logAction('git', 'push', () => api.gitPush(projectId), {
+        projectId,
+        meta: { afterCommit: true },
+      })
+      await load()
+      void loadStashCount()
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e)
+      setErr(`已本地提交，但推送失败：${errMsg}`)
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -439,15 +456,30 @@ export default function ChangesList({ projectId }: Props) {
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={onCommitKey}
           rows={3}
-          placeholder={`消息 (Ctrl+Enter 在 "${data.branch ?? 'HEAD'}" 提交)`}
+          placeholder={
+            detached
+              ? `消息 (Ctrl+Enter 提交到 HEAD)`
+              : `消息 (Ctrl+Enter 提交并推送到 "${data.branch}")`
+          }
           className="w-full resize-none bg-black/30 border border-border/60 rounded-md px-2 py-1.5 text-[13px] font-mono text-fg placeholder:text-subtle focus:outline-none focus:border-accent/60"
         />
         <button
           onClick={() => void onCommit()}
           disabled={busy != null || !message.trim()}
+          title={
+            detached
+              ? '当前不在分支上，仅做本地提交（detached 状态不能 push）'
+              : '提交本地，并推送到远程；推送失败本地提交保留'
+          }
           className="fluent-btn w-full px-3 py-1.5 text-sm rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {busy === 'commit' ? '提交中…' : `✓ 提交 (${data.staged.length > 0 ? data.staged.length : workingChanges})`}
+          {busy === 'commit'
+            ? '提交中…'
+            : busy === 'push'
+              ? '推送中…'
+              : detached
+                ? `✓ 提交（仅本地, ${data.staged.length > 0 ? data.staged.length : workingChanges}）`
+                : `✓ 提交并推送 (${data.staged.length > 0 ? data.staged.length : workingChanges})`}
         </button>
         {/* Secondary row: stash / unstash / undo last commit */}
         <div className="flex items-center gap-1">
