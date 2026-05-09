@@ -30,6 +30,20 @@ function loadPty(): PtyModule {
   return _pty;
 }
 
+// Fire-and-forget preload：把 native binding 的首次加载（~300ms）从"用户首次
+// spawn"挪到"服务进程刚启动后台"，让首个 spawn 也走 _pty 缓存命中路径。
+// `loadPty()` 是同步 require，setImmediate 把它推到 event loop 下一拍，避免
+// 阻塞模块解析；try/catch 兜底防止 ARM/Alpine/不同 Node 版本下 native binding
+// 缺失变成 unhandledRejection。失败不影响主流程——真正 spawn 时会再 require
+// 一次并给出真实错误。
+setImmediate(() => {
+  try {
+    loadPty();
+  } catch {
+    /* noop — first real spawn will surface the binding error */
+  }
+});
+
 const isWin = process.platform === "win32";
 const MAX_BUFFER_BYTES = 200 * 1024;
 

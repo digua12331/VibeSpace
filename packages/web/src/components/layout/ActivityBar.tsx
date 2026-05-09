@@ -17,13 +17,27 @@ export default function ActivityBar() {
   )
   const notifyCount = useStore((s) => s.notifyingSessions.size)
   const notifyPerm = useStore((s) => s.notifyPerm)
+  const selectedProjectId = useStore((s) => s.selectedProjectId)
+  const projects = useStore((s) => s.projects)
+  const currentProject = selectedProjectId
+    ? projects.find((p) => p.id === selectedProjectId)
+    : undefined
+  const workflowMode = currentProject?.workflowMode ?? null
+
+  // 规范工作流 tab 形态：dev-docs → 显示 Dev Docs；openspec → 显示规范；null → 隐藏。
+  const docsItem: Item | null =
+    workflowMode === 'dev-docs'
+      ? { id: 'docs', icon: '📝', label: 'Dev Docs' }
+      : workflowMode === 'openspec'
+        ? { id: 'docs', icon: '📜', label: '规范' }
+        : null
 
   // Icons are chosen so no two items share a silhouette — at 16px each row
   // has to be readable at a glance.
   const items: Item[] = [
     { id: 'files', icon: '📁', label: '文件' },
     { id: 'scm', icon: '🌿', label: '源代码更改' },
-    { id: 'docs', icon: '📝', label: 'Dev Docs' },
+    ...(docsItem ? [docsItem] : []),
     { id: 'output', icon: '📐', label: '策划方案' },
     { id: 'perf', icon: '📊', label: '性能' },
     { id: 'usage', icon: '📈', label: '使用量' },

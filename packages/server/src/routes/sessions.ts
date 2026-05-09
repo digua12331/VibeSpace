@@ -268,6 +268,20 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
   );
 }
 
+function logSpawnSubstep(
+  projectId: string,
+  sessionId: string | undefined,
+  step: string,
+  ms: number,
+  extra?: Record<string, unknown>,
+): void {
+  serverLog("info", "session", `spawn-substep ${step} (${ms}ms)`, {
+    projectId,
+    sessionId,
+    meta: { step, ms, ...(extra ?? {}) },
+  });
+}
+
 async function startSession(
   projectId: string,
   agent: Agent,
@@ -281,6 +295,7 @@ async function startSession(
   // Worktree isolation requires the project root to actually be a git repo.
   // Front-end greys out the checkbox, but bounce here too as a safety net.
   if (isolation === "worktree") {
+    const tIsGitRepo = Date.now();
     const ok = await isGitRepo(proj.path);
     if (!ok) {
       return reply.code(400).send({
@@ -288,6 +303,7 @@ async function startSession(
         detail: "worktree isolation requires a git repository",
       });
     }
+    logSpawnSubstep(projectId, undefined, "isGitRepo", Date.now() - tIsGitRepo);
   }
 
   const sessionId = nanoid(16);
@@ -341,11 +357,13 @@ async function startSession(
         .code(500)
         .send({ error: "worktree_add_failed", detail: msg });
     }
-    serverLog("info", "git", `worktree-add 成功 (${Date.now() - t0}ms)`, {
+    const wtMs = Date.now() - t0;
+    serverLog("info", "git", `worktree-add 成功 (${wtMs}ms)`, {
       projectId,
       sessionId,
       meta: { worktreePath, worktreeBranch },
     });
+    logSpawnSubstep(projectId, sessionId, "addWorktree", wtMs);
     setSessionWorktree(sessionId, worktreePath, worktreeBranch);
     cwd = worktreePath;
   }
@@ -356,8 +374,12 @@ async function startSession(
   // is intentionally up to user-side configuration (CLAUDE.md guidance).
   const spawnEnv: Record<string, string> = {};
   if (task) {
+    const tSkills = Date.now();
     try {
       const matched = await pickSkillsForTask(proj.path, task);
+      logSpawnSubstep(projectId, sessionId, "pickSkills", Date.now() - tSkills, {
+        matched: matched.length,
+      });
       if (matched.length > 0) {
         const runtimeDir = pathJoin(proj.path, ".aimon", "runtime");
         await mkdir(runtimeDir, { recursive: true });
@@ -395,9 +417,12 @@ async function startSession(
   // here only logs at error level and never blocks the spawn. The MCP config
   // for worktree-isolated sessions is still written to the project root, since
   // claude code searches upwards from cwd.
+  const tMcp = Date.now();
   await injectMcpForAgent(agent, proj.path, sessionId, projectId);
+  logSpawnSubstep(projectId, sessionId, "injectMcp", Date.now() - tMcp);
 
   let pid: number;
+  const tPty = Date.now();
   try {
     const r = ptyManager.spawn({ sessionId, agent, cwd, env: spawnEnv });
     pid = r.pid;
@@ -407,6 +432,7 @@ async function startSession(
     endSession(sessionId, "crashed", null);
     return reply.code(500).send({ error: "spawn_failed", detail: msg });
   }
+  logSpawnSubstep(projectId, sessionId, "ptySpawn", Date.now() - tPty);
   updateSessionPid(sessionId, pid);
 
   return reply.code(201).send(

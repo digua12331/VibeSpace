@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { serverLog } from "./log-bus.js";
 
 export interface SkillEntry {
   /** Filename without extension. */
@@ -99,18 +100,74 @@ function asStringArray(v: unknown): string[] {
   return v.filter((x): x is string => typeof x === "string" && x.length > 0);
 }
 
-export async function listSkills(projectPath: string): Promise<SkillEntry[]> {
-  const dir = join(projectPath, SKILLS_SUBDIR);
-  if (!existsSync(dir)) return [];
+// 模块级缓存：projectPath → { dirMtimeMs, filesSig, skills }
+// - dirMtimeMs：.aimon/skills 目录的 mtime（增删文件时变）
+// - filesSig：所有 .md 文件名 + mtime 的拼接签名（文件内容编辑时变）
+// 命中时跳过 readFile + parseFrontmatter，把每次 spawn 的 ~20ms 压到 ~1ms。
+// 已知缺陷：mtime 是秒级精度，1 秒内连改两次同文件可能读旧缓存——日志
+// `cache=hit/miss` 是用户报"skill 改了不生效"时的排障入口。
+interface SkillsCacheEntry {
+  dirMtimeMs: number;
+  filesSig: string;
+  skills: SkillEntry[];
+}
+const skillsCache = new Map<string, SkillsCacheEntry>();
+
+async function readSignature(
+  dir: string,
+): Promise<{ dirMtimeMs: number; filesSig: string; mdNames: string[] } | null> {
+  let dirStat;
+  try {
+    dirStat = await stat(dir);
+  } catch {
+    return null;
+  }
   let names: string[];
   try {
     names = await readdir(dir);
   } catch {
-    return [];
+    return null;
   }
+  const mdNames = names.filter((n) => n.endsWith(".md")).sort();
+  // 拿每个 .md 文件 mtime 拼签名。N 个文件 N 次 stat，但 stat 是元数据
+  // OS cache 友好，10 个 skill 文件 ~100us，比 readFile + parse 快 20x。
+  const sigs: string[] = [];
+  for (const fname of mdNames) {
+    try {
+      const s = await stat(join(dir, fname));
+      sigs.push(`${fname}:${s.mtimeMs}`);
+    } catch {
+      // 文件刚被删 → 跳过；下一次签名会因 readdir 不再列出它而变化
+    }
+  }
+  return {
+    dirMtimeMs: dirStat.mtimeMs,
+    filesSig: sigs.join("|"),
+    mdNames,
+  };
+}
+
+export async function listSkills(projectPath: string): Promise<SkillEntry[]> {
+  const dir = join(projectPath, SKILLS_SUBDIR);
+  if (!existsSync(dir)) return [];
+
+  const sig = await readSignature(dir);
+  if (!sig) return [];
+
+  const cached = skillsCache.get(projectPath);
+  if (
+    cached &&
+    cached.dirMtimeMs === sig.dirMtimeMs &&
+    cached.filesSig === sig.filesSig
+  ) {
+    serverLog("info", "skills", "list-skills 命中缓存 (cache=hit)", {
+      meta: { projectPath, count: cached.skills.length, cache: "hit" },
+    });
+    return cached.skills;
+  }
+
   const out: SkillEntry[] = [];
-  for (const fname of names) {
-    if (!fname.endsWith(".md")) continue;
+  for (const fname of sig.mdNames) {
     const full = join(dir, fname);
     let raw: string;
     try {
@@ -134,6 +191,15 @@ export async function listSkills(projectPath: string): Promise<SkillEntry[]> {
   }
   // Stable order: filename ascending — keeps output reproducible.
   out.sort((a, b) => a.name.localeCompare(b.name));
+
+  skillsCache.set(projectPath, {
+    dirMtimeMs: sig.dirMtimeMs,
+    filesSig: sig.filesSig,
+    skills: out,
+  });
+  serverLog("info", "skills", "list-skills 重扫缓存 (cache=miss)", {
+    meta: { projectPath, count: out.length, cache: "miss" },
+  });
   return out;
 }
 

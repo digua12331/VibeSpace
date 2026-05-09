@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -12,9 +12,13 @@ import StatusBadge from '../StatusBadge'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { logAction, pushLog } from '../../logs'
+import { markSessionSpawnEnd } from '../../perf-marks'
 import { formatForSession } from '../fileContextMenu'
 import { openContextMenu, type ContextMenuItem } from '../ContextMenu'
-import PromptLibraryDialog from '../PromptLibraryDialog'
+// 提示库对话框只在用户点"📝 提示词"按钮时打开，首屏不需要 parse 它的 markdown
+// 渲染依赖。Suspense fallback 给 null —— dialog 是浮层，加载几十毫秒不渲染
+// 不会让 SessionView 闪烁。
+const PromptLibraryDialog = lazy(() => import('../PromptLibraryDialog'))
 import {
   BUTTON_COLOR_CLASSES,
   getCustomButtons,
@@ -271,6 +275,10 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   // 单实例幂等：第一次走 TUI 透传分支时打一条 INFO 进 LogsView，之后翻 true 不再打。
   // 见 attachCustomKeyEventHandler 的 TUI passthrough 分支。
   const passthroughLoggedRef = useRef(false)
+  // perf 探针配套：第一条 replay 抵达时 markSessionSpawnEnd，之后翻 true 不再打。
+  // 不只用 onMessage 路径，因为 server 在订阅成功后会主动 push 一次 replay；这里
+  // 等于把"用户能看到首帧"作为 spawn 完成的体感锚点。
+  const spawnEndMarkedRef = useRef(false)
   const [menu, setMenu] = useState<MenuState>({ kind: 'none' })
   const [dynamicSlash, setDynamicSlash] = useState<readonly string[]>([])
   const [busy, setBusy] = useState(false)
@@ -475,6 +483,13 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       } else if (msg.type === 'replay' && msg.sessionId === session.id) {
         term.reset()
         term.write(msg.data)
+        if (!spawnEndMarkedRef.current) {
+          spawnEndMarkedRef.current = true
+          markSessionSpawnEnd(session.id, {
+            agent: session.agent,
+            isolation: session.isolation,
+          })
+        }
       }
     })
 
@@ -1243,14 +1258,18 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         <PermissionsDrawer project={project} onClose={() => setShowPerm(false)} />
       )}
 
-      <PromptLibraryDialog
-        open={promptLibOpen}
-        onClose={() => setPromptLibOpen(false)}
-        onSend={(text) => {
-          fillInput(text)
-          setPromptLibOpen(false)
-        }}
-      />
+      {promptLibOpen && (
+        <Suspense fallback={null}>
+          <PromptLibraryDialog
+            open={promptLibOpen}
+            onClose={() => setPromptLibOpen(false)}
+            onSend={(text) => {
+              fillInput(text)
+              setPromptLibOpen(false)
+            }}
+          />
+        </Suspense>
+      )}
 
       <InputMenu
         open={menu.kind !== 'none'}

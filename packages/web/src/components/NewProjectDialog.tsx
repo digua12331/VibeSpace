@@ -2,11 +2,18 @@ import { useEffect, useState } from 'react'
 import * as api from '../api'
 import { useStore } from '../store'
 import { logAction } from '../logs'
+import type { WorkflowMode } from '../types'
+
+type WorkflowChoice = 'none' | WorkflowMode
+
+const DEFAULT_WORKFLOW: WorkflowChoice = 'dev-docs'
 
 export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const refreshProjects = useStore((s) => s.refreshProjects)
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
+  const [workflow, setWorkflow] = useState<WorkflowChoice>(DEFAULT_WORKFLOW)
+  const [superpowers, setSuperpowers] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -34,10 +41,20 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
         'project',
         'create',
         async () => {
-          await api.createProject({
+          const proj = await api.createProject({
             name: name.trim(),
             ...(trimmedPath ? { path: trimmedPath } : {}),
           })
+          // 工作流装配：dev-docs / openspec / 无 三选一；Superpowers 与之正交，
+          // 单独一项。三件相互独立——同时勾选都启用。
+          // 任一选项需要装配才发请求；"无 + 不勾 Superpowers"则跳过 apply 调用。
+          const needsApply = workflow !== 'none' || superpowers
+          if (needsApply) {
+            await api.applyWorkflow(proj.id, {
+              ...(workflow !== 'none' ? { mode: workflow } : {}),
+              ...(superpowers ? { superpowers: true } : {}),
+            })
+          }
           await refreshProjects()
         },
         {
@@ -45,6 +62,8 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             name: name.trim(),
             path: trimmedPath || undefined,
             pathMode,
+            workflow,
+            superpowers,
           },
         },
       )
@@ -78,6 +97,38 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           />
           <span className="block text-[11px] text-muted mt-1.5">
             留空路径则在 <code className="font-mono">F:\VibeSpace\&lt;名称&gt;</code> 自动创建。
+          </span>
+        </label>
+
+        <label className="block mb-3">
+          <span className="block text-xs text-muted mb-1.5">开发流程</span>
+          <select
+            value={workflow}
+            onChange={(e) => setWorkflow(e.target.value as WorkflowChoice)}
+            className="w-full px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors"
+          >
+            <option value="dev-docs">Dev Docs（plan / context / tasks 三段式）</option>
+            <option value="openspec">OpenSpec（proposal / design / tasks 提案式）</option>
+            <option value="none">无（不装配工作流）</option>
+          </select>
+          <span className="block text-[11px] text-muted mt-1.5">
+            侧栏会按这个选项展示对应规范 tab；项目级二选一，可在「权限」抽屉切换。
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2 mb-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={superpowers}
+            onChange={(e) => setSuperpowers(e.target.checked)}
+            className="mt-0.5 accent-accent"
+          />
+          <span className="text-xs leading-snug">
+            <span className="text-fg font-medium">启用 Superpowers 7 步流程提示</span>
+            <span className="block text-[11px] text-muted mt-0.5">
+              在项目 <code className="font-mono">CLAUDE.md</code> 写入引导段；真正的 7
+              步约束需要你在 Claude Code 插件市场装 Superpowers 本体。
+            </span>
           </span>
         </label>
 

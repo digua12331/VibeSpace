@@ -3,6 +3,7 @@ import * as api from '../api'
 import { aimonWS } from '../ws'
 import { useStore } from '../store'
 import { logAction, pushLog } from '../logs'
+import { bindSessionSpawn, markSessionSpawnStart } from '../perf-marks'
 import type { AgentKind, CliEntry, CliStatusResponse, Session } from '../types'
 import CliInstallerDialog from './CliInstallerDialog'
 
@@ -171,6 +172,9 @@ export default function StartSessionMenu({
     if (!projectId) return
     setBusy(agent)
     setError(null)
+    // perf: 用户点击 → SessionView 首帧 replay 完成的全链路耗时。
+    // tempKey 在 createSession 返回拿到 sessionId 后 bind；失败路径 30s 兜底清理。
+    const spawnTempKey = markSessionSpawnStart()
     try {
       await logAction(
         'session',
@@ -184,6 +188,7 @@ export default function StartSessionMenu({
             isolation,
             task: trimmedTask || undefined,
           })
+          bindSessionSpawn(spawnTempKey, s.id)
           addSession(s)
           aimonWS.subscribe([s.id])
           onStarted?.(s)

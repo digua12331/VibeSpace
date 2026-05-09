@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../store'
 import * as api from '../../api'
-import FilePreview from '../FilePreview'
-import ChecklistEditor from './ChecklistEditor'
 import StartSessionMenu from '../StartSessionMenu'
 import TerminalHost from '../terminal/TerminalHost'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
@@ -10,6 +8,24 @@ import { logAction } from '../../logs'
 import { dispatchClaude } from '../../dispatchClaude'
 import { pickClaudeTarget, sendToSession } from '../../sendToSession'
 import type { AgentKind, DocTaskSummary } from '../../types'
+
+// FilePreview / ChecklistEditor 仅在用户打开文件时渲染，首屏 activeFile 通常
+// 为 null，没必要预加载它们带的 react-markdown / shiki / xlsx 全家桶。
+// StartSessionMenu / TerminalHost 不动：前者首屏就要拉 catalog（点击下拉立刻
+// 弹出），后者负责终端 keep-alive。
+const FilePreview = lazy(() => import('../FilePreview'))
+const ChecklistEditor = lazy(() => import('./ChecklistEditor'))
+
+function FileTabFallback() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center text-xs text-subtle">
+      <span className="inline-flex items-center gap-2">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse-soft" />
+        正在加载文件预览…
+      </span>
+    </div>
+  )
+}
 
 /**
  * When selectedProjectId is null (user picked "全部 sessions") we key the
@@ -303,22 +319,24 @@ export default function EditorArea() {
 
         {activeFile ? (
           <div className="absolute inset-0 flex flex-col bg-bg">
-            {activeFile.kind === 'checklist' ? (
-              <ChecklistEditor
-                key={activeFile.key}
-                projectId={activeFile.projectId}
-                feature={extractFeature(activeFile.path)}
-              />
-            ) : (
-              <FilePreview
-                key={activeFile.key}
-                projectId={activeFile.projectId}
-                path={activeFile.path}
-                ref={activeFile.ref}
-                from={activeFile.from}
-                to={activeFile.to}
-              />
-            )}
+            <Suspense fallback={<FileTabFallback />}>
+              {activeFile.kind === 'checklist' ? (
+                <ChecklistEditor
+                  key={activeFile.key}
+                  projectId={activeFile.projectId}
+                  feature={extractFeature(activeFile.path)}
+                />
+              ) : (
+                <FilePreview
+                  key={activeFile.key}
+                  projectId={activeFile.projectId}
+                  path={activeFile.path}
+                  ref={activeFile.ref}
+                  from={activeFile.from}
+                  to={activeFile.to}
+                />
+              )}
+            </Suspense>
           </div>
         ) : null}
 

@@ -20,11 +20,14 @@ import type {
   CliConfigState,
   ClaudePreset,
   CodexPreset,
+  GstackStatus,
   PermissionCatalog,
   ProbeFile,
   Project,
   Session,
   TriState,
+  WorkflowMode,
+  WorkflowStatus,
 } from '../types'
 
 interface Props {
@@ -67,7 +70,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'claude' | 'codex'>('claude')
-  const [mode, setMode] = useState<'workflow' | 'permissions' | 'buttons'>('workflow')
+  const [mode, setMode] = useState<'workflow' | 'permissions' | 'buttons' | 'tools'>('workflow')
   const [dirty, setDirty] = useState(false)
   const [initNeeded, setInitNeeded] = useState(false)
   const [postSaveDialog, setPostSaveDialog] = useState<null | { sessions: Session[] }>(null)
@@ -272,6 +275,9 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
           <TabBtn active={mode === 'buttons'} onClick={() => setMode('buttons')}>
             🎛 按钮
           </TabBtn>
+          <TabBtn active={mode === 'tools'} onClick={() => setMode('tools')}>
+            🧰 工具集
+          </TabBtn>
         </div>
 
         {mode === 'permissions' && (
@@ -360,6 +366,8 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
         {mode === 'workflow' && <WorkflowTab project={project} />}
 
         {mode === 'buttons' && <ButtonsTab />}
+
+        {mode === 'tools' && <ToolsTab />}
       </div>
 
       {postSaveDialog && (
@@ -1020,18 +1028,24 @@ function ButtonPreview({ color, text }: { color: ButtonColor; text: string }) {
   )
 }
 
+type WorkflowChoice = 'none' | WorkflowMode
+
 function WorkflowTab({ project }: { project: Project }) {
-  const [applied, setApplied] = useState<'none' | 'partial' | 'full' | null>(null)
-  const [claudeMdExists, setClaudeMdExists] = useState<boolean>(false)
+  const setWorkflowMode = useStore((s) => s.setWorkflowMode)
+  const [status, setStatus] = useState<WorkflowStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [choice, setChoice] = useState<WorkflowChoice>('dev-docs')
+  const [superpowersChoice, setSuperpowersChoice] = useState(false)
 
   async function refresh() {
     try {
       const s = await api.getWorkflowStatus(project.id)
-      setApplied(s.applied)
-      setClaudeMdExists(s.devDocs.claudeMdExists)
+      setStatus(s)
       setLoadError(null)
+      // 把 UI 选择同步成"当前生效的状态"（不是用户已经在编辑的草稿）。
+      setChoice(s.detectedMode ?? 'none')
+      setSuperpowersChoice(s.superpowers.enabled)
     } catch (e: unknown) {
       setLoadError(e instanceof Error ? e.message : String(e))
     }
@@ -1039,14 +1053,15 @@ function WorkflowTab({ project }: { project: Project }) {
 
   useEffect(() => {
     let cancelled = false
-    setApplied(null)
+    setStatus(null)
     setLoadError(null)
     api
       .getWorkflowStatus(project.id)
       .then((s) => {
         if (cancelled) return
-        setApplied(s.applied)
-        setClaudeMdExists(s.devDocs.claudeMdExists)
+        setStatus(s)
+        setChoice(s.detectedMode ?? 'none')
+        setSuperpowersChoice(s.superpowers.enabled)
       })
       .catch((e: unknown) => {
         if (cancelled) return
@@ -1058,47 +1073,99 @@ function WorkflowTab({ project }: { project: Project }) {
   }, [project.id])
 
   async function applyWorkflowClick() {
-    if (busy || applied === 'full') return
+    if (busy) return
+    if (!status) return
+    const detectedMode = status.detectedMode
+    const wantsMode = choice === 'none' ? null : choice
+    const wantsSuperpowers = superpowersChoice
+
+    // 切换模式（dev-docs ↔ openspec / ... ↔ none）需要先卸掉旧模式：避免双重应用残留两套文件。
+    const switchingFromMode =
+      detectedMode != null && detectedMode !== wantsMode ? detectedMode : null
+    // 切换 mode 时，若用户同步取消了 Superpowers 勾选，把 Superpowers 段一起卸——否则
+    // 切完后 CLAUDE.md 里旧的 Superpowers 段会残留，与"下拉菜单选哪个就只剩哪个"语义不符。
+    // Superpowers 只在"用户主动取消勾选"时才动，保持它的独立勾选语义不变。
+    const switchOffSuperpowers =
+      switchingFromMode != null && status.superpowers.enabled && !wantsSuperpowers
+    if (switchingFromMode) {
+      const tail = switchOffSuperpowers
+        ? '会先卸掉旧模式 + Superpowers 段（保留你已写入的内容文件，仅撤回工作流脚手架）。'
+        : '会先卸掉旧模式（保留你已写入的内容文件，仅撤回工作流脚手架）。'
+      const ok = await confirmDialog(
+        `当前已应用 "${switchingFromMode === 'dev-docs' ? 'Dev Docs' : 'OpenSpec'}"。切换到 "${
+          wantsMode === null
+            ? '无'
+            : wantsMode === 'dev-docs'
+              ? 'Dev Docs'
+              : 'OpenSpec'
+        }" ${tail}`,
+        { title: '切换工作流', confirmLabel: '继续切换' },
+      )
+      if (!ok) return
+    }
     setBusy(true)
     try {
-      const result = await logAction(
-        'project',
-        'apply-workflow',
-        () => api.applyWorkflow(project.id),
-        { projectId: project.id },
-      )
-      // 子结果分别报：现在 devDocs 在 mode === 'dev-docs' 时填，否则 null。
-      // 当前 PermissionsDrawer 默认调 applyWorkflow（不传 mode）走 dev-docs，所以 devDocs 一定不为 null。
-      // 但类型签名允许 null（mode === 'openspec' 时），代码加 ?? 兜底。
-      const devDocs = result.devDocs
-      const devDocsLine = !devDocs
-        ? '— 本次未应用 Dev Docs 模式'
-        : devDocs.ok
-          ? devDocs.wrote
-            ? '✓ Dev Docs 工作流段落已写入 CLAUDE.md'
-            : '○ CLAUDE.md 中工作流段落已存在，未重复追加'
-          : `✗ Dev Docs 写入失败：${devDocs.error}`
-      const harnessLine =
-        result.harness === null
-          ? '— 因 Dev Docs 失败已跳过文件夹拷贝'
-          : result.harness.ok
-            ? [
-                `✓ 文件夹已拷贝：${result.harness.copied.length} 个新增 / ${result.harness.skipped.length} 已存在跳过`,
-                result.harness.gitignoreAppended
-                  ? '   已往 .gitignore 追加 .aimon/runtime/'
-                  : '   .gitignore 已含 runtime 行',
-              ].join('\n')
-            : `✗ 文件夹拷贝失败：${result.harness.error}`
-      const devDocsOk = devDocs !== null && devDocs.ok
-      const title = result.partial
-        ? '工作流应用部分失败'
-        : devDocsOk && result.harness && result.harness.ok
-          ? '工作流应用结果'
-          : '工作流应用失败'
-      await alertDialog([devDocsLine, harnessLine].join('\n'), {
-        title,
-        variant: result.partial || !devDocsOk ? 'danger' : undefined,
-      })
+      // 1) 卸旧模式（当且仅当用户在切换）；若同步取消了 Superpowers，合并到同一次 remove 调用
+      if (switchingFromMode || switchOffSuperpowers) {
+        await logAction(
+          'project',
+          'remove-workflow',
+          () =>
+            api.removeWorkflow(project.id, {
+              ...(switchingFromMode ? { mode: switchingFromMode } : {}),
+              ...(switchOffSuperpowers ? { superpowers: true } : {}),
+            }),
+          {
+            projectId: project.id,
+            meta: { mode: switchingFromMode, superpowers: switchOffSuperpowers, reason: 'switch' },
+          },
+        )
+      }
+
+      // 2) 应用新模式 / Superpowers（任一非空就发请求；都为空则什么也不做）
+      const needsApply = wantsMode !== null || wantsSuperpowers !== status.superpowers.enabled
+      if (wantsMode !== null) {
+        const result = await logAction(
+          'project',
+          'apply-workflow',
+          () =>
+            api.applyWorkflow(project.id, {
+              mode: wantsMode,
+              ...(wantsSuperpowers ? { superpowers: true } : {}),
+            }),
+          {
+            projectId: project.id,
+            meta: { mode: wantsMode, superpowers: wantsSuperpowers },
+          },
+        )
+        if (result.partial) {
+          await alertDialog('部分应用失败，请查看 LogsView 日志', {
+            title: '工作流应用部分失败',
+            variant: 'danger',
+          })
+        }
+      } else if (wantsSuperpowers && !status.superpowers.enabled) {
+        // 用户只想加 Superpowers，模式仍为"无"——单独 apply superpowers
+        await logAction(
+          'project',
+          'apply-workflow',
+          () => api.applyWorkflow(project.id, { superpowers: true }),
+          { projectId: project.id, meta: { superpowers: true } },
+        )
+      } else if (!wantsSuperpowers && status.superpowers.enabled && wantsMode === null) {
+        // 用户只想去掉 Superpowers，模式仍为"无"——单独 remove superpowers
+        await logAction(
+          'project',
+          'remove-workflow',
+          () => api.removeWorkflow(project.id, { superpowers: true }),
+          { projectId: project.id, meta: { superpowers: false } },
+        )
+      } else if (!needsApply) {
+        // 用户没改任何东西，直接走 refresh 拉最新状态即可
+      }
+
+      // Optimistic local mirror so侧栏互斥渲染（T15）立刻响应。
+      setWorkflowMode(project.id, wantsMode)
       await refresh()
     } catch (e: unknown) {
       await alertDialog(
@@ -1110,31 +1177,29 @@ function WorkflowTab({ project }: { project: Project }) {
     }
   }
 
-  async function removeWorkflowClick() {
-    if (busy || applied === 'none') return
+  async function removeAllClick() {
+    if (busy || !status || status.applied === 'none') return
+    const detectedMode = status.detectedMode
     const ok = await confirmDialog(
-      '会同时撤销 CLAUDE.md 中的 Dev Docs 工作流段落（含其后所有内容）和 Harness 拷贝的文件夹（.aimon/skills、.aimon/docs、.claude/agents、CUSTOMIZE 等）。该段落后或文件夹内的自定义内容请先备份。',
-      {
-        title: '卸载工作流',
-        confirmLabel: '确认卸载',
-        variant: 'danger',
-      },
+      detectedMode === 'openspec'
+        ? '会撤销 OpenSpec 脚手架（保留 openspec/changes 目录里你已写入的内容；只删 AGENTS.md 与空白脚手架）以及已拷的 Harness 文件夹。'
+        : '会撤销 CLAUDE.md 中工作流段落（含其后所有内容）以及 Harness 拷贝的文件夹（.aimon/skills、.aimon/docs、.claude/agents、CUSTOMIZE 等）。请先备份你写过的内容。',
+      { title: '卸载工作流', confirmLabel: '确认卸载', variant: 'danger' },
     )
     if (!ok) return
     setBusy(true)
     try {
-      const result = await logAction(
+      await logAction(
         'project',
         'remove-workflow',
-        () => api.removeWorkflow(project.id),
+        () =>
+          api.removeWorkflow(project.id, {
+            ...(detectedMode ? { mode: detectedMode } : {}),
+            ...(status.superpowers.enabled ? { superpowers: true } : {}),
+          }),
         { projectId: project.id },
       )
-      if (result.harness.failedFiles.length > 0) {
-        await alertDialog(
-          `以下文件未删成功（其余已删）：\n${result.harness.failedFiles.join('\n')}`,
-          { title: '卸载部分失败', variant: 'danger' },
-        )
-      }
+      setWorkflowMode(project.id, null)
       await refresh()
     } catch (e: unknown) {
       await alertDialog(
@@ -1146,82 +1211,337 @@ function WorkflowTab({ project }: { project: Project }) {
     }
   }
 
+  const claudeMdExists = status?.devDocs.claudeMdExists ?? false
+
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
       <div className="text-xs text-muted leading-relaxed">
-        项目工作流：往项目根 <code className="font-mono">CLAUDE.md</code> 写
-        Dev Docs 三段式工作流守则段落（plan → context → tasks），并把可复用配置
-        （<code className="font-mono">.aimon/skills/</code>、
-        <code className="font-mono">.aimon/docs/</code>、
-        <code className="font-mono">.claude/agents/</code>、
-        harness 路线图、团队 blueprint、CUSTOMIZE）一次性拷到目标项目；
-        卸载时反向撤销。
+        项目工作流：选 <strong>Dev Docs</strong>（plan → context → tasks 三段式）
+        或 <strong>OpenSpec</strong>（proposal → design → tasks 提案式），
+        系统会往项目根 <code className="font-mono">CLAUDE.md</code> 写守则段落，
+        并把可复用配置目录拷进项目；切回"无"会反向撤销。
+        <strong> Superpowers</strong> 与上面二选一正交，只在 CLAUDE.md 写一段引导提示。
       </div>
 
-      <div className="rounded border border-border/60 bg-bg/30 p-3">
-        <div className="text-sm text-fg/90 mb-1">项目工作流</div>
-        <div className="text-[11px] text-muted leading-relaxed mb-2">
+      <div className="rounded border border-border/60 bg-bg/30 p-3 space-y-3">
+        <div className="text-sm text-fg/90">项目工作流</div>
+        <div className="text-[11px] text-muted leading-relaxed">
           {claudeMdExists
             ? '当前项目 CLAUDE.md 已存在；应用会在文件末尾追加工作流段落。'
             : '当前项目暂无 CLAUDE.md；应用会自动创建。'}
         </div>
+
         {loadError && (
-          <div className="text-xs text-rose-300 mb-2">读取状态失败: {loadError}</div>
+          <div className="text-xs text-rose-300">读取状态失败: {loadError}</div>
         )}
-        {applied === null && !loadError && (
+        {!status && !loadError && (
           <div className="text-xs text-muted">加载中…</div>
         )}
-        {applied !== null && (
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-xs text-fg/85">
-              状态：
-              {applied === 'full' && (
+
+        {status && (
+          <>
+            <div className="text-[11px] text-muted leading-relaxed">
+              当前状态：模式{' '}
+              <span className="text-fg/85">
+                {status.detectedMode === 'dev-docs'
+                  ? 'Dev Docs'
+                  : status.detectedMode === 'openspec'
+                    ? 'OpenSpec'
+                    : '无'}
+              </span>
+              {' · '}
+              整体{' '}
+              {status.applied === 'full' ? (
                 <span className="text-emerald-300">已应用</span>
-              )}
-              {applied === 'partial' && (
+              ) : status.applied === 'partial' ? (
                 <span className="text-amber-300">部分已应用</span>
+              ) : (
+                <span className="text-muted">未应用</span>
               )}
-              {applied === 'none' && <span className="text-muted">未应用</span>}
-            </div>
-            {applied === 'full' ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void removeWorkflowClick()}
-                className="fluent-btn px-3 py-1 text-xs rounded-md border border-rose-700/60 text-rose-300 hover:bg-rose-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              {' · '}
+              Superpowers{' '}
+              <span
+                className={
+                  status.superpowers.enabled
+                    ? 'text-emerald-300'
+                    : 'text-muted'
+                }
               >
-                {busy ? '处理中…' : '卸载'}
-              </button>
-            ) : applied === 'partial' ? (
-              <div className="flex gap-2">
+                {status.superpowers.enabled ? '已启用' : '未启用'}
+              </span>
+            </div>
+
+            <label className="block">
+              <span className="block text-xs text-muted mb-1">规范工作流</span>
+              <select
+                value={choice}
+                onChange={(e) => setChoice(e.target.value as WorkflowChoice)}
+                disabled={busy}
+                className="w-full px-2 py-1.5 bg-white/[0.04] border border-border rounded-md text-xs focus:border-accent focus:bg-white/[0.06] transition-colors disabled:opacity-50"
+              >
+                <option value="dev-docs">Dev Docs（plan / context / tasks 三段式）</option>
+                <option value="openspec">OpenSpec（proposal / design / tasks 提案式）</option>
+                <option value="none">无（不装配规范工作流）</option>
+              </select>
+            </label>
+
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={superpowersChoice}
+                onChange={(e) => setSuperpowersChoice(e.target.checked)}
+                disabled={busy}
+                className="mt-0.5 accent-accent"
+              />
+              <span className="text-xs leading-snug">
+                <span className="text-fg font-medium">启用 Superpowers 7 步流程提示</span>
+                <span className="block text-[11px] text-muted mt-0.5">
+                  在 <code className="font-mono">CLAUDE.md</code> 写引导段；
+                  真正约束需在 Claude Code 插件市场装 Superpowers 本体。
+                </span>
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2">
+              {status.applied !== 'none' && (
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void applyWorkflowClick()}
-                  className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {busy ? '处理中…' : '应用剩余'}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void removeWorkflowClick()}
+                  onClick={() => void removeAllClick()}
                   className="fluent-btn px-3 py-1 text-xs rounded-md border border-rose-700/60 text-rose-300 hover:bg-rose-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {busy ? '处理中…' : '卸载已应用'}
+                  {busy ? '处理中…' : '卸载全部'}
                 </button>
-              </div>
-            ) : (
+              )}
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void applyWorkflowClick()}
                 className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {busy ? '处理中…' : '应用'}
+                {busy ? '处理中…' : '应用 / 切换'}
               </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ToolsTab() {
+  const [status, setStatus] = useState<GstackStatus | null>(null)
+  const [busy, setBusy] = useState<null | 'install' | 'update' | 'uninstall'>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [trailing, setTrailing] = useState<string | null>(null)
+
+  async function refresh() {
+    try {
+      const s = await api.getGstackStatus()
+      setStatus(s)
+      setLoadError(null)
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    setStatus(null)
+    setLoadError(null)
+    api
+      .getGstackStatus()
+      .then((s) => {
+        if (cancelled) return
+        setStatus(s)
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        setLoadError(e instanceof Error ? e.message : String(e))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function runAction(
+    action: 'install' | 'update' | 'uninstall',
+    confirmMsg?: string,
+  ) {
+    if (busy) return
+    if (confirmMsg) {
+      const ok = await confirmDialog(confirmMsg, {
+        title: '确认',
+        confirmLabel: '确认',
+        variant: action === 'uninstall' ? 'danger' : undefined,
+      })
+      if (!ok) return
+    }
+    setBusy(action)
+    setTrailing(null)
+    try {
+      const result = await logAction(
+        'installer',
+        `gstack-${action}`,
+        () =>
+          action === 'install'
+            ? api.installGstack()
+            : action === 'update'
+              ? api.updateGstack()
+              : api.uninstallGstack(),
+        {},
+      )
+      setStatus(result.status)
+      if (result.trailingLog) setTrailing(result.trailingLog)
+      if (!result.ok) {
+        await alertDialog(
+          [
+            `操作失败 (${result.errorCode ?? 'unknown'})`,
+            result.errorMessage ?? '',
+            result.trailingLog ? `\n--- 末尾日志 ---\n${result.trailingLog}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          { title: 'gstack 操作失败', variant: 'danger' },
+        )
+      }
+    } catch (e: unknown) {
+      await alertDialog(
+        `操作失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: 'gstack 操作失败', variant: 'danger' },
+      )
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="flex-1 overflow-auto p-4 space-y-4">
+      <div className="text-xs text-muted leading-relaxed">
+        <strong>gstack</strong>（28 个 Claude Code 技能集合，含
+        <code className="mx-0.5 font-mono">/browse</code>
+        <code className="mx-0.5 font-mono">/qa</code>
+        <code className="mx-0.5 font-mono">/ship</code>
+        等）。安装后会 git clone 到
+        <code className="mx-0.5 font-mono">~/.claude/skills/gstack</code>
+        并跑 <code className="mx-0.5 font-mono">bun ./setup</code>，触发方式仍是在 Claude
+        会话里打 slash 命令。需要本机有 <code className="font-mono">git</code> 和
+        <code className="mx-0.5 font-mono">bun</code>。
+      </div>
+
+      <div className="rounded border border-border/60 bg-bg/30 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-fg/90">gstack</div>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={busy != null}
+            className="fluent-btn px-2 py-0.5 text-[11px] rounded border border-border text-muted hover:text-fg hover:bg-white/[0.06] disabled:opacity-50"
+          >
+            刷新状态
+          </button>
+        </div>
+
+        {loadError && (
+          <div className="text-xs text-rose-300">读取状态失败: {loadError}</div>
+        )}
+        {!status && !loadError && (
+          <div className="text-xs text-muted">加载中…</div>
+        )}
+
+        {status && (
+          <>
+            <div className="text-[11px] text-muted leading-relaxed space-y-0.5">
+              <div>
+                <span className="text-fg/70 mr-1">状态：</span>
+                {status.installed ? (
+                  <span className="text-emerald-300">
+                    ✓ 已安装{status.version ? `（${status.version}）` : ''}
+                  </span>
+                ) : (
+                  <span className="text-muted">未安装</span>
+                )}
+              </div>
+              <div>
+                <span className="text-fg/70 mr-1">位置：</span>
+                <code className="font-mono">{status.location}</code>
+              </div>
+              <div>
+                <span className="text-fg/70 mr-1">git：</span>
+                {status.gitAvailable ? (
+                  <span className="text-emerald-300">可用</span>
+                ) : (
+                  <span className="text-rose-300">缺失（需先安装 git）</span>
+                )}
+                <span className="mx-2 text-subtle">·</span>
+                <span className="text-fg/70 mr-1">bun：</span>
+                {status.bunAvailable ? (
+                  <span className="text-emerald-300">可用</span>
+                ) : (
+                  <a
+                    href="https://bun.sh"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-amber-300 underline hover:text-amber-200"
+                  >
+                    缺失（点此到 bun.sh 安装）
+                  </a>
+                )}
+              </div>
+              <div>
+                <span className="text-fg/70 mr-1">仓库：</span>
+                <code className="font-mono break-all">{status.repoUrl}</code>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={
+                  busy != null ||
+                  status.installed ||
+                  !status.gitAvailable ||
+                  !status.bunAvailable
+                }
+                onClick={() => void runAction('install')}
+                className="fluent-btn px-3 py-1 text-xs rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {busy === 'install' ? '安装中…' : '安装'}
+              </button>
+              <button
+                type="button"
+                disabled={busy != null || !status.installed}
+                onClick={() => void runAction('update')}
+                className="fluent-btn px-3 py-1 text-xs rounded-md border border-border bg-white/[0.03] text-fg hover:bg-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {busy === 'update' ? '更新中…' : '更新'}
+              </button>
+              <button
+                type="button"
+                disabled={busy != null || !status.installed}
+                onClick={() =>
+                  void runAction('uninstall', '会删除 ~/.claude/skills/gstack 目录。继续？')
+                }
+                className="fluent-btn px-3 py-1 text-xs rounded-md border border-rose-700/60 text-rose-300 hover:bg-rose-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {busy === 'uninstall' ? '卸载中…' : '卸载'}
+              </button>
+              <button
+                type="button"
+                disabled={busy != null}
+                onClick={() => void refresh()}
+                className="fluent-btn px-3 py-1 text-xs rounded-md border border-border bg-white/[0.03] text-muted hover:text-fg hover:bg-white/[0.08] disabled:opacity-50"
+              >
+                查看状态
+              </button>
+            </div>
+
+            {trailing && (
+              <pre className="mt-1 max-h-40 overflow-auto text-[10.5px] font-mono text-muted bg-black/30 border border-border/60 rounded px-2 py-1.5 whitespace-pre-wrap">
+                {trailing}
+              </pre>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

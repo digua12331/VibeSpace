@@ -86,3 +86,65 @@ export function readUsedJSHeapSize(): number | undefined {
 
 export const KEEPALIVE_MEM_THRESHOLD = 2 * 1024 ** 3
 export const KEEPALIVE_LRU_LIMIT = 3
+
+/**
+ * Session spawn 探针："用户点击启动 → SessionView 首帧 replay 完成"耗时。
+ *
+ * 流程：
+ *   1. 用户点 StartSessionMenu 的 agent 行 → 立刻调 markSessionSpawnStart()，
+ *      返回 tempKey（此时还没有 sessionId）。
+ *   2. createSession 返回拿到 sessionId → 调 bindSessionSpawn(tempKey, sessionId)
+ *      把 pending start 时间挂到该 sessionId 上。
+ *   3. SessionView 收到首条 replay 消息 → 调 markSessionSpawnEnd(sessionId, ctx)
+ *      双 raf 后写 perf 日志。
+ *
+ * 中途失败（createSession 抛错 / SessionView 没挂上）时间会泄漏到 Map 里，
+ * 用 30s timeout 兜底清理。
+ */
+const spawnStartTimes = new Map<string, number>()
+const spawnTempToSession = new Map<string, string>()
+const spawnSessionToTemp = new Map<string, string>()
+let spawnSeq = 0
+
+export function markSessionSpawnStart(): string {
+  const tempKey = `spawn-${++spawnSeq}`
+  spawnStartTimes.set(tempKey, performance.now())
+  setTimeout(() => {
+    if (spawnStartTimes.has(tempKey) && !spawnTempToSession.has(tempKey)) {
+      spawnStartTimes.delete(tempKey)
+    }
+  }, 30_000)
+  return tempKey
+}
+
+export function bindSessionSpawn(tempKey: string, sessionId: string): void {
+  if (!spawnStartTimes.has(tempKey)) return
+  spawnTempToSession.set(tempKey, sessionId)
+  spawnSessionToTemp.set(sessionId, tempKey)
+}
+
+export function markSessionSpawnEnd(
+  sessionId: string,
+  ctx: { agent: string; isolation?: string },
+): void {
+  const tempKey = spawnSessionToTemp.get(sessionId)
+  if (!tempKey) return
+  const start = spawnStartTimes.get(tempKey)
+  if (start == null) return
+  spawnStartTimes.delete(tempKey)
+  spawnTempToSession.delete(tempKey)
+  spawnSessionToTemp.delete(sessionId)
+  const raf = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16)
+  raf(() => raf(() => {
+    const ms = Math.round(performance.now() - start)
+    pushLog({
+      level: 'info',
+      scope: 'perf',
+      msg: `session-spawn 完成 (${ms}ms)`,
+      sessionId,
+      meta: { ms, sessionId, agent: ctx.agent, ...(ctx.isolation ? { isolation: ctx.isolation } : {}) },
+    })
+  }))
+}

@@ -272,12 +272,11 @@ function assertRef(ref: string): Ref {
 
 export async function isGitRepo(projectPath: string): Promise<boolean> {
   if (!existsSync(projectPath)) return false;
-  try {
-    const inside = await gitFor(projectPath).revparse(["--is-inside-work-tree"]);
-    return inside.trim() === "true";
-  } catch {
-    return false;
-  }
+  // 直接判断 `.git` 存在即可——可能是目录（普通仓库）也可能是文件（worktree
+  // 子目录或 submodule 里的 gitlink）。比起 `git rev-parse --is-inside-work-tree`
+  // 子进程少 5-50ms，对热点 spawn 路径影响显著。极端情况下用户手工删掉 .git
+  // 但保留半个仓库会过判，但那种状态本来 git 命令也没法用，错也错得诚实。
+  return existsSync(joinPath(projectPath, ".git"));
 }
 
 // ---------- Working-tree status ----------

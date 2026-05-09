@@ -18,6 +18,7 @@ import type {
   Session,
   SessionStatus,
   SubagentRun,
+  WorkflowMode,
   WSConnState,
 } from './types'
 import {
@@ -279,6 +280,9 @@ interface State {
   markSessionExit: (id: string, code: number) => void
   /** Local mirror after bindSessionTask succeeds; same pattern as updateSessionStatus. */
   setSessionTaskLocal: (id: string, task: string | null) => void
+  /** Optimistic local mirror after apply/remove workflow succeeds; lets the
+   *  互斥渲染（DocsView ↔ OpenSpecView）立刻响应而无需 refreshProjects 拉全量。 */
+  setWorkflowMode: (projectId: string, mode: WorkflowMode | null) => void
 
   /** Cached subagent-run lists keyed by parent sessionId. Polled by SessionView. */
   subagentRunsBySession: Record<string, SubagentRun[]>
@@ -706,6 +710,16 @@ export const useStore = create<State>((set, get) => ({
             : s,
       ),
     })),
+
+  setWorkflowMode: (projectId, mode) =>
+    set((st) => {
+      const idx = st.projects.findIndex((p) => p.id === projectId)
+      if (idx < 0) return st
+      if ((st.projects[idx].workflowMode ?? null) === mode) return st
+      const next = st.projects.slice()
+      next[idx] = { ...next[idx], workflowMode: mode }
+      return { projects: next }
+    }),
 
   subagentRunsBySession: {},
   refreshSubagentRuns: async (sessionId) => {
