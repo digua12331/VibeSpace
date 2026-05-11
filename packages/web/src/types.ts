@@ -74,7 +74,7 @@ export interface ProjectLayout {
   updatedAt: number
 }
 
-export type WorkflowMode = 'dev-docs' | 'openspec'
+export type WorkflowMode = 'dev-docs' | 'openspec' | 'spec-trio'
 
 export interface Project {
   id: string
@@ -183,6 +183,8 @@ export interface WorkflowApplyResult {
     | null
     | { ok: true; wrote: boolean }
     | { ok: false; error: string }
+  /** gstack 装态探测；仅 mode === 'spec-trio' 时存在。`installed: false` 会导致 partial=true。 */
+  gstack: null | { installed: boolean }
   partial: boolean
 }
 
@@ -196,6 +198,8 @@ export interface WorkflowRemoveResult {
     | { ok: false; error: string }
   harness: HarnessUninstallShape
   superpowers: null | { changed: boolean; reason?: string }
+  /** gstack 装态探测；仅 mode === 'spec-trio' 时存在。切走 spec-trio 不卸 gstack 二进制。 */
+  gstack: null | { installed: boolean }
   partial: boolean
 }
 
@@ -205,6 +209,8 @@ export interface WorkflowStatus {
   openspec: OpenSpecStatusShape
   harness: HarnessStatusShape
   superpowers: { enabled: boolean; claudeMdExists: boolean }
+  /** gstack 机器级装态（探测 ~/.claude/skills/gstack/.git 目录是否存在）。 */
+  gstack: { installed: boolean }
   applied: 'none' | 'partial' | 'full'
 }
 

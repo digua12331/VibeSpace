@@ -15,6 +15,9 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const [workflow, setWorkflow] = useState<WorkflowChoice>(DEFAULT_WORKFLOW)
   const [superpowers, setSuperpowers] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  // spec-trio 是预设套餐：强制带 Superpowers；勾选框 visual 锁定，submit 时强制传 true。
+  const superpowersForced = workflow === 'spec-trio'
+  const effectiveSuperpowers = superpowersForced ? true : superpowers
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -45,14 +48,17 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             name: name.trim(),
             ...(trimmedPath ? { path: trimmedPath } : {}),
           })
-          // 工作流装配：dev-docs / openspec / 无 三选一；Superpowers 与之正交，
-          // 单独一项。三件相互独立——同时勾选都启用。
+          // 工作流装配：dev-docs / openspec / spec-trio / 无 四选一；Superpowers 与前两个
+          // 正交，spec-trio 是预设套餐（强制带 Superpowers + gstack 标记）。
           // 任一选项需要装配才发请求；"无 + 不勾 Superpowers"则跳过 apply 调用。
-          const needsApply = workflow !== 'none' || superpowers
+          const needsApply = workflow !== 'none' || effectiveSuperpowers
           if (needsApply) {
             await api.applyWorkflow(proj.id, {
               ...(workflow !== 'none' ? { mode: workflow } : {}),
-              ...(superpowers ? { superpowers: true } : {}),
+              // spec-trio 后端强制带 Superpowers，前端不再额外传；其它模式按用户勾选传。
+              ...(workflow !== 'spec-trio' && effectiveSuperpowers
+                ? { superpowers: true }
+                : {}),
             })
           }
           await refreshProjects()
@@ -63,7 +69,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             path: trimmedPath || undefined,
             pathMode,
             workflow,
-            superpowers,
+            superpowers: effectiveSuperpowers,
           },
         },
       )
@@ -109,25 +115,28 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           >
             <option value="dev-docs">Dev Docs（plan / context / tasks 三段式）</option>
             <option value="openspec">OpenSpec（proposal / design / tasks 提案式）</option>
+            <option value="spec-trio">规范三件套（OpenSpec + Superpowers + gstack 预设套餐）</option>
             <option value="none">无（不装配工作流）</option>
           </select>
           <span className="block text-[11px] text-muted mt-1.5">
-            侧栏会按这个选项展示对应规范 tab；项目级二选一，可在「权限」抽屉切换。
+            侧栏会按这个选项展示对应规范 tab；建好后可在「权限」抽屉切换。
           </span>
         </label>
 
-        <label className="flex items-start gap-2 mb-3 cursor-pointer">
+        <label className={`flex items-start gap-2 mb-3 ${superpowersForced ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
           <input
             type="checkbox"
-            checked={superpowers}
+            checked={effectiveSuperpowers}
             onChange={(e) => setSuperpowers(e.target.checked)}
+            disabled={superpowersForced}
             className="mt-0.5 accent-accent"
           />
           <span className="text-xs leading-snug">
             <span className="text-fg font-medium">启用 Superpowers 7 步流程提示</span>
             <span className="block text-[11px] text-muted mt-0.5">
-              在项目 <code className="font-mono">CLAUDE.md</code> 写入引导段；真正的 7
-              步约束需要你在 Claude Code 插件市场装 Superpowers 本体。
+              {superpowersForced
+                ? '规范三件套已包含 Superpowers，无需单独勾选。'
+                : '在项目 CLAUDE.md 写入引导段；真正的 7 步约束需要你在 Claude Code 插件市场装 Superpowers 本体。'}
             </span>
           </span>
         </label>

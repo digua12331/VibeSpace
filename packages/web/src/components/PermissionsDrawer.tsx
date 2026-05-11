@@ -363,7 +363,9 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
           </>
         )}
 
-        {mode === 'workflow' && <WorkflowTab project={project} />}
+        {mode === 'workflow' && (
+          <WorkflowTab project={project} onSwitchToTools={() => setMode('tools')} />
+        )}
 
         {mode === 'buttons' && <ButtonsTab />}
 
@@ -1030,13 +1032,34 @@ function ButtonPreview({ color, text }: { color: ButtonColor; text: string }) {
 
 type WorkflowChoice = 'none' | WorkflowMode
 
-function WorkflowTab({ project }: { project: Project }) {
+/**
+ * mode 文案小工具：UI 多处需要展示 mode 的人类可读名称（确认弹窗、状态栏、选项 label）。
+ * 集中一处避免散落分叉。
+ */
+function modeLabel(m: WorkflowMode): string {
+  if (m === 'dev-docs') return 'Dev Docs'
+  if (m === 'openspec') return 'OpenSpec'
+  return '规范三件套'
+}
+
+function WorkflowTab({
+  project,
+  onSwitchToTools,
+}: {
+  project: Project
+  /** 跳到「🧰 工具集」tab——spec-trio 模式下 gstack 未装时弹"去 Tools 装"按钮用 */
+  onSwitchToTools: () => void
+}) {
   const setWorkflowMode = useStore((s) => s.setWorkflowMode)
   const [status, setStatus] = useState<WorkflowStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [choice, setChoice] = useState<WorkflowChoice>('dev-docs')
   const [superpowersChoice, setSuperpowersChoice] = useState(false)
+
+  // spec-trio 是预设套餐：必须强制带 Superpowers；勾选框 visual 锁定。
+  const superpowersForced = choice === 'spec-trio'
+  const effectiveSuperpowers = superpowersForced ? true : superpowersChoice
 
   async function refresh() {
     try {
@@ -1077,27 +1100,27 @@ function WorkflowTab({ project }: { project: Project }) {
     if (!status) return
     const detectedMode = status.detectedMode
     const wantsMode = choice === 'none' ? null : choice
-    const wantsSuperpowers = superpowersChoice
+    // spec-trio 是预设套餐，强制带 Superpowers（忽略用户在 superpowers 框上的取消）
+    const wantsSuperpowers = effectiveSuperpowers
 
-    // 切换模式（dev-docs ↔ openspec / ... ↔ none）需要先卸掉旧模式：避免双重应用残留两套文件。
+    // 切换模式（dev-docs ↔ openspec ↔ spec-trio ↔ none）需要先卸掉旧模式：避免双重应用残留。
+    // 关键：切走 spec-trio 时 DELETE body.mode 必须传 'spec-trio'，后端按 mode 分支卸载，
+    // 传错会卸到 dev-docs 分支（撤 CLAUDE.md 段而不是 openspec 目录），状态会错乱。
     const switchingFromMode =
       detectedMode != null && detectedMode !== wantsMode ? detectedMode : null
-    // 切换 mode 时，若用户同步取消了 Superpowers 勾选，把 Superpowers 段一起卸——否则
-    // 切完后 CLAUDE.md 里旧的 Superpowers 段会残留，与"下拉菜单选哪个就只剩哪个"语义不符。
-    // Superpowers 只在"用户主动取消勾选"时才动，保持它的独立勾选语义不变。
+    // 切换 mode 时若用户同步取消 Superpowers 勾选 → 把 Superpowers 段一起卸。
+    // spec-trio 模式下 Superpowers 强制带，所以 effectiveSuperpowers 永远 true，不会触发取消。
     const switchOffSuperpowers =
       switchingFromMode != null && status.superpowers.enabled && !wantsSuperpowers
     if (switchingFromMode) {
       const tail = switchOffSuperpowers
-        ? '会先卸掉旧模式 + Superpowers 段（保留你已写入的内容文件，仅撤回工作流脚手架）。'
-        : '会先卸掉旧模式（保留你已写入的内容文件，仅撤回工作流脚手架）。'
+        ? '会先卸掉旧工作流 + Superpowers 段（保留你已写入的内容文件，仅撤回脚手架）。'
+        : switchingFromMode === 'spec-trio'
+          ? '会先卸掉规范三件套（OpenSpec 脚手架 + Superpowers 段 + Harness 文件夹）。gstack 不会被卸——它装在 ~/.claude/skills/gstack 是机器级，其他项目可能还在用。'
+          : '会先卸掉旧工作流（保留你已写入的内容文件，仅撤回脚手架）。'
       const ok = await confirmDialog(
-        `当前已应用 "${switchingFromMode === 'dev-docs' ? 'Dev Docs' : 'OpenSpec'}"。切换到 "${
-          wantsMode === null
-            ? '无'
-            : wantsMode === 'dev-docs'
-              ? 'Dev Docs'
-              : 'OpenSpec'
+        `当前已应用 "${modeLabel(switchingFromMode)}"。切换到 "${
+          wantsMode === null ? '无' : modeLabel(wantsMode)
         }" ${tail}`,
         { title: '切换工作流', confirmLabel: '继续切换' },
       )
@@ -1131,14 +1154,30 @@ function WorkflowTab({ project }: { project: Project }) {
           () =>
             api.applyWorkflow(project.id, {
               mode: wantsMode,
-              ...(wantsSuperpowers ? { superpowers: true } : {}),
+              // spec-trio 后端强制带 Superpowers，前端不再额外传（避免 schema 冲突）；
+              // dev-docs / openspec 模式下按用户勾选传。
+              ...(wantsMode !== 'spec-trio' && wantsSuperpowers
+                ? { superpowers: true }
+                : {}),
             }),
           {
             projectId: project.id,
             meta: { mode: wantsMode, superpowers: wantsSuperpowers },
           },
         )
-        if (result.partial) {
+        // gstack 未装是 spec-trio 模式下最常见的 partial 原因，弹专项提示（含"去 Tools 装"按钮）
+        // 而非通用 partial 失败提示；其它 partial 维持现有 alertDialog。
+        if (result.partial && result.gstack && !result.gstack.installed) {
+          const goInstall = await confirmDialog(
+            '规范三件套已装齐 OpenSpec + Superpowers + Harness，但 gstack 未装。gstack 是一组装在 ~/.claude/skills/ 的 Claude Code 插件（提供 /browse、/qa、/ship 等命令），点"现在去装"会切到「🧰 工具集」tab 触发安装（首次需几分钟）。',
+            {
+              title: 'gstack 未安装',
+              confirmLabel: '现在去装',
+              cancelLabel: '稍后再说',
+            },
+          )
+          if (goInstall) onSwitchToTools()
+        } else if (result.partial) {
           await alertDialog('部分应用失败，请查看 LogsView 日志', {
             title: '工作流应用部分失败',
             variant: 'danger',
@@ -1164,7 +1203,7 @@ function WorkflowTab({ project }: { project: Project }) {
         // 用户没改任何东西，直接走 refresh 拉最新状态即可
       }
 
-      // Optimistic local mirror so侧栏互斥渲染（T15）立刻响应。
+      // Optimistic local mirror so侧栏互斥渲染立刻响应。
       setWorkflowMode(project.id, wantsMode)
       await refresh()
     } catch (e: unknown) {
@@ -1181,9 +1220,11 @@ function WorkflowTab({ project }: { project: Project }) {
     if (busy || !status || status.applied === 'none') return
     const detectedMode = status.detectedMode
     const ok = await confirmDialog(
-      detectedMode === 'openspec'
-        ? '会撤销 OpenSpec 脚手架（保留 openspec/changes 目录里你已写入的内容；只删 AGENTS.md 与空白脚手架）以及已拷的 Harness 文件夹。'
-        : '会撤销 CLAUDE.md 中工作流段落（含其后所有内容）以及 Harness 拷贝的文件夹（.aimon/skills、.aimon/docs、.claude/agents、CUSTOMIZE 等）。请先备份你写过的内容。',
+      detectedMode === 'spec-trio'
+        ? '会撤销规范三件套（OpenSpec 脚手架 + Superpowers 段 + Harness 文件夹）。openspec/changes 目录里你已写入的提案内容会保留。gstack 不会被卸——它装在 ~/.claude/skills/gstack 是机器级，其他项目可能还在用，强卸会误伤；要彻底清理请去「🧰 工具集」tab 单独操作。'
+        : detectedMode === 'openspec'
+          ? '会撤销 OpenSpec 脚手架（保留 openspec/changes 目录里你已写入的内容；只删 AGENTS.md 与空白脚手架）以及已拷的 Harness 文件夹。'
+          : '会撤销 CLAUDE.md 中工作流段落（含其后所有内容）以及 Harness 拷贝的文件夹（.aimon/skills、.aimon/docs、.claude/agents、CUSTOMIZE 等）。请先备份你写过的内容。',
       { title: '卸载工作流', confirmLabel: '确认卸载', variant: 'danger' },
     )
     if (!ok) return
@@ -1216,11 +1257,12 @@ function WorkflowTab({ project }: { project: Project }) {
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
       <div className="text-xs text-muted leading-relaxed">
-        项目工作流：选 <strong>Dev Docs</strong>（plan → context → tasks 三段式）
-        或 <strong>OpenSpec</strong>（proposal → design → tasks 提案式），
+        项目工作流：选 <strong>Dev Docs</strong>（plan → context → tasks 三段式）、
+        <strong>OpenSpec</strong>（proposal → design → tasks 提案式），或
+        <strong>规范三件套</strong>（OpenSpec + Superpowers + gstack 预设套餐），
         系统会往项目根 <code className="font-mono">CLAUDE.md</code> 写守则段落，
         并把可复用配置目录拷进项目；切回"无"会反向撤销。
-        <strong> Superpowers</strong> 与上面二选一正交，只在 CLAUDE.md 写一段引导提示。
+        <strong> Superpowers</strong> 与前两个正交独立勾选；选规范三件套时强制带。
       </div>
 
       <div className="rounded border border-border/60 bg-bg/30 p-3 space-y-3">
@@ -1240,36 +1282,91 @@ function WorkflowTab({ project }: { project: Project }) {
 
         {status && (
           <>
-            <div className="text-[11px] text-muted leading-relaxed">
-              当前状态：模式{' '}
-              <span className="text-fg/85">
-                {status.detectedMode === 'dev-docs'
-                  ? 'Dev Docs'
-                  : status.detectedMode === 'openspec'
-                    ? 'OpenSpec'
-                    : '无'}
-              </span>
-              {' · '}
-              整体{' '}
-              {status.applied === 'full' ? (
-                <span className="text-emerald-300">已应用</span>
-              ) : status.applied === 'partial' ? (
-                <span className="text-amber-300">部分已应用</span>
-              ) : (
-                <span className="text-muted">未应用</span>
-              )}
-              {' · '}
-              Superpowers{' '}
-              <span
-                className={
-                  status.superpowers.enabled
-                    ? 'text-emerald-300'
-                    : 'text-muted'
-                }
-              >
-                {status.superpowers.enabled ? '已启用' : '未启用'}
-              </span>
-            </div>
+            {status.detectedMode === 'spec-trio' ? (
+              // 规范三件套：三 chip 并排显示 OpenSpec / Superpowers / gstack 各自状态
+              <div className="space-y-1.5">
+                <div className="text-[11px] text-muted">
+                  当前状态：模式{' '}
+                  <span className="text-fg/85">规范三件套</span>
+                  {' · '}
+                  整体{' '}
+                  {status.applied === 'full' ? (
+                    <span className="text-emerald-300">已应用</span>
+                  ) : (
+                    <span className="text-amber-300">部分已应用</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={
+                      'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ' +
+                      (status.openspec.applied === 'full'
+                        ? 'border-emerald-700/60 bg-emerald-900/30 text-emerald-200'
+                        : 'border-rose-700/60 bg-rose-900/30 text-rose-200')
+                    }
+                  >
+                    {status.openspec.applied === 'full' ? '✓' : '✗'} OpenSpec
+                  </span>
+                  <span
+                    className={
+                      'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ' +
+                      (status.superpowers.enabled
+                        ? 'border-emerald-700/60 bg-emerald-900/30 text-emerald-200'
+                        : 'border-rose-700/60 bg-rose-900/30 text-rose-200')
+                    }
+                  >
+                    {status.superpowers.enabled ? '✓' : '✗'} Superpowers
+                  </span>
+                  {status.gstack.installed ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border border-emerald-700/60 bg-emerald-900/30 text-emerald-200">
+                      ✓ gstack
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border border-amber-700/60 bg-amber-900/30 text-amber-200">
+                      ⚠ gstack 未安装
+                      <button
+                        type="button"
+                        onClick={onSwitchToTools}
+                        className="fluent-btn ml-1 px-1.5 py-0.5 text-[10px] rounded border border-amber-700/60 hover:bg-amber-900/40"
+                      >
+                        去装
+                      </button>
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-muted leading-relaxed">
+                当前状态：模式{' '}
+                <span className="text-fg/85">
+                  {status.detectedMode === 'dev-docs'
+                    ? 'Dev Docs'
+                    : status.detectedMode === 'openspec'
+                      ? 'OpenSpec'
+                      : '无'}
+                </span>
+                {' · '}
+                整体{' '}
+                {status.applied === 'full' ? (
+                  <span className="text-emerald-300">已应用</span>
+                ) : status.applied === 'partial' ? (
+                  <span className="text-amber-300">部分已应用</span>
+                ) : (
+                  <span className="text-muted">未应用</span>
+                )}
+                {' · '}
+                Superpowers{' '}
+                <span
+                  className={
+                    status.superpowers.enabled
+                      ? 'text-emerald-300'
+                      : 'text-muted'
+                  }
+                >
+                  {status.superpowers.enabled ? '已启用' : '未启用'}
+                </span>
+              </div>
+            )}
 
             <label className="block">
               <span className="block text-xs text-muted mb-1">规范工作流</span>
@@ -1281,23 +1378,25 @@ function WorkflowTab({ project }: { project: Project }) {
               >
                 <option value="dev-docs">Dev Docs（plan / context / tasks 三段式）</option>
                 <option value="openspec">OpenSpec（proposal / design / tasks 提案式）</option>
+                <option value="spec-trio">规范三件套（OpenSpec + Superpowers + gstack 预设套餐）</option>
                 <option value="none">无（不装配规范工作流）</option>
               </select>
             </label>
 
-            <label className="flex items-start gap-2 cursor-pointer">
+            <label className={`flex items-start gap-2 ${superpowersForced ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
               <input
                 type="checkbox"
-                checked={superpowersChoice}
+                checked={effectiveSuperpowers}
                 onChange={(e) => setSuperpowersChoice(e.target.checked)}
-                disabled={busy}
+                disabled={busy || superpowersForced}
                 className="mt-0.5 accent-accent"
               />
               <span className="text-xs leading-snug">
                 <span className="text-fg font-medium">启用 Superpowers 7 步流程提示</span>
                 <span className="block text-[11px] text-muted mt-0.5">
-                  在 <code className="font-mono">CLAUDE.md</code> 写引导段；
-                  真正约束需在 Claude Code 插件市场装 Superpowers 本体。
+                  {superpowersForced
+                    ? '规范三件套已包含 Superpowers，无需单独勾选。'
+                    : '在 CLAUDE.md 写引导段；真正约束需在 Claude Code 插件市场装 Superpowers 本体。'}
                 </span>
               </span>
             </label>

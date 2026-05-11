@@ -12,6 +12,7 @@ import {
   endSession,
   updateProjectLayout,
   updateProjectWorkflowMode,
+  type WorkflowMode,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
 import { removeWorktree } from "../git-service.js";
@@ -46,10 +47,11 @@ const LayoutSchema = z.object({
   ),
 });
 
-/** Workflow apply/remove body：mode 与 superpowers 都可省（默认 mode="dev-docs"，superpowers=false 兼容现有调用）。 */
+/** Workflow apply/remove body：mode 与 superpowers 都可省（默认 mode="dev-docs"，superpowers=false 兼容现有调用）。
+ *  spec-trio 是 OpenSpec + Superpowers + gstack 预设套餐——选它时 superpowers 字段被忽略（强制装/卸）。 */
 const WorkflowOptionsSchema = z
   .object({
-    mode: z.enum(["dev-docs", "openspec"]).optional(),
+    mode: z.enum(["dev-docs", "openspec", "spec-trio"]).optional(),
     superpowers: z.boolean().optional(),
   })
   .strict();
@@ -150,7 +152,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       if (!proj) return reply.code(404).send({ error: "not_found" });
 
       // body 可省（兼容旧前端 POST without body）；存在时严格校验
-      let opts: { mode?: "dev-docs" | "openspec"; superpowers?: boolean } = {};
+      let opts: { mode?: WorkflowMode; superpowers?: boolean } = {};
       if (req.body !== undefined && req.body !== null) {
         const parsed = WorkflowOptionsSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -196,6 +198,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
                 specOk,
                 harnessOk,
                 superpowersOk,
+                gstackInstalled: r.gstack !== null ? r.gstack.installed : null,
                 partial: r.partial,
               },
             },
@@ -225,6 +228,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
                 r.superpowers !== null && r.superpowers.ok
                   ? r.superpowers.wrote
                   : false,
+              gstackInstalled: r.gstack !== null ? r.gstack.installed : null,
             },
           },
         );
@@ -251,7 +255,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       if (!proj) return reply.code(404).send({ error: "not_found" });
 
       // body 可省（兼容旧前端 DELETE 不带 body）
-      let opts: { mode?: "dev-docs" | "openspec"; superpowers?: boolean } = {};
+      let opts: { mode?: WorkflowMode; superpowers?: boolean } = {};
       if (req.body !== undefined && req.body !== null) {
         const parsed = WorkflowOptionsSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -273,11 +277,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         const r = await removeWorkflowFromProject(proj.path, { mode, superpowers });
 
         // 规范工作流卸载成功 → 清空 workflowMode（按 mode 分支判定）
+        // spec-trio 与 openspec 走同一份 scaffold，判定逻辑合并。
         const specChanged =
           (mode === "dev-docs" &&
             r.devDocs !== null &&
             r.devDocs.changed === true) ||
-          (mode === "openspec" &&
+          ((mode === "openspec" || mode === "spec-trio") &&
             r.openspec !== null &&
             (r.openspec as { ok?: boolean }).ok === true);
         if (specChanged) {
@@ -299,6 +304,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
                 harnessRemoved: r.harness.removedCount,
                 harnessSkipped: r.harness.skippedCount,
                 harnessFailed: r.harness.failedFiles.length,
+                gstackInstalled: r.gstack !== null ? r.gstack.installed : null,
               },
             },
           );
@@ -319,6 +325,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
               harnessSkipped: r.harness.skippedCount,
               superpowersChanged:
                 r.superpowers !== null ? r.superpowers.changed : null,
+              gstackInstalled: r.gstack !== null ? r.gstack.installed : null,
             },
           },
         );
@@ -348,7 +355,11 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
         projectId: proj.id,
       });
       try {
-        const status = await getWorkflowStatus(proj.path);
+        // 传 persistedMode 让 detectedMode 能识别 spec-trio（磁盘上与 openspec+Superpowers 同形）
+        const status = await getWorkflowStatus(
+          proj.path,
+          proj.workflowMode ?? null,
+        );
         serverLog(
           "info",
           "project",

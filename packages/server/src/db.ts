@@ -251,7 +251,7 @@ export interface ProjectLayout {
   updatedAt: number;
 }
 
-export type WorkflowMode = "dev-docs" | "openspec";
+export type WorkflowMode = "dev-docs" | "openspec" | "spec-trio";
 
 export interface Project {
   id: string;

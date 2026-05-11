@@ -24,11 +24,12 @@ export default function ActivityBar() {
     : undefined
   const workflowMode = currentProject?.workflowMode ?? null
 
-  // 规范工作流 tab 形态：dev-docs → 显示 Dev Docs；openspec → 显示规范；null → 隐藏。
+  // 规范工作流 tab 形态：dev-docs → Dev Docs；openspec / spec-trio → 规范；null → 隐藏。
+  // spec-trio 是 OpenSpec + Superpowers + gstack 预设套餐，侧栏按 OpenSpec 形态渲染。
   const docsItem: Item | null =
     workflowMode === 'dev-docs'
       ? { id: 'docs', icon: '📝', label: 'Dev Docs' }
-      : workflowMode === 'openspec'
+      : workflowMode === 'openspec' || workflowMode === 'spec-trio'
         ? { id: 'docs', icon: '📜', label: '规范' }
         : null
 

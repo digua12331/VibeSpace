@@ -51,8 +51,9 @@ export default function PrimarySidebar() {
       : null) ?? null
 
   // docs activity 顶栏标题随 workflowMode 变换；mode === null 时显示"工作流未启用"占位。
+  // spec-trio 是 OpenSpec + Superpowers + gstack 预设套餐，标题与 OpenSpec 一致显示"规范"。
   const docsTitle =
-    workflowMode === 'openspec'
+    workflowMode === 'openspec' || workflowMode === 'spec-trio'
       ? '规范'
       : workflowMode === 'dev-docs'
         ? 'Dev Docs'
@@ -69,7 +70,7 @@ export default function PrimarySidebar() {
       break
     case 'docs':
       body =
-        workflowMode === 'openspec' ? (
+        workflowMode === 'openspec' || workflowMode === 'spec-trio' ? (
           <OpenSpecView />
         ) : workflowMode === 'dev-docs' ? (
           <DocsView />
@@ -78,7 +79,7 @@ export default function PrimarySidebar() {
             <div>
               当前项目未启用规范工作流。
               <br />
-              点右上角「权限」抽屉的「工作流」tab 选择 Dev Docs 或 OpenSpec。
+              点右上角「权限」抽屉的「工作流」tab 选择 Dev Docs / OpenSpec / 规范三件套。
             </div>
           </div>
         )
