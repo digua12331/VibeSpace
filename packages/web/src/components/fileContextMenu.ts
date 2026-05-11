@@ -66,20 +66,25 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
   const isHtml = kind === 'file' && /\.(html?|xhtml)$/i.test(path)
   const isExec = kind === 'file' && isExecutablePath(path)
 
+  // Only AI agents (claude / codex / gemini / opencode / ...) accept "@path"
+  // file references; shells (shell/cmd/pwsh) are excluded from this submenu —
+  // sending paths into a raw shell isn't what the user wants here.
+  const aiSessions = sessions.filter((s) => !SHELL_AGENTS.includes(s.agent))
+
   const sendItem: ContextMenuItem =
-    sessions.length === 0
+    aiSessions.length === 0
       ? {
           label: '发送到对话',
           icon: '➡',
           disabled: true,
         }
-      : sessions.length === 1
+      : aiSessions.length === 1
         ? {
-            label: `发送到 ${sessions[0].agent}·${shortTail(sessions[0].id)}`,
+            label: `发送到 ${aiSessions[0].agent}·${shortTail(aiSessions[0].id)}`,
             icon: '➡',
             onSelect: () => {
-              const text = formatForSession(sessions[0].agent, path, kind)
-              void sendToSession(projectId, sessions[0], text, {
+              const text = formatForSession(aiSessions[0].agent, path, kind)
+              void sendToSession(projectId, aiSessions[0], text, {
                 scope: 'files',
                 meta: { path, kind },
               })
@@ -88,7 +93,7 @@ export function buildFileContextItems(opts: FileContextOpts): ContextMenuItem[] 
         : {
             label: '发送到对话',
             icon: '➡',
-            submenu: sessions.map((s) => ({
+            submenu: aiSessions.map((s) => ({
               label: `${s.agent}·${shortTail(s.id)}`,
               onSelect: () => {
                 const text = formatForSession(s.agent, path, kind)
