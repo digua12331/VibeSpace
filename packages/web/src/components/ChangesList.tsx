@@ -361,80 +361,80 @@ export default function ChangesList({ projectId }: Props) {
 
   return (
     <div className="flex flex-col h-full text-sm">
-      {/* branch + remote ops header (row 1) */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 gap-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <button
-            ref={branchChipRef}
-            onClick={openBranchPopover}
-            disabled={busy != null}
-            title="切换 / 新建 / 删除 / 合并分支"
-            className="fluent-btn flex items-center gap-1 min-w-0 px-2 py-0.5 rounded-md border border-border/60 hover:border-accent/60 hover:bg-white/[0.04] disabled:opacity-50"
-          >
-            <span className="text-xs text-muted">🌿</span>
-            <span className="font-mono text-fg truncate text-[12.5px]">
-              {data.branch ?? '(detached)'}
-            </span>
-            {(data.ahead > 0 || data.behind > 0) && (
-              <span className="text-[10px] text-muted whitespace-nowrap">↑{data.ahead} ↓{data.behind}</span>
-            )}
-            <span className="text-[9px] text-muted">▾</span>
-          </button>
-          {refreshing && (
-            <span
-              title="正在后台刷新这份变更列表（你看到的是上次切走时的快照）"
-              className="text-[10px] text-amber-400/80 animate-pulse-soft whitespace-nowrap"
-            >
-              ⟳ 刷新中
-            </span>
+      {/* branch big button (row 1) */}
+      <div className="px-3 pt-2 pb-1.5 border-b border-border/40 flex items-center gap-2">
+        <button
+          ref={branchChipRef}
+          onClick={openBranchPopover}
+          disabled={busy != null}
+          title="切换 / 新建 / 删除 / 合并分支"
+          className="fluent-btn flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 rounded-md border border-border/60 hover:border-accent/60 hover:bg-white/[0.04] disabled:opacity-50"
+        >
+          <span className="text-base leading-none">🌿</span>
+          <span className="font-mono text-fg truncate text-[13.5px] flex-1 text-left">
+            {data.branch ?? '(detached)'}
+          </span>
+          {(data.ahead > 0 || data.behind > 0) && (
+            <span className="text-[11px] text-muted whitespace-nowrap">↑{data.ahead} ↓{data.behind}</span>
           )}
-        </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={() => void onPull()}
-            disabled={remoteOpsDisabled}
-            title={remoteHint || '从远程拉取并快进合并 (pull --ff-only)'}
-            className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
+          <span className="text-[11px] text-muted">▾</span>
+        </button>
+        {refreshing && (
+          <span
+            title="正在后台刷新这份变更列表（你看到的是上次切走时的快照）"
+            className="text-[10px] text-amber-400/80 animate-pulse-soft whitespace-nowrap shrink-0"
           >
-            {busy === 'pull' ? '…' : '⬇'}
-          </button>
-          <button
-            onClick={() => void onPush()}
-            disabled={remoteOpsDisabled}
-            title={remoteHint || '推送当前分支到远程'}
-            className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
-          >
-            {busy === 'push' ? '…' : '⬆'}
-          </button>
-          <button
-            onClick={() => void onFetch()}
-            disabled={busy != null}
-            title="获取远程更新但不合并 (fetch --all --prune)"
-            className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
-          >
-            {busy === 'fetch' ? '…' : '⤵'}
-          </button>
-          <span className="w-1" />
-          <button
-            onClick={() => void onStageAll()}
-            disabled={busy != null || workingChanges === 0}
-            title="全部暂存 (+)"
-            className="fluent-btn px-2 py-0.5 rounded-md border border-border text-muted hover:text-fg text-xs disabled:opacity-40"
-          >
-            ＋ 全部
-          </button>
-          <button
-            onClick={() => {
-              void load()
-              void loadStashCount()
-            }}
-            disabled={busy != null}
-            title="刷新"
-            className="fluent-btn px-2 py-0.5 rounded-md border border-border text-muted hover:text-fg text-xs disabled:opacity-40"
-          >
-            🔄
-          </button>
-        </div>
+            ⟳ 刷新中
+          </span>
+        )}
+      </div>
+
+      {/* remote ops + stage-all + refresh (row 2) */}
+      <div className="flex items-center justify-end gap-0.5 px-3 py-1.5 border-b border-border/60">
+        <button
+          onClick={() => void onPull()}
+          disabled={remoteOpsDisabled}
+          title={remoteHint || '从远程拉取并快进合并 (pull --ff-only)'}
+          className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
+        >
+          {busy === 'pull' ? '…' : '⬇'}
+        </button>
+        <button
+          onClick={() => void onPush()}
+          disabled={remoteOpsDisabled}
+          title={remoteHint || '推送当前分支到远程'}
+          className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
+        >
+          {busy === 'push' ? '…' : '⬆'}
+        </button>
+        <button
+          onClick={() => void onFetch()}
+          disabled={busy != null}
+          title="获取远程更新但不合并 (fetch --all --prune)"
+          className="fluent-btn px-1.5 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-xs disabled:opacity-40"
+        >
+          {busy === 'fetch' ? '…' : '⤵'}
+        </button>
+        <span className="w-1" />
+        <button
+          onClick={() => void onStageAll()}
+          disabled={busy != null || workingChanges === 0}
+          title="全部暂存 (+)"
+          className="fluent-btn px-2 py-0.5 rounded-md border border-border text-muted hover:text-fg text-xs disabled:opacity-40"
+        >
+          ＋ 全部
+        </button>
+        <button
+          onClick={() => {
+            void load()
+            void loadStashCount()
+          }}
+          disabled={busy != null}
+          title="刷新"
+          className="fluent-btn px-2 py-0.5 rounded-md border border-border text-muted hover:text-fg text-xs disabled:opacity-40"
+        >
+          🔄
+        </button>
       </div>
 
       {branchOpen && branchAnchor && (
