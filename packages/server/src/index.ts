@@ -43,6 +43,9 @@ import { registerSkillMarketRoutes } from "./routes/skill-market.js";
 import { registerSlashCommandRoutes } from "./routes/slash-commands.js";
 import { registerOpenspecRoutes } from "./routes/openspec.js";
 import { registerExternalToolsRoutes } from "./routes/external-tools.js";
+import { registerAppSettingsRoutes } from "./routes/app-settings.js";
+import { registerClaudeSettingsRoutes } from "./routes/claude-settings.js";
+import { pruneOldPastedImages } from "./paste-image-cleaner.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
 const PORT = Number(process.env.AIMON_PORT || 8787);
@@ -170,6 +173,8 @@ async function main(): Promise<void> {
   await registerSlashCommandRoutes(app);
   await registerOpenspecRoutes(app);
   await registerExternalToolsRoutes(app);
+  await registerAppSettingsRoutes(app);
+  await registerClaudeSettingsRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });
@@ -182,6 +187,9 @@ async function main(): Promise<void> {
   // Janitorial: prune log files older than 30 days. Fire-and-forget so a slow
   // FS doesn't keep listen() from completing.
   void pruneOldLogs();
+  // Prune pasted images per the user-configured retention. Same fire-and-forget
+  // discipline — failures land in LogsView, never block startup.
+  void pruneOldPastedImages();
   // Keep these two as plain console.log — they're startup-only path hints
   // for the operator, not operation events that need to reach LogsView.
   console.log(`VibeSpace db: ${getDbPath()}`);

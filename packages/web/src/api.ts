@@ -21,6 +21,7 @@ import type {
   ResetResult,
   StashEntry,
   StashOpResult,
+  AppSettings,
   ChecklistDoc,
   DocFileContent,
   DocFileKind,
@@ -61,6 +62,8 @@ import type {
   LocalLibrary,
   SetLibraryPathResult,
   DeleteLibrarySkillResult,
+  ClaudeGlobalSettings,
+  ClaudeSettingsPatch,
 } from './types'
 
 const BASE: string =
@@ -973,4 +976,27 @@ export async function deleteLibrarySkill(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+}
+
+export function getAppSettings(): Promise<AppSettings> {
+  return request<AppSettings>('/api/app-settings')
+}
+
+export function updateAppSettings(
+  patch: Partial<AppSettings>,
+): Promise<AppSettings> {
+  return request<AppSettings>('/api/app-settings', jsonInit('PUT', patch))
+}
+
+export function getClaudeSettings(): Promise<ClaudeGlobalSettings> {
+  return request<ClaudeGlobalSettings>('/api/claude-settings')
+}
+
+export function patchClaudeSettings(
+  patch: ClaudeSettingsPatch,
+): Promise<ClaudeGlobalSettings> {
+  return request<ClaudeGlobalSettings>(
+    '/api/claude-settings',
+    jsonInit('PUT', patch),
+  )
 }

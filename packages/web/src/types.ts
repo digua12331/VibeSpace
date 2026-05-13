@@ -931,3 +931,44 @@ export interface DeleteLibrarySkillResult {
   source: 'official' | 'custom'
   path: string
 }
+
+/**
+ * App-level settings persisted to `packages/server/data/app-settings.json`.
+ * `pasteImageRetentionDays`: 0 = no auto prune; otherwise pasted images older
+ * than N days are removed at next server start.
+ */
+export interface AppSettings {
+  pasteImageRetentionDays: number
+}
+
+/**
+ * Projection of `~/.claude/settings.json` exposed to the UI. Only the two
+ * fields the skill/plugin toggle panel cares about — the rest of the file
+ * is preserved on the server side during read+merge+write but never sent
+ * to the browser.
+ *
+ * `skillOverrides[name] === 'off'` means that skill's description is
+ * stripped from Claude Code's system prompt at session start. Absence of
+ * a key means the skill is enabled (default).
+ *
+ * `enabledPlugins[key]` (key shape `<name>@<marketplace>`) is the plugin
+ * master switch.
+ */
+export interface ClaudeGlobalSettings {
+  skillOverrides: Record<string, 'off'>
+  enabledPlugins: Record<string, boolean>
+  path: string
+  exists: boolean
+  parseError?: string
+}
+
+/**
+ * Patch body for `PUT /api/claude-settings`.
+ * `skillOverrides[name] = 'off'` → write entry; `= null` → delete entry.
+ * `enabledPlugins[key] = boolean` → set value.
+ * At least one of the two maps must be provided.
+ */
+export interface ClaudeSettingsPatch {
+  skillOverrides?: Record<string, 'off' | null>
+  enabledPlugins?: Record<string, boolean>
+}

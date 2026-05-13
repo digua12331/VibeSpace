@@ -6,6 +6,8 @@ import { logAction } from '../../logs'
 import {
   SKILL_AGENT_LABELS,
   SKILL_AGENT_TYPES,
+  type ClaudeGlobalSettings,
+  type ClaudeSettingsPatch,
   type LibrarySkillEntry,
   type LocalLibrary,
   type MarketSearchResult,
@@ -49,6 +51,12 @@ export default function SkillsView() {
     | null
   >(null)
 
+  const [claudeSettings, setClaudeSettings] =
+    useState<ClaudeGlobalSettings | null>(null)
+  const [claudeSettingsState, setClaudeSettingsState] =
+    useState<LoadState>('idle')
+  const [toggleBusy, setToggleBusy] = useState<string | null>(null)
+
   async function refreshCatalog(pid: string, ag: SkillAgentType) {
     setState('loading')
     setError(null)
@@ -89,6 +97,94 @@ export default function SkillsView() {
       /* state already records the error */
     })
   }, [mode])
+
+  async function refreshClaudeSettings() {
+    setClaudeSettingsState('loading')
+    try {
+      const r = await api.getClaudeSettings()
+      setClaudeSettings(r)
+      setClaudeSettingsState('ready')
+    } catch {
+      setClaudeSettingsState('error')
+    }
+  }
+
+  useEffect(() => {
+    if (mode !== 'catalog') return
+    if (agent !== 'claude-code') return
+    refreshClaudeSettings().catch(() => {
+      /* state already records the error */
+    })
+  }, [mode, agent])
+
+  function isSkillOn(name: string): boolean {
+    return claudeSettings?.skillOverrides?.[name] !== 'off'
+  }
+
+  async function applyClaudePatch(
+    action: string,
+    patch: ClaudeSettingsPatch,
+    meta: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const next = await logAction(
+        'claude-settings',
+        action,
+        () => api.patchClaudeSettings(patch),
+        { meta },
+      )
+      setClaudeSettings(next)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      await alertDialog(msg, { title: '写入 ~/.claude/settings.json 失败', variant: 'danger' })
+    }
+  }
+
+  async function onToggleSkill(name: string): Promise<void> {
+    if (toggleBusy) return
+    setToggleBusy(`skill:${name}`)
+    const nowOn = isSkillOn(name)
+    try {
+      await applyClaudePatch(
+        'toggle-skill',
+        { skillOverrides: { [name]: nowOn ? 'off' : null } },
+        { skill: name, nextState: nowOn ? 'off' : 'on' },
+      )
+    } finally {
+      setToggleBusy(null)
+    }
+  }
+
+  async function onBulkSetSkills(names: string[], on: boolean): Promise<void> {
+    if (toggleBusy || names.length === 0) return
+    setToggleBusy(`bulk:${names.length}`)
+    const patch: Record<string, 'off' | null> = {}
+    for (const n of names) patch[n] = on ? null : 'off'
+    try {
+      await applyClaudePatch(
+        on ? 'bulk-enable-skills' : 'bulk-disable-skills',
+        { skillOverrides: patch },
+        { count: names.length, sample: names.slice(0, 5), nextState: on ? 'on' : 'off' },
+      )
+    } finally {
+      setToggleBusy(null)
+    }
+  }
+
+  async function onTogglePlugin(key: string): Promise<void> {
+    if (toggleBusy) return
+    setToggleBusy(`plugin:${key}`)
+    const cur = claudeSettings?.enabledPlugins?.[key] !== false
+    try {
+      await applyClaudePatch(
+        'toggle-plugin',
+        { enabledPlugins: { [key]: !cur } },
+        { plugin: key, nextState: !cur },
+      )
+    } finally {
+      setToggleBusy(null)
+    }
+  }
 
   async function onInstall(srcPath: string, srcId: string) {
     if (!projectId) return
@@ -505,6 +601,19 @@ export default function SkillsView() {
             </button>
           </div>
 
+          {agent === 'claude-code' && claudeSettingsState === 'ready' && (
+            <div className="px-3 py-1.5 text-[10.5px] text-subtle border-b border-border/30 leading-snug">
+              下方开关改的是 <code className="text-muted">~/.claude/settings.json</code>（Claude
+              Code 全局配置，影响所有项目）。
+              <span className="text-amber-300/80">下次新开 Claude Code 会话才生效。</span>
+            </div>
+          )}
+          {agent === 'claude-code' && claudeSettings?.parseError && (
+            <div className="px-3 py-1.5 text-[11px] text-rose-300 border-b border-border/30">
+              配置文件损坏，开关已禁用：{claudeSettings.parseError}
+            </div>
+          )}
+
           <div className="flex-1 min-h-0 overflow-auto">
             {state === 'loading' && (
               <div className="px-3 py-2 text-[12px] text-muted">扫描中…</div>
@@ -545,27 +654,91 @@ export default function SkillsView() {
                   title="全局技能"
                   hint={globalDirHint(agent)}
                   skills={data.global}
-                  renderAction={(s) => (
-                    <button
-                      onClick={() => onInstall(s.path, s.id)}
-                      disabled={bulkBusy != null}
-                      className="fluent-btn text-[11px] px-2 py-0.5 rounded border border-emerald-700/40 text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
-                    >
-                      装到本项目
-                    </button>
-                  )}
-                  renderBulkAction={(items) => (
-                    <button
-                      onClick={() => onBulkInstallFromGlobal(items)}
-                      disabled={bulkBusy != null}
-                      className="fluent-btn text-[11px] px-2 py-0.5 rounded border border-emerald-700/40 text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50 shrink-0"
-                      title="把这组每个 skill 都装到本项目"
-                    >
-                      {bulkBusy === 'global-install' ? '安装中…' : '全部装'}
-                    </button>
-                  )}
+                  renderAction={(s) => {
+                    const showToggle =
+                      agent === 'claude-code' &&
+                      claudeSettingsState === 'ready' &&
+                      !claudeSettings?.parseError
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        {showToggle && (
+                          <Toggle
+                            on={isSkillOn(s.name)}
+                            disabled={toggleBusy != null || bulkBusy != null}
+                            onClick={() => onToggleSkill(s.name)}
+                            titleOn="已启用（点击关闭：把描述从系统提示中移除）"
+                            titleOff="已关闭（点击启用：恢复描述注入）"
+                          />
+                        )}
+                        <button
+                          onClick={() => onInstall(s.path, s.id)}
+                          disabled={bulkBusy != null}
+                          className="fluent-btn text-[11px] px-2 py-0.5 rounded border border-emerald-700/40 text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
+                        >
+                          装到本项目
+                        </button>
+                      </div>
+                    )
+                  }}
+                  renderBulkAction={(items, _prefix) => {
+                    const showToggles =
+                      agent === 'claude-code' &&
+                      claudeSettingsState === 'ready' &&
+                      !claudeSettings?.parseError
+                    return (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {showToggles && (
+                          <>
+                            <button
+                              onClick={() =>
+                                onBulkSetSkills(
+                                  items.map((s) => s.name),
+                                  true,
+                                )
+                              }
+                              disabled={toggleBusy != null || bulkBusy != null}
+                              className="fluent-btn text-[10.5px] px-1.5 py-0.5 rounded border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+                              title="一次性启用这一组里所有 skill"
+                            >
+                              全部启用
+                            </button>
+                            <button
+                              onClick={() =>
+                                onBulkSetSkills(
+                                  items.map((s) => s.name),
+                                  false,
+                                )
+                              }
+                              disabled={toggleBusy != null || bulkBusy != null}
+                              className="fluent-btn text-[10.5px] px-1.5 py-0.5 rounded border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+                              title="一次性关闭这一组里所有 skill（写入 skillOverrides=off）"
+                            >
+                              全部禁用
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => onBulkInstallFromGlobal(items)}
+                          disabled={bulkBusy != null}
+                          className="fluent-btn text-[11px] px-2 py-0.5 rounded border border-emerald-700/40 text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
+                          title="把这组每个 skill 都装到本项目"
+                        >
+                          {bulkBusy === 'global-install' ? '安装中…' : '全部装'}
+                        </button>
+                      </div>
+                    )
+                  }}
                   emptyMessage="暂无"
                 />
+                {agent === 'claude-code' &&
+                  claudeSettingsState === 'ready' &&
+                  !claudeSettings?.parseError && (
+                    <PluginsSection
+                      plugins={claudeSettings?.enabledPlugins ?? {}}
+                      onToggle={onTogglePlugin}
+                      disabled={toggleBusy != null || bulkBusy != null}
+                    />
+                  )}
                 <LibrarySection
                   library={library}
                   state={libState}
@@ -1190,5 +1363,106 @@ function MarketResultRow({
         </button>
       </div>
     </li>
+  )
+}
+
+interface ToggleProps {
+  on: boolean
+  disabled: boolean
+  onClick: () => void
+  titleOn: string
+  titleOff: string
+}
+
+function Toggle({ on, disabled, onClick, titleOn, titleOff }: ToggleProps) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      disabled={disabled}
+      title={on ? titleOn : titleOff}
+      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
+        on
+          ? 'bg-emerald-500/60 border-emerald-400/50'
+          : 'bg-white/[0.06] border-border'
+      }`}
+    >
+      <span
+        className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+          on ? 'translate-x-3.5' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  )
+}
+
+interface PluginsSectionProps {
+  plugins: Record<string, boolean>
+  onToggle: (key: string) => void
+  disabled: boolean
+}
+
+function PluginsSection({ plugins, onToggle, disabled }: PluginsSectionProps) {
+  const entries = Object.entries(plugins).sort(([a], [b]) => a.localeCompare(b))
+  return (
+    <section className="border-b border-border/40">
+      <div className="px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-subtle font-medium flex items-center gap-2">
+        <span>全局插件</span>
+        <span className="text-[10px] text-muted normal-case tracking-normal font-normal truncate">
+          位于 ~/.claude/settings.json 的 enabledPlugins
+        </span>
+      </div>
+      {entries.length === 0 ? (
+        <div className="px-3 py-2 text-[12px] text-muted">
+          未安装插件（用 Claude Code 的 /plugin install 命令安装后会出现在这里）
+        </div>
+      ) : (
+        <ul className="pb-2">
+          {entries.map(([key, on]) => {
+            const at = key.indexOf('@')
+            const name = at > 0 ? key.slice(0, at) : key
+            const market = at > 0 ? key.slice(at + 1) : ''
+            return (
+              <li
+                key={key}
+                className="px-3 py-1.5 hover:bg-white/[0.03] flex items-start gap-2"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] flex items-center gap-1.5">
+                    <span className="truncate" title={key}>
+                      {name}
+                    </span>
+                    {market && (
+                      <span
+                        className="text-[9px] px-1 rounded border border-border bg-white/[0.04] text-muted"
+                        title={`marketplace: ${market}`}
+                      >
+                        @{market}
+                      </span>
+                    )}
+                    <span
+                      className="text-[10px] text-muted cursor-help"
+                      title="关闭此插件会同时禁用它提供的所有 skill 和 agent"
+                    >
+                      ⓘ
+                    </span>
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <Toggle
+                    on={on}
+                    disabled={disabled}
+                    onClick={() => onToggle(key)}
+                    titleOn="已启用（点击关闭：将连同此插件提供的 skill 和 agent 一并停用）"
+                    titleOff="已关闭（点击启用：恢复此插件提供的所有能力）"
+                  />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }

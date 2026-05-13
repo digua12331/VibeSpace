@@ -11,6 +11,7 @@ import EditorArea from '../editor/EditorArea'
 import NewProjectDialog from '../NewProjectDialog'
 import DialogHost, { confirmDialog } from '../dialog/DialogHost'
 import ContextMenu from '../ContextMenu'
+import SettingsDialog, { openSettings } from '../SettingsDialog'
 
 export default function Workbench() {
   const wsState = useStore((s) => s.wsState)
@@ -184,6 +185,13 @@ export default function Workbench() {
             ⟳ 重置布局
           </button>
           <button
+            onClick={() => openSettings()}
+            className="hover:text-fg"
+            title="设置"
+          >
+            ⚙ 设置
+          </button>
+          <button
             onClick={() => void onNotifyClick()}
             disabled={notifyPerm === 'unsupported' || notifyPerm === 'denied'}
             title={
@@ -211,6 +219,7 @@ export default function Workbench() {
 
       {newProjectOpen && <NewProjectDialog onClose={() => setNewProjectOpen(false)} />}
       <DialogHost />
+      <SettingsDialog />
       <ContextMenu />
     </div>
   )
