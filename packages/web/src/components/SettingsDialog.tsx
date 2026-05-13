@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getAppSettings, updateAppSettings } from '../api'
 import { logAction } from '../logs'
-import type { AppSettings } from '../types'
+import type { AppSettings, HibernationSettings } from '../types'
 
 /**
  * Imperative open API — keeps the dialog mounted once at the workbench root
@@ -29,12 +29,20 @@ const RETENTION_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: '不清理' },
 ]
 
+const DEFAULT_HIBERNATION: HibernationSettings = {
+  enabled: true,
+  idleMinutes: 15,
+  includeShells: false,
+}
+
 export default function SettingsDialog() {
   const [open, setOpen] = useState(_open)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [retention, setRetention] = useState<number>(1)
+  const [hibernation, setHibernation] =
+    useState<HibernationSettings>(DEFAULT_HIBERNATION)
 
   useEffect(() => {
     const l = (next: boolean) => setOpen(next)
@@ -51,6 +59,7 @@ export default function SettingsDialog() {
     getAppSettings()
       .then((s: AppSettings) => {
         setRetention(s.pasteImageRetentionDays)
+        setHibernation(s.hibernation ?? DEFAULT_HIBERNATION)
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e))
@@ -76,9 +85,18 @@ export default function SettingsDialog() {
     try {
       await logAction(
         'settings',
-        'update-paste-image-retention',
-        () => updateAppSettings({ pasteImageRetentionDays: retention }),
-        { meta: { retentionDays: retention } },
+        'update-app-settings',
+        () =>
+          updateAppSettings({
+            pasteImageRetentionDays: retention,
+            hibernation,
+          }),
+        {
+          meta: {
+            retentionDays: retention,
+            hibernation,
+          },
+        },
       )
       setOpenState(false)
     } catch (e: unknown) {
@@ -122,6 +140,56 @@ export default function SettingsDialog() {
               </option>
             ))}
           </select>
+        </section>
+
+        <section className="mb-4 border-t border-border/40 pt-4">
+          <div className="text-sm text-fg/90 mb-1">会话冬眠</div>
+          <div className="text-xs text-muted mb-2 leading-relaxed">
+            空闲超过阈值的 AI 终端会被自动杀掉后端 CLI 进程释放内存，tab 在前端变成 💤 紫色；点 tab
+            后会重新启动一个新的 CLI 进程接管。
+            <span className="text-amber-300/80">
+              {' '}
+              冬眠会强制结束 CLI 进程，最近 1–2 条未保存的对话可能在 CLI 自带 /resume 列表里找不到。
+            </span>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm mb-3 cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={loading || saving}
+              checked={hibernation.enabled}
+              onChange={(e) =>
+                setHibernation((h) => ({ ...h, enabled: e.target.checked }))
+              }
+            />
+            <span>启用自动冬眠</span>
+          </label>
+          <div className="flex items-center gap-2 mb-3">
+            <label className="text-xs text-muted">空闲多久后冬眠（分钟，5–180）</label>
+            <input
+              type="number"
+              min={5}
+              max={180}
+              step={1}
+              disabled={loading || saving || !hibernation.enabled}
+              value={hibernation.idleMinutes}
+              onChange={(e) => {
+                const n = Math.max(5, Math.min(180, Number(e.target.value) || 15))
+                setHibernation((h) => ({ ...h, idleMinutes: n }))
+              }}
+              className="w-20 px-2 py-1 bg-white/[0.04] border border-border rounded text-sm focus:border-accent focus:bg-white/[0.06] disabled:opacity-60"
+            />
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={loading || saving || !hibernation.enabled}
+              checked={hibernation.includeShells}
+              onChange={(e) =>
+                setHibernation((h) => ({ ...h, includeShells: e.target.checked }))
+              }
+            />
+            <span>同时冬眠纯 shell（cmd / pwsh / bash），不推荐 — 会丢 cd 历史</span>
+          </label>
         </section>
 
         {error && (

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import { ptyManager } from "./pty-manager.js";
+import { ptyManager, lastInputAt } from "./pty-manager.js";
 import { statusManager } from "./status.js";
 import type { SessionStatus } from "./db.js";
 import { persistClientLog, handleClientLogRoundtrip } from "./log-bus.js";
@@ -147,6 +147,7 @@ function handleClientMsg(ctx: ClientCtx, msg: unknown): void {
         );
         return;
       }
+      lastInputAt.set(sid, Date.now());
       const ok = ptyManager.write(sid, data);
       if (!ok) {
         safeSend(

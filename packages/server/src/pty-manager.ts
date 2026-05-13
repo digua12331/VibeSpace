@@ -137,6 +137,17 @@ function resolveAgentSpec(agent: Agent): SpawnSpec {
 
 const DEFAULT_BACKEND_URL = "http://127.0.0.1:8787";
 
+/**
+ * In-memory activity timestamps (ms). `lastOutputAt` is updated on every PTY
+ * onData chunk; `lastInputAt` is updated on every ws-hub `input` message.
+ * The hibernate sweeper reads max(input, output, startedAt) per session and
+ * flushes both maps to SQLite once per tick. Both modules live in pty-manager
+ * to keep the activity state colocated with its emitter — ws-hub just imports
+ * `lastInputAt` and writes to it.
+ */
+export const lastOutputAt = new Map<string, number>();
+export const lastInputAt = new Map<string, number>();
+
 export class PtyManager extends EventEmitter {
   private sessions = new Map<string, SessionEntry>();
 
@@ -185,6 +196,7 @@ export class PtyManager extends EventEmitter {
     this.sessions.set(sessionId, entry);
 
     proc.onData((data) => {
+      lastOutputAt.set(sessionId, Date.now());
       entry.buffer += data;
       entry.bufferBytes += Buffer.byteLength(data, "utf8");
       if (entry.bufferBytes > MAX_BUFFER_BYTES) {
@@ -205,6 +217,8 @@ export class PtyManager extends EventEmitter {
     proc.onExit(({ exitCode, signal }) => {
       const wasKilled = entry.killed;
       this.sessions.delete(sessionId);
+      lastOutputAt.delete(sessionId);
+      lastInputAt.delete(sessionId);
       this.emit("exit", sessionId, exitCode, signal ?? null, wasKilled);
     });
 

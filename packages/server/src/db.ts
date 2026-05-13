@@ -203,6 +203,13 @@ function migrate(db: Database.Database): void {
   addColumnIfMissing(db, "sessions", "worktree_branch", "TEXT");
   // Added in harness-task绑定与jobs面板.
   addColumnIfMissing(db, "sessions", "task_name", "TEXT");
+  // Added in 空闲会话冬眠 (2026-05-13). last_input_at / last_output_at drive
+  // the idle sweeper; hibernated_at is non-null iff the row is in the
+  // DB-only 'hibernated' status (ended_at stays NULL so it still counts
+  // as "alive" per auto.md 2026-05-01).
+  addColumnIfMissing(db, "sessions", "last_input_at", "INTEGER");
+  addColumnIfMissing(db, "sessions", "last_output_at", "INTEGER");
+  addColumnIfMissing(db, "sessions", "hibernated_at", "INTEGER");
 
   // projects.json is the authoritative store. The projects table is a shadow
   // kept in sync so session FKs and ON DELETE CASCADE still work.
@@ -232,7 +239,8 @@ export type SessionStatus =
   | "waiting_input"
   | "idle"
   | "stopped"
-  | "crashed";
+  | "crashed"
+  | "hibernated";
 
 export interface TileLayout {
   i: string;
@@ -280,6 +288,12 @@ export interface Session {
   worktreeBranch: string | null;
   /** Bound dev/active/<task> name; NULL when unbound. */
   task: string | null;
+  /** Last time the user wrote input to this session's PTY (ms). NULL until the user types. */
+  lastInputAt: number | null;
+  /** Last time the PTY emitted output (ms). NULL until first onData. */
+  lastOutputAt: number | null;
+  /** When the row entered the DB-only 'hibernated' state. NULL = not hibernated. */
+  hibernatedAt: number | null;
 }
 
 interface ProjectRow {
@@ -302,6 +316,9 @@ interface SessionRow {
   worktree_path: string | null;
   worktree_branch: string | null;
   task_name: string | null;
+  last_input_at: number | null;
+  last_output_at: number | null;
+  hibernated_at: number | null;
 }
 
 function rowToProject(r: ProjectRow): Project {
@@ -317,6 +334,9 @@ function rowToSession(r: SessionRow): Session {
     startedAt: r.started_at,
     endedAt: r.ended_at,
     exitCode: r.exit_code,
+    lastInputAt: r.last_input_at,
+    lastOutputAt: r.last_output_at,
+    hibernatedAt: r.hibernated_at,
     isolation: r.isolation ?? "shared",
     worktreePath: r.worktree_path,
     worktreeBranch: r.worktree_branch,
@@ -427,6 +447,9 @@ export function createSession(input: {
     worktreePath: null,
     worktreeBranch: null,
     task: taskName,
+    lastInputAt: null,
+    lastOutputAt: null,
+    hibernatedAt: null,
   };
 }
 
@@ -457,7 +480,7 @@ export function findSessionBoundToTask(
   const db = getDb();
   const row = db
     .prepare(
-      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions WHERE project_id = ? AND task_name = ? AND ended_at IS NULL LIMIT 1",
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name, last_input_at, last_output_at, hibernated_at FROM sessions WHERE project_id = ? AND task_name = ? AND ended_at IS NULL LIMIT 1",
     )
     .get(projectId, task) as SessionRow | undefined;
   return row ? rowToSession(row) : null;
@@ -484,11 +507,59 @@ export function endSession(
   ).run(status, Date.now(), exitCode, id);
 }
 
+/**
+ * Mark a session as hibernated. Unlike endSession this does NOT touch ended_at —
+ * a hibernated session is still "alive" from the user's perspective (the tab stays
+ * in the list and can be resurrected via POST /api/sessions/:id/wake). PID is
+ * cleared because the underlying PTY child has been killed.
+ */
+export function hibernateSession(id: string): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE sessions SET status = 'hibernated', hibernated_at = ?, pid = NULL WHERE id = ?",
+  ).run(Date.now(), id);
+}
+
+/**
+ * Clear hibernated state on wake — caller spawns a fresh PTY and writes the new
+ * pid via updateSessionPid + status starts at 'starting' through the normal
+ * statusManager.onSpawn path. Activity timestamps reset so the sweeper doesn't
+ * immediately re-hibernate before the user interacts.
+ */
+export function clearHibernation(id: string): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE sessions SET hibernated_at = NULL, last_input_at = NULL, last_output_at = NULL, status = 'starting' WHERE id = ?",
+  ).run(id);
+}
+
+/**
+ * Batch-flush activity timestamps from the in-memory maps maintained by ws-hub
+ * (lastInputAt) and pty-manager (lastOutputAt). Called by the hibernate sweeper
+ * once per tick — writing per-keystroke would thrash SQLite. We use a single
+ * transaction so N session rows get one fsync, not N.
+ */
+export function flushActivityTimestamps(
+  rows: Array<{ id: string; lastInputAt?: number; lastOutputAt?: number }>,
+): void {
+  if (rows.length === 0) return;
+  const db = getDb();
+  const stmt = db.prepare(
+    "UPDATE sessions SET last_input_at = COALESCE(?, last_input_at), last_output_at = COALESCE(?, last_output_at) WHERE id = ?",
+  );
+  const tx = db.transaction((batch: typeof rows) => {
+    for (const r of batch) {
+      stmt.run(r.lastInputAt ?? null, r.lastOutputAt ?? null, r.id);
+    }
+  });
+  tx(rows);
+}
+
 export function listSessions(): Session[] {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions ORDER BY started_at DESC",
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name, last_input_at, last_output_at, hibernated_at FROM sessions ORDER BY started_at DESC",
     )
     .all() as SessionRow[];
   return rows.map(rowToSession);
@@ -498,7 +569,7 @@ export function listSessionsByProject(projectId: string): Session[] {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions WHERE project_id = ? ORDER BY started_at DESC",
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name, last_input_at, last_output_at, hibernated_at FROM sessions WHERE project_id = ? ORDER BY started_at DESC",
     )
     .all(projectId) as SessionRow[];
   return rows.map(rowToSession);
@@ -508,7 +579,7 @@ export function getSession(id: string): Session | null {
   const db = getDb();
   const row = db
     .prepare(
-      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name FROM sessions WHERE id = ?",
+      "SELECT id, project_id, agent, status, pid, started_at, ended_at, exit_code, isolation, worktree_path, worktree_branch, task_name, last_input_at, last_output_at, hibernated_at FROM sessions WHERE id = ?",
     )
     .get(id) as SessionRow | undefined;
   return row ? rowToSession(row) : null;

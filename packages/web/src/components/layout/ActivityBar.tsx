@@ -39,7 +39,7 @@ export default function ActivityBar() {
     { id: 'files', icon: '📁', label: '文件' },
     { id: 'scm', icon: '🌿', label: '源代码更改' },
     ...(docsItem ? [docsItem] : []),
-    { id: 'output', icon: '📐', label: '策划方案' },
+    { id: 'projectdocs', icon: '📄', label: '文档' },
     { id: 'perf', icon: '📊', label: '性能' },
     { id: 'usage', icon: '📈', label: '使用量' },
     { id: 'jobs', icon: '🛠', label: '后台任务' },

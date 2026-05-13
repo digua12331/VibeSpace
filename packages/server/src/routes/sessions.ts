@@ -3,6 +3,7 @@ import { z } from "zod";
 import { nanoid } from "nanoid";
 import {
   BUILTIN_SHELL_AGENTS,
+  clearHibernation,
   createSession,
   endSession,
   findSessionBoundToTask,
@@ -13,6 +14,7 @@ import {
   setSessionTask,
   setSessionWorktree,
   updateSessionPid,
+  updateSessionStatus,
   type Agent,
   type Session,
   type SessionIsolation,
@@ -264,6 +266,76 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
         endSession(id, "stopped", null);
       }
       return startSession(old.projectId, old.agent, reply);
+    },
+  );
+
+  /**
+   * Wake a hibernated session: re-spawn a PTY with the same agent / cwd / env
+   * the row was originally created with, reuse the same session id (so its
+   * task binding / worktree / tab identity survive), and reset activity
+   * timestamps so the sweeper doesn't immediately re-hibernate.
+   *
+   * The new CLI subprocess starts fresh — VibeSpace does NOT pass `-c/--continue`
+   * or any other auto-resume flag (different CLIs disagree on behaviour). The
+   * user can run the CLI's own `/resume` inside the TUI to bring back history.
+   */
+  app.post<{ Params: { id: string } }>(
+    "/api/sessions/:id/wake",
+    async (req, reply) => {
+      const { id } = req.params;
+      const row = getSession(id);
+      if (!row) return reply.code(404).send({ error: "not_found" });
+      if (row.status !== "hibernated" || row.hibernatedAt == null) {
+        return reply.code(400).send({
+          error: "not_hibernated",
+          detail: `session status is '${row.status}', expected 'hibernated'`,
+        });
+      }
+      if (ptyManager.has(id)) {
+        // Defensive: PTY shouldn't be alive while marked hibernated, but if so
+        // the wake is a no-op — just re-decorate and return.
+        clearHibernation(id);
+        statusManager.onSpawn(id);
+        return reply.send(serialize(decorateStatus({ ...row, status: "starting" })));
+      }
+      const proj = getProject(row.projectId);
+      if (!proj) return reply.code(404).send({ error: "project_not_found" });
+      const startedAt = Date.now();
+      serverLog("info", "session", "wake 开始", {
+        projectId: row.projectId,
+        sessionId: id,
+        meta: { agent: row.agent, isolation: row.isolation, hibernatedMs: startedAt - row.hibernatedAt },
+      });
+      const cwd =
+        row.isolation === "worktree" && row.worktreePath
+          ? row.worktreePath
+          : proj.path;
+      // Re-arm DB first so any race (e.g. sweeper tick) sees the row as active.
+      clearHibernation(id);
+      try {
+        const r = ptyManager.spawn({ sessionId: id, agent: row.agent, cwd });
+        updateSessionPid(id, r.pid);
+        statusManager.onSpawn(id);
+        serverLog(
+          "info",
+          "session",
+          `wake 成功 (${Date.now() - startedAt}ms)`,
+          { projectId: row.projectId, sessionId: id, meta: { pid: r.pid } },
+        );
+        const fresh = getSession(id);
+        if (!fresh) return reply.code(500).send({ error: "missing_after_wake" });
+        return reply.send(serialize(decorateStatus(fresh)));
+      } catch (err) {
+        const e = err as Error;
+        // Spawn failed — roll the row back to 'hibernated' so the user can retry.
+        updateSessionStatus(id, "hibernated");
+        serverLog("error", "session", `wake 失败: ${e.message}`, {
+          projectId: row.projectId,
+          sessionId: id,
+          meta: { error: { name: e.name, message: e.message, stack: e.stack } },
+        });
+        return reply.code(500).send({ error: "wake_failed", message: e.message });
+      }
     },
   );
 }

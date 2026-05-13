@@ -9,12 +9,11 @@ import { dispatchClaude } from '../../dispatchClaude'
 import { pickClaudeTarget, sendToSession } from '../../sendToSession'
 import type { AgentKind, DocTaskSummary } from '../../types'
 
-// FilePreview / ChecklistEditor 仅在用户打开文件时渲染，首屏 activeFile 通常
-// 为 null，没必要预加载它们带的 react-markdown / shiki / xlsx 全家桶。
+// FilePreview 仅在用户打开文件时渲染，首屏 activeFile 通常为 null，
+// 没必要预加载 react-markdown / shiki / xlsx 全家桶。
 // StartSessionMenu / TerminalHost 不动：前者首屏就要拉 catalog（点击下拉立刻
 // 弹出），后者负责终端 keep-alive。
 const FilePreview = lazy(() => import('../FilePreview'))
-const ChecklistEditor = lazy(() => import('./ChecklistEditor'))
 
 function FileTabFallback() {
   return (
@@ -114,8 +113,26 @@ export default function EditorArea() {
   }
 
   function selectSessionTab(id: string) {
+    const s = sessions.find((x) => x.id === id)
+    const status = liveStatus[id] ?? s?.status
     setActiveSession(sessionKey, id)
     setActiveTabKind('session')
+    // Hibernated tabs wake on click — fire-and-forget so the tab activation
+    // (above) is responsive even if the wake spawn takes 1–3s. The server
+    // pushes new status via WS and the badge transitions back to running.
+    if (status === 'hibernated') {
+      void logAction(
+        'session',
+        'wake',
+        () => api.wakeSession(id),
+        { sessionId: id, projectId: s?.projectId, meta: { agent: s?.agent } },
+      ).catch(async (e: unknown) => {
+        await alertDialog(
+          `唤醒会话失败：${e instanceof Error ? e.message : String(e)}`,
+          { title: '唤醒失败', variant: 'danger' },
+        )
+      })
+    }
   }
 
   async function closeSessionTab(id: string) {
@@ -227,10 +244,12 @@ export default function EditorArea() {
         {visibleSessions.map((s) => {
           const active = activeTabKind === 'session' && s.id === activeSessionId
           const nagging = notifyingSessions.has(s.id)
+          const tabStatus = liveStatus[s.id] ?? s.status
+          const isHibernated = tabStatus === 'hibernated'
           return (
             <div
               key={`s:${s.id}`}
-              title={s.id}
+              title={isHibernated ? `${s.id}（已冬眠，点击唤醒）` : s.id}
               onClick={() => selectSessionTab(s.id)}
               onAuxClick={(e) => {
                 if (e.button === 1) void closeSessionTab(s.id)
@@ -239,8 +258,13 @@ export default function EditorArea() {
                 active
                   ? 'bg-bg text-fg'
                   : 'text-muted hover:text-fg hover:bg-white/[0.04]'
-              } ${nagging ? 'animate-pulse-soft' : ''}`}
+              } ${nagging ? 'animate-pulse-soft' : ''} ${isHibernated ? 'opacity-70' : ''}`}
             >
+              {isHibernated && (
+                <span title="已冬眠 — 点击重新启动 CLI" className="text-[12px]">
+                  💤
+                </span>
+              )}
               <span className="text-[12px]">{agentIcon(s.agent)}</span>
               {s.task && (
                 <span
@@ -320,22 +344,14 @@ export default function EditorArea() {
         {activeFile ? (
           <div className="absolute inset-0 flex flex-col bg-bg">
             <Suspense fallback={<FileTabFallback />}>
-              {activeFile.kind === 'checklist' ? (
-                <ChecklistEditor
-                  key={activeFile.key}
-                  projectId={activeFile.projectId}
-                  feature={extractFeature(activeFile.path)}
-                />
-              ) : (
-                <FilePreview
-                  key={activeFile.key}
-                  projectId={activeFile.projectId}
-                  path={activeFile.path}
-                  ref={activeFile.ref}
-                  from={activeFile.from}
-                  to={activeFile.to}
-                />
-              )}
+              <FilePreview
+                key={activeFile.key}
+                projectId={activeFile.projectId}
+                path={activeFile.path}
+                ref={activeFile.ref}
+                from={activeFile.from}
+                to={activeFile.to}
+              />
             </Suspense>
           </div>
         ) : null}
@@ -344,18 +360,6 @@ export default function EditorArea() {
       </div>
     </section>
   )
-}
-
-/**
- * Pull the feature name out of "output/<feature>/checklist.json". Falls back
- * to the middle path segment so the tab still renders something coherent if
- * the path shape ever drifts.
- */
-function extractFeature(path: string): string {
-  const m = /^output\/([^/]+)\/checklist\.json$/.exec(path)
-  if (m) return m[1]
-  const parts = path.split('/')
-  return parts[parts.length - 2] ?? ''
 }
 
 function EmptyState({ projectId }: { projectId: string | null }) {

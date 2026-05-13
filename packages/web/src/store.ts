@@ -4,7 +4,6 @@ import { aimonWS } from './ws'
 import { isPageFocused, notifyWaitingInput, type NotificationPermissionState } from './notify'
 import type {
   ChangesResponse,
-  ChecklistDoc,
   DocTaskSummary,
   ErrorPatternAlert,
   GitRef,
@@ -13,7 +12,7 @@ import type {
   MemoryPayload,
   MemoryRollbackSelection,
   LogEntry,
-  OutputFeature,
+  ProjectDocFile,
   Project,
   Session,
   SessionStatus,
@@ -42,9 +41,9 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'output' | 'jobs' | 'usage' | 'appearance' | 'skills'
+export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'projectdocs' | 'jobs' | 'usage' | 'appearance' | 'skills'
 
-export type EditorTabKind = 'file' | 'checklist'
+export type EditorTabKind = 'file'
 
 export interface EditorTab {
   /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}:${kind}` */
@@ -236,24 +235,11 @@ interface State {
   refreshMemory: (projectId: string) => Promise<void>
   rollbackMemoryItems: (projectId: string, items: MemoryRollbackSelection[]) => Promise<void>
 
-  /** ----- Output (策划方案清单) ----- */
-  outputFeatures: Record<string, OutputFeature[] | undefined>
-  outputLoading: Record<string, boolean>
-  outputError: Record<string, string | null>
-  refreshOutput: (projectId: string) => Promise<void>
-
-  /** keyed by `<projectId>::<feature>` */
-  checklists: Record<string, ChecklistDoc | undefined>
-  checklistsLoading: Record<string, boolean>
-  checklistsError: Record<string, string | null>
-  refreshChecklist: (projectId: string, feature: string) => Promise<void>
-  patchChecklistItem: (
-    projectId: string,
-    feature: string,
-    sectionId: string,
-    itemId: string,
-    patch: Record<string, unknown>,
-  ) => Promise<void>
+  /** ----- Project Docs (项目 docs/ 下的 md 列表) ----- */
+  projectDocs: Record<string, ProjectDocFile[] | undefined>
+  projectDocsLoading: Record<string, boolean>
+  projectDocsError: Record<string, string | null>
+  refreshProjectDocs: (projectId: string) => Promise<void>
 
   /** ----- 切项目保活 / 缓存 ----- */
   /** 最近切到的 projectId，最新在前。null（"全部 sessions"视图）不入栈。 */
@@ -379,13 +365,9 @@ export const useStore = create<State>((set, get) => ({
   memoryLoading: {},
   memoryError: {},
 
-  outputFeatures: {},
-  outputLoading: {},
-  outputError: {},
-
-  checklists: {},
-  checklistsLoading: {},
-  checklistsError: {},
+  projectDocs: {},
+  projectDocsLoading: {},
+  projectDocsError: {},
 
   recentProjectOrder: (() => {
     const sel = readSelectedProject()
@@ -913,69 +895,22 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  refreshOutput: async (projectId) => {
+  refreshProjectDocs: async (projectId) => {
     set((st) => ({
-      outputLoading: { ...st.outputLoading, [projectId]: true },
-      outputError: { ...st.outputError, [projectId]: null },
+      projectDocsLoading: { ...st.projectDocsLoading, [projectId]: true },
+      projectDocsError: { ...st.projectDocsError, [projectId]: null },
     }))
     try {
-      const r = await api.listOutput(projectId)
+      const r = await api.listProjectDocs(projectId)
       set((st) => ({
-        outputFeatures: { ...st.outputFeatures, [projectId]: r.features },
-        outputLoading: { ...st.outputLoading, [projectId]: false },
+        projectDocs: { ...st.projectDocs, [projectId]: r.docs },
+        projectDocsLoading: { ...st.projectDocsLoading, [projectId]: false },
       }))
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       set((st) => ({
-        outputLoading: { ...st.outputLoading, [projectId]: false },
-        outputError: { ...st.outputError, [projectId]: msg },
-      }))
-      throw e
-    }
-  },
-
-  refreshChecklist: async (projectId, feature) => {
-    const key = `${projectId}::${feature}`
-    set((st) => ({
-      checklistsLoading: { ...st.checklistsLoading, [key]: true },
-      checklistsError: { ...st.checklistsError, [key]: null },
-    }))
-    try {
-      const doc = await api.getChecklist(projectId, feature)
-      set((st) => ({
-        checklists: { ...st.checklists, [key]: doc },
-        checklistsLoading: { ...st.checklistsLoading, [key]: false },
-      }))
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      set((st) => ({
-        checklistsLoading: { ...st.checklistsLoading, [key]: false },
-        checklistsError: { ...st.checklistsError, [key]: msg },
-      }))
-      throw e
-    }
-  },
-
-  patchChecklistItem: async (projectId, feature, sectionId, itemId, patch) => {
-    const key = `${projectId}::${feature}`
-    set((st) => ({
-      checklistsError: { ...st.checklistsError, [key]: null },
-    }))
-    try {
-      const doc = await api.patchChecklistItem(
-        projectId,
-        feature,
-        sectionId,
-        itemId,
-        patch,
-      )
-      set((st) => ({
-        checklists: { ...st.checklists, [key]: doc },
-      }))
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      set((st) => ({
-        checklistsError: { ...st.checklistsError, [key]: msg },
+        projectDocsLoading: { ...st.projectDocsLoading, [projectId]: false },
+        projectDocsError: { ...st.projectDocsError, [projectId]: msg },
       }))
       throw e
     }

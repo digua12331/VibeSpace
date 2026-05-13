@@ -33,7 +33,7 @@ import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerPerfRoutes } from "./routes/perf.js";
 import { registerFsOpsRoutes } from "./routes/fs-ops.js";
 import { registerPasteImageRoutes } from "./routes/paste-image.js";
-import { registerOutputRoutes } from "./routes/output.js";
+import { registerProjectDocsRoutes } from "./routes/project-docs.js";
 import { registerRawFileRoutes } from "./routes/raw-file.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerSubagentRunsRoutes } from "./routes/subagent-runs.js";
@@ -45,6 +45,7 @@ import { registerOpenspecRoutes } from "./routes/openspec.js";
 import { registerExternalToolsRoutes } from "./routes/external-tools.js";
 import { registerAppSettingsRoutes } from "./routes/app-settings.js";
 import { registerClaudeSettingsRoutes } from "./routes/claude-settings.js";
+import { startHibernateSweeper } from "./hibernate-sweeper.js";
 import { pruneOldPastedImages } from "./paste-image-cleaner.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
@@ -55,12 +56,13 @@ async function main(): Promise<void> {
   getDb();
 
   // Reap orphans: any session left with ended_at = null from a previous boot
-  // can never come back to life (its PTY died with the parent). Mark them
-  // stopped so the front-end's "alive" filter is meaningful again.
+  // whose PTY can never come back. Mark them stopped so the front-end's "alive"
+  // filter is meaningful again. Hibernated rows are exempt — they intentionally
+  // outlive the parent process and are revived via POST /api/sessions/:id/wake.
   try {
     let reaped = 0;
     for (const s of listSessions()) {
-      if (s.endedAt == null) {
+      if (s.endedAt == null && s.status !== "hibernated") {
         endSession(s.id, "stopped", null);
         reaped += 1;
       }
@@ -125,6 +127,12 @@ async function main(): Promise<void> {
     (sessionId: string, code: number | null, signal: number | null, wasKilled: boolean) => {
       codexDetector.onExit(sessionId);
       agentCache.delete(sessionId);
+      // If the sweeper marked this row hibernated before killing the PTY,
+      // hibernate-sweeper has already written status='hibernated' and pid=NULL.
+      // Skip the normal endSession / status-machine bookkeeping so ended_at
+      // stays NULL (the tab must keep showing in the UI for wake to work).
+      const row = getSession(sessionId);
+      if (row?.hibernatedAt != null) return;
       statusManager.onExit(sessionId, code, signal, wasKilled);
       const status: SessionStatus = wasKilled ? "stopped" : (code === 0 ? "stopped" : "crashed");
       try {
@@ -163,7 +171,7 @@ async function main(): Promise<void> {
   await registerPerfRoutes(app);
   await registerFsOpsRoutes(app);
   await registerPasteImageRoutes(app);
-  await registerOutputRoutes(app);
+  await registerProjectDocsRoutes(app);
   await registerRawFileRoutes(app);
   await registerJobsRoutes(app);
   await registerSubagentRunsRoutes(app);
@@ -190,6 +198,10 @@ async function main(): Promise<void> {
   // Prune pasted images per the user-configured retention. Same fire-and-forget
   // discipline — failures land in LogsView, never block startup.
   void pruneOldPastedImages();
+  // Idle-session hibernation sweeper. Ticks every 30s; reads app-settings
+  // each tick so flipping the master switch in SettingsDialog takes effect
+  // without a restart.
+  startHibernateSweeper();
   // Keep these two as plain console.log — they're startup-only path hints
   // for the operator, not operation events that need to reach LogsView.
   console.log(`VibeSpace db: ${getDbPath()}`);

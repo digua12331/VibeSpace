@@ -37,6 +37,11 @@ const STYLES: Record<SessionStatus, { dot: string; chip: string; label: string }
     chip: 'text-rose-200 bg-rose-500/15 border-rose-500/30',
     label: 'crashed',
   },
+  hibernated: {
+    dot: 'bg-purple-400/70',
+    chip: 'text-purple-200 bg-purple-500/15 border-purple-500/30',
+    label: '💤 已冬眠',
+  },
 }
 
 export default function StatusBadge({ status }: { status: SessionStatus }) {

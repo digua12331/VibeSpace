@@ -22,7 +22,6 @@ import type {
   StashEntry,
   StashOpResult,
   AppSettings,
-  ChecklistDoc,
   DocFileContent,
   DocFileKind,
   DocTaskSummary,
@@ -30,7 +29,7 @@ import type {
   JobItem,
   MemoryPayload,
   MemoryRollbackSelection,
-  OutputListResult,
+  ProjectDocsListResult,
   FileContent,
   GitRef,
   GraphCommit,
@@ -334,6 +333,10 @@ export function deleteJob(id: string): Promise<void> {
 
 export function restartSession(id: string): Promise<Session> {
   return request<Session>(`/api/sessions/${encodeURIComponent(id)}/restart`, { method: 'POST' })
+}
+
+export function wakeSession(id: string): Promise<Session> {
+  return request<Session>(`/api/sessions/${encodeURIComponent(id)}/wake`, { method: 'POST' })
 }
 
 export function getCliConfigCatalog(): Promise<PermissionCatalog> {
@@ -731,33 +734,11 @@ export function rollbackMemory(
   )
 }
 
-// ---------- Output (策划方案清单) ----------
+// ---------- Project Docs (项目 docs/ 下的 md 列表) ----------
 
-export function listOutput(projectId: string): Promise<OutputListResult> {
-  return request<OutputListResult>(
-    `/api/projects/${encodeURIComponent(projectId)}/output`,
-  )
-}
-
-export function getChecklist(
-  projectId: string,
-  feature: string,
-): Promise<ChecklistDoc> {
-  return request<ChecklistDoc>(
-    `/api/projects/${encodeURIComponent(projectId)}/output/${encodeURIComponent(feature)}/checklist`,
-  )
-}
-
-export function patchChecklistItem(
-  projectId: string,
-  feature: string,
-  sectionId: string,
-  itemId: string,
-  patch: Record<string, unknown>,
-): Promise<ChecklistDoc> {
-  return request<ChecklistDoc>(
-    `/api/projects/${encodeURIComponent(projectId)}/output/${encodeURIComponent(feature)}/checklist`,
-    jsonInit('PATCH', { sectionId, itemId, patch }),
+export function listProjectDocs(projectId: string): Promise<ProjectDocsListResult> {
+  return request<ProjectDocsListResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/project-docs`,
   )
 }
 

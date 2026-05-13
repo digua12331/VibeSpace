@@ -9,6 +9,15 @@ const SERVER_ROOT = resolve(__dirname, "..");
 const DATA_DIR = resolve(SERVER_ROOT, "data");
 const SETTINGS_PATH = resolve(DATA_DIR, "app-settings.json");
 
+export interface HibernationSettings {
+  /** Master switch — when false the sweeper exits early every tick. */
+  enabled: boolean;
+  /** Minutes of inactivity before a session gets killed and marked hibernated. Bounded to [5, 180]. */
+  idleMinutes: number;
+  /** When false, builtin shell agents (shell/cmd/pwsh) are exempt — they're cheap and losing their cwd history is annoying. */
+  includeShells: boolean;
+}
+
 export interface AppSettings {
   /**
    * Days to keep pasted images under each project's `.vibespace/pasted-images/`.
@@ -16,10 +25,16 @@ export interface AppSettings {
    * [0, 365] at the REST boundary.
    */
   pasteImageRetentionDays: number;
+  hibernation: HibernationSettings;
 }
 
 const DEFAULTS: AppSettings = {
   pasteImageRetentionDays: 1,
+  hibernation: {
+    enabled: true,
+    idleMinutes: 15,
+    includeShells: false,
+  },
 };
 
 function clampRetentionDays(n: unknown): number {
@@ -30,18 +45,38 @@ function clampRetentionDays(n: unknown): number {
   return v;
 }
 
+function clampIdleMinutes(n: unknown): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULTS.hibernation.idleMinutes;
+  const v = Math.floor(n);
+  if (v < 5) return 5;
+  if (v > 180) return 180;
+  return v;
+}
+
+function readHibernation(raw: unknown): HibernationSettings {
+  if (!raw || typeof raw !== "object") return { ...DEFAULTS.hibernation };
+  const o = raw as Record<string, unknown>;
+  return {
+    enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULTS.hibernation.enabled,
+    idleMinutes: clampIdleMinutes(o.idleMinutes),
+    includeShells:
+      typeof o.includeShells === "boolean" ? o.includeShells : DEFAULTS.hibernation.includeShells,
+  };
+}
+
 function readFromDisk(): AppSettings {
-  if (!existsSync(SETTINGS_PATH)) return { ...DEFAULTS };
+  if (!existsSync(SETTINGS_PATH)) return { ...DEFAULTS, hibernation: { ...DEFAULTS.hibernation } };
   try {
     const raw = readFileSync(SETTINGS_PATH, "utf8");
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return { ...DEFAULTS };
-    const v = (parsed as Record<string, unknown>).pasteImageRetentionDays;
+    if (!parsed || typeof parsed !== "object") return { ...DEFAULTS, hibernation: { ...DEFAULTS.hibernation } };
+    const obj = parsed as Record<string, unknown>;
     return {
-      pasteImageRetentionDays: clampRetentionDays(v),
+      pasteImageRetentionDays: clampRetentionDays(obj.pasteImageRetentionDays),
+      hibernation: readHibernation(obj.hibernation),
     };
   } catch {
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, hibernation: { ...DEFAULTS.hibernation } };
   }
 }
 
@@ -58,13 +93,34 @@ export function getAppSettingsPath(): string {
  * over the real path. Avoids a half-written JSON if the process is killed
  * mid-write. The caller gets the merged final state back.
  */
-export function setAppSettings(patch: Partial<AppSettings>): AppSettings {
+export interface AppSettingsPatch {
+  pasteImageRetentionDays?: number;
+  hibernation?: Partial<HibernationSettings>;
+}
+
+export function setAppSettings(patch: AppSettingsPatch): AppSettings {
   mkdirSync(DATA_DIR, { recursive: true });
   const current = readFromDisk();
+  const mergedHibernation: HibernationSettings = patch.hibernation
+    ? {
+        enabled:
+          typeof patch.hibernation.enabled === "boolean"
+            ? patch.hibernation.enabled
+            : current.hibernation.enabled,
+        idleMinutes: clampIdleMinutes(
+          patch.hibernation.idleMinutes ?? current.hibernation.idleMinutes,
+        ),
+        includeShells:
+          typeof patch.hibernation.includeShells === "boolean"
+            ? patch.hibernation.includeShells
+            : current.hibernation.includeShells,
+      }
+    : current.hibernation;
   const next: AppSettings = {
     pasteImageRetentionDays: clampRetentionDays(
       patch.pasteImageRetentionDays ?? current.pasteImageRetentionDays,
     ),
+    hibernation: mergedHibernation,
   };
   const tmp = `${SETTINGS_PATH}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2), "utf8");

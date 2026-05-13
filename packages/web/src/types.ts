@@ -54,6 +54,7 @@ export type SessionStatus =
   | 'idle'
   | 'stopped'
   | 'crashed'
+  | 'hibernated'
 
 export interface TileLayout {
   /** sessionId */
@@ -720,56 +721,14 @@ export interface ProjectFilesResult {
   limit: number
 }
 
-// ---------- Output (策划方案清单) ----------
+// ---------- Project Docs (项目 docs/ 下的 md 列表) ----------
 
-export type ChecklistStatus = 'pending' | 'locked' | 'modified'
-
-export interface ChecklistItem {
-  id: string
-  title?: string
-  /** decision 类 item */
-  recommend?: string
-  alternatives?: string[]
-  reason?: string
-  /** risk 类 item */
-  risk?: string
-  mitigation?: string
-  /** 共有 */
-  status?: ChecklistStatus
-  /** UI 写入的用户选择：'recommend' | `alt:${index}` | 'custom'（仅 decision 类） */
-  userChoice?: string
-  /** 自定义答案文本（仅当 userChoice==='custom' 时有效） */
-  userAnswer?: string
-  [key: string]: unknown
-}
-
-export interface ChecklistSection {
-  id: string
-  title?: string
-  /** 'decision' | 'risk' 为已知值，其它走兜底块 */
-  type?: string
-  items: ChecklistItem[]
-}
-
-export interface ChecklistDoc {
-  feature: string
-  version?: number
-  createdAt?: string
-  status?: string
-  guide?: Record<string, unknown>
-  statusLegend?: Record<string, string>
-  sections: ChecklistSection[]
-  [key: string]: unknown
-}
-
-export interface OutputFeature {
+export interface ProjectDocFile {
   name: string
-  files: string[]
-  hasChecklist: boolean
 }
 
-export interface OutputListResult {
-  features: OutputFeature[]
+export interface ProjectDocsListResult {
+  docs: ProjectDocFile[]
 }
 
 // ---------- Perf ----------
@@ -937,8 +896,15 @@ export interface DeleteLibrarySkillResult {
  * `pasteImageRetentionDays`: 0 = no auto prune; otherwise pasted images older
  * than N days are removed at next server start.
  */
+export interface HibernationSettings {
+  enabled: boolean
+  idleMinutes: number
+  includeShells: boolean
+}
+
 export interface AppSettings {
   pasteImageRetentionDays: number
+  hibernation: HibernationSettings
 }
 
 /**

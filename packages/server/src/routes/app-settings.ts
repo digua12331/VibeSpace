@@ -3,6 +3,14 @@ import { z } from "zod";
 import { getAppSettings, setAppSettings } from "../app-settings.js";
 import { serverLog } from "../log-bus.js";
 
+const HibernationSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    idleMinutes: z.number().int().min(5).max(180).optional(),
+    includeShells: z.boolean().optional(),
+  })
+  .optional();
+
 const UpdateBody = z.object({
   pasteImageRetentionDays: z
     .number()
@@ -10,6 +18,7 @@ const UpdateBody = z.object({
     .min(0)
     .max(365)
     .optional(),
+  hibernation: HibernationSchema,
 });
 
 export async function registerAppSettingsRoutes(

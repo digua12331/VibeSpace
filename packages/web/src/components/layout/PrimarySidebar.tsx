@@ -10,7 +10,7 @@ const InboxView = lazy(() => import('../sidebar/InboxView'))
 const DocsView = lazy(() => import('../sidebar/DocsView'))
 const OpenSpecView = lazy(() => import('../sidebar/OpenSpecView'))
 const FilesView = lazy(() => import('../sidebar/FilesView'))
-const OutputView = lazy(() => import('../sidebar/OutputView'))
+const ProjectDocsView = lazy(() => import('../sidebar/ProjectDocsView'))
 const PerfView = lazy(() => import('../sidebar/PerfView'))
 const JobsView = lazy(() => import('../sidebar/JobsView'))
 const UsageView = lazy(() => import('../sidebar/UsageView'))
@@ -20,7 +20,7 @@ const SkillsView = lazy(() => import('../sidebar/SkillsView'))
 const STATIC_TITLES: Record<string, string> = {
   scm: '源代码更改',
   files: '文件',
-  output: '策划方案',
+  projectdocs: '文档',
   perf: '性能',
   logs: '日志',
   inbox: '通知',
@@ -84,8 +84,8 @@ export default function PrimarySidebar() {
           </div>
         )
       break
-    case 'output':
-      body = <OutputView />
+    case 'projectdocs':
+      body = <ProjectDocsView />
       break
     case 'perf':
       body = <PerfView />
