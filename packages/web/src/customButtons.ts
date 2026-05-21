@@ -20,7 +20,12 @@ export interface CustomButton {
    * button is hidden for that session.
    */
   commandByAgent?: Record<string, string>
-  /** When false, the button stays in the settings list but doesn't render on tiles. */
+  /**
+   * 实际语义：是否在悬浮输入框**正上方**那一行常驻显示该按钮。
+   * 字段名 `showInTopbar` 是历史遗留——按钮原先渲染在 SessionView 顶栏，
+   * 现在已迁移到输入框上方。保留旧名以避免 localStorage 数据迁移。
+   * When false, the button stays in the settings list but doesn't render on tiles.
+   */
   showInTopbar: boolean
 }
 

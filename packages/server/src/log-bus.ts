@@ -58,12 +58,43 @@ export function getLogFilePath(now: Date = new Date()): string {
   return resolve(LOG_DIR, `${day}.log`);
 }
 
-function appendJsonl(entry: LogEntry): void {
-  try {
-    ensureDir();
-    const line = JSON.stringify(entry) + "\n";
-    void appendFile(getLogFilePath(new Date(entry.ts)), line, "utf8").catch(
-      (err) => {
+// 日志批量落盘：原来每条都走一次 appendFile，高频日志（多个 AI 终端 + 错误
+// 循环同时打）会让磁盘 IO 拉满，服务端事件循环被同步 fs 调用切碎，ws 回包
+// 延迟变高。改成"按日期文件分桶 + 100 条阈值 / 1s 定时"二选一触发：
+//   - 攒满 100 条立即合并写一次（爆发场景）
+//   - 否则 1s 内合并所有 pending 写一次（平稳场景）
+// 进程退出（fastify onClose / beforeExit）会 flush 残余条目，避免丢日志。
+const FLUSH_INTERVAL_MS = 1000;
+const FLUSH_THRESHOLD = 100;
+const pendingByPath = new Map<string, string[]>();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let flushInFlight: Promise<void> | null = null;
+
+async function flushPending(): Promise<void> {
+  // 串行化：避免阈值触发 + timer 触发同时跑导致同一份 buffer 被重复写。
+  if (flushInFlight) {
+    await flushInFlight;
+    return;
+  }
+  if (pendingByPath.size === 0) return;
+  const snapshot = Array.from(pendingByPath.entries());
+  pendingByPath.clear();
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  flushInFlight = (async () => {
+    try {
+      ensureDir();
+    } catch {
+      /* dir creation failed → fall through, per-file appendFile will surface error */
+    }
+    for (const [path, lines] of snapshot) {
+      if (lines.length === 0) continue;
+      const blob = lines.join("");
+      try {
+        await appendFile(path, blob, "utf8");
+      } catch (err) {
         if (!_appendWarnedOnce) {
           _appendWarnedOnce = true;
           console.warn(
@@ -71,8 +102,41 @@ function appendJsonl(entry: LogEntry): void {
             (err as Error).message,
           );
         }
-      },
-    );
+      }
+    }
+  })().finally(() => {
+    flushInFlight = null;
+  });
+  await flushInFlight;
+}
+
+function scheduleFlush(): void {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void flushPending();
+  }, FLUSH_INTERVAL_MS);
+  // 服务端没有"必须等定时器"的需求；unref 让 timer 不阻止进程退出。
+  if (typeof flushTimer.unref === "function") flushTimer.unref();
+}
+
+function appendJsonl(entry: LogEntry): void {
+  try {
+    const path = getLogFilePath(new Date(entry.ts));
+    const line = JSON.stringify(entry) + "\n";
+    let bucket = pendingByPath.get(path);
+    if (!bucket) {
+      bucket = [];
+      pendingByPath.set(path, bucket);
+    }
+    bucket.push(line);
+    let total = 0;
+    for (const b of pendingByPath.values()) total += b.length;
+    if (total >= FLUSH_THRESHOLD) {
+      void flushPending();
+    } else {
+      scheduleFlush();
+    }
   } catch (err) {
     if (!_appendWarnedOnce) {
       _appendWarnedOnce = true;
@@ -80,6 +144,22 @@ function appendJsonl(entry: LogEntry): void {
     }
   }
 }
+
+/** 进程退出前调用，把内存里 pending 日志 flush 到磁盘。 */
+export async function flushLogsOnExit(): Promise<void> {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  await flushPending();
+}
+
+// graceful exit 兜底：beforeExit 在事件循环排空、进程即将退出时触发。
+// SIGKILL / 进程崩溃不走这里，丢几条日志属于可接受成本——本项目日志主要用于
+// 调试和审计，不是关键审计 trail。
+process.once("beforeExit", () => {
+  void flushPending();
+});
 
 export function serverLog(
   level: LogLevel,

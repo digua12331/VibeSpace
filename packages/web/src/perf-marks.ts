@@ -88,6 +88,18 @@ export const KEEPALIVE_MEM_THRESHOLD = 2 * 1024 ** 3
 export const KEEPALIVE_LRU_LIMIT = 3
 
 /**
+ * 同时打开的 session 数量硬上限。超过这个数后浏览器开始明显吃力（即使做了
+ * WebGL / WS / scrollback 等优化），并且非 Chromium 没有 `performance.memory`
+ * 兜底，需要一道显式拦截给用户提示。
+ * 12 是个体感工程值：留出富余给多项目并行调试，又不至于让 8GB 机器 GPU 紧张。
+ */
+export const MAX_OPEN_SESSIONS = 12
+
+export function isAtSessionLimit(currentCount: number): boolean {
+  return currentCount >= MAX_OPEN_SESSIONS
+}
+
+/**
  * Session spawn 探针："用户点击启动 → SessionView 首帧 replay 完成"耗时。
  *
  * 流程：

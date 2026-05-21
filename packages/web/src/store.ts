@@ -28,6 +28,11 @@ import {
   readUsedJSHeapSize,
 } from './perf-marks'
 
+// ensureSlashCommands 的"正在拉取中"去重表。放模块作用域（不进 zustand state）
+// 避免 inflight 状态变化触发不必要的 re-render；多 SessionView 同时挂载时同
+// 一个 key 只发一次请求。
+const slashCommandsInflight = new Map<string, Promise<readonly string[]>>()
+
 export interface SelectedChange {
   path: string
   /** Which ref's raw content to show in Source/Preview tab. Defaults to WORKTREE. */
@@ -252,6 +257,10 @@ interface State {
   /** GitGraph 按 projectId 缓存的快照。 */
   projectGraphCache: Record<string, GraphCommit[]>
   setProjectGraphCache: (projectId: string, data: GraphCommit[]) => void
+  /** Slash 命令按 "<projectId>|<agent>" 缓存；ensureSlashCommands 负责拉取 + dedupe。
+   * 多个 SessionView 同时 mount 时不会并发拉同一份；命中缓存直接返回，省掉重复请求。 */
+  slashCommandsCache: Record<string, readonly string[]>
+  ensureSlashCommands: (projectId: string, agent: string) => Promise<readonly string[]>
 
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
@@ -384,6 +393,27 @@ export const useStore = create<State>((set, get) => ({
     set((st) => ({
       projectGraphCache: { ...st.projectGraphCache, [projectId]: data },
     })),
+  slashCommandsCache: {},
+  ensureSlashCommands: async (projectId, agent) => {
+    const key = `${projectId}|${agent}`
+    const cached = get().slashCommandsCache[key]
+    if (cached) return cached
+    const inflight = slashCommandsInflight.get(key)
+    if (inflight) return inflight
+    const promise = (async () => {
+      try {
+        const list = await api.listSlashCommands(projectId, agent)
+        set((st) => ({
+          slashCommandsCache: { ...st.slashCommandsCache, [key]: list },
+        }))
+        return list as readonly string[]
+      } finally {
+        slashCommandsInflight.delete(key)
+      }
+    })()
+    slashCommandsInflight.set(key, promise)
+    return promise
+  },
 
   setActivity: (a) => {
     set((st) => (st.activity === a ? st : { activity: a }))

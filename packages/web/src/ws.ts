@@ -8,11 +8,28 @@ function wsUrl(): string {
   return httpBase.replace(/^http/, 'ws') + '/ws'
 }
 
+// ServerMsg 里携带 sessionId 的几种消息类型——SessionView 只关心这几种，
+// 给它们走"按 sessionId 路由"通道可以避免 N² fan-out（N 个 SessionView 都注册
+// 一个全局 onMessage，每条消息都被 N 个回调看一眼）。
+// 其余消息（hello / log / error / error-pattern-alert）继续走全局 onMessage——
+// main.tsx 是它们的唯一处理点，整体路由化会让连接状态、日志面板、错误循环
+// 提示静默失效。
+const SESSION_SCOPED_TYPES: ReadonlySet<ServerMsg['type']> = new Set([
+  'output',
+  'replay',
+  'status',
+  'exit',
+])
+
 class AimonWS {
   private ws: WebSocket | null = null
   private state: WSConnState = 'closed'
   private subscribed = new Set<string>()
   private msgListeners = new Set<(msg: ServerMsg) => void>()
+  // 按 sessionId 分桶的"session-scoped"回调表。每条带 sessionId 的消息从
+  // onmessage 进来时，全局 listeners 全调（不变），再 fan-out 给本 sessionId
+  // 的回调，避免无关 SessionView 被无效命中。
+  private sessionMsgListeners = new Map<string, Set<(msg: ServerMsg) => void>>()
   private connListeners = new Set<(state: WSConnState) => void>()
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -54,6 +71,15 @@ class AimonWS {
         return
       }
       for (const cb of this.msgListeners) cb(msg)
+      if (SESSION_SCOPED_TYPES.has(msg.type)) {
+        const sid = (msg as { sessionId?: string }).sessionId
+        if (typeof sid === 'string') {
+          const bucket = this.sessionMsgListeners.get(sid)
+          if (bucket) {
+            for (const cb of bucket) cb(msg)
+          }
+        }
+      }
     }
     ws.onerror = () => {
       // close handler will fire and reconnect
@@ -138,6 +164,31 @@ class AimonWS {
     this.msgListeners.add(cb)
     return () => {
       this.msgListeners.delete(cb)
+    }
+  }
+
+  /**
+   * 订阅"只关心某个 sessionId 的消息"——只接 output/replay/status/exit。
+   * 不替代 onMessage：hello/log/error/error-pattern-alert 这类无 sessionId
+   * 的消息仍只通过 onMessage 派发（main.tsx 是它们的唯一处理点）。
+   * 解决的问题：N 个 SessionView 各注册一个全局 onMessage 时，每条 output
+   * 消息会被 N 个回调依次看一眼（N²），同开 6+ 终端时 CPU 显著抖动。
+   */
+  onSessionMessage(
+    sessionId: string,
+    cb: (msg: ServerMsg) => void,
+  ): () => void {
+    let bucket = this.sessionMsgListeners.get(sessionId)
+    if (!bucket) {
+      bucket = new Set()
+      this.sessionMsgListeners.set(sessionId, bucket)
+    }
+    bucket.add(cb)
+    return () => {
+      const cur = this.sessionMsgListeners.get(sessionId)
+      if (!cur) return
+      cur.delete(cb)
+      if (cur.size === 0) this.sessionMsgListeners.delete(sessionId)
     }
   }
 

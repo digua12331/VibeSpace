@@ -22,6 +22,68 @@ export function broadcast(msg: Record<string, unknown>): void {
   for (const c of clients) safeSend(c.socket, data);
 }
 
+// ---- Per-session output coalescing ----
+// node-pty 在 AI 全速输出时每秒可以发几十次 chunk（每次几百字节~几 KB），
+// 之前是每个 chunk 立刻 JSON.stringify + 给所有订阅 client 调 send。同开
+// 多个 AI 终端时浏览器事件循环被这些小消息切碎，前端 CPU 长时间高位。
+// 改成 per-session 16ms（一帧）窗口合并：同一 session 在一帧内攒下的所有
+// chunk 按到达顺序拼接成一条 output 消息再发。
+// 安全性：
+//   - 只合并同一 sessionId 的 output，不跨 session、不重排、不截断；
+//   - exit/status/error 这类边界消息送达前会 flushSessionOutput(sid)，
+//     保证"进程结束/状态切换"前那一屏内容先到；
+//   - 前端 xterm 的 ANSI 状态机本身能跨多次 write 处理转义序列，
+//     按帧拼接的 chunk 等价于"一次大 write"，不破坏颜色/光标控制。
+const OUTPUT_FLUSH_MS = 16;
+
+interface OutputQueue {
+  chunks: string[];
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+const outputQueues = new Map<string, OutputQueue>();
+
+function flushSessionOutput(sessionId: string): void {
+  const q = outputQueues.get(sessionId);
+  if (!q) return;
+  if (q.timer) {
+    clearTimeout(q.timer);
+    q.timer = null;
+  }
+  if (q.chunks.length === 0) return;
+  const data = q.chunks.length === 1 ? q.chunks[0] : q.chunks.join("");
+  q.chunks.length = 0;
+  const msg = JSON.stringify({ type: "output", sessionId, data });
+  for (const c of clients) {
+    if (c.subs.has(sessionId)) safeSend(c.socket, msg);
+  }
+}
+
+function enqueueOutput(sessionId: string, data: string): void {
+  let q = outputQueues.get(sessionId);
+  if (!q) {
+    q = { chunks: [], timer: null };
+    outputQueues.set(sessionId, q);
+  }
+  q.chunks.push(data);
+  if (q.timer == null) {
+    q.timer = setTimeout(() => {
+      if (q) q.timer = null;
+      flushSessionOutput(sessionId);
+    }, OUTPUT_FLUSH_MS);
+  }
+}
+
+function disposeSessionQueue(sessionId: string): void {
+  const q = outputQueues.get(sessionId);
+  if (!q) return;
+  if (q.timer) {
+    clearTimeout(q.timer);
+    q.timer = null;
+  }
+  outputQueues.delete(sessionId);
+}
+
 /**
  * WS protocol (JSON line framed by ws message boundaries):
  *
@@ -44,27 +106,32 @@ export function broadcast(msg: Record<string, unknown>): void {
  *     { type: 'error-pattern-alert', alert: ErrorPatternAlert }
  */
 export function registerWsHub(app: FastifyInstance): void {
-  // ---- PTY → broadcast ----
+  // ---- PTY → broadcast (output 走 per-session 16ms 合并队列) ----
   ptyManager.on("output", (sessionId: string, data: string) => {
-    const msg = JSON.stringify({ type: "output", sessionId, data });
-    for (const c of clients) {
-      if (c.subs.has(sessionId)) safeSend(c.socket, msg);
-    }
+    enqueueOutput(sessionId, data);
   });
   ptyManager.on(
     "exit",
     (sessionId: string, code: number | null, signal: number | null) => {
+      // 边界消息强制 flush：进程结束前最后一屏 output 必须先到，否则用户
+      // 会看到"进程结束了但最后几行输出丢了"。
+      flushSessionOutput(sessionId);
       const msg = JSON.stringify({ type: "exit", sessionId, code, signal });
       for (const c of clients) {
         if (c.subs.has(sessionId)) safeSend(c.socket, msg);
       }
+      // session 已退出，清理合并队列，防止 sessionId 复用时残留。
+      disposeSessionQueue(sessionId);
     },
   );
 
-  // ---- Status → broadcast ----
+  // ---- Status → broadcast (边界 flush) ----
   statusManager.on(
     "change",
     (sessionId: string, status: SessionStatus, detail?: string) => {
+      // 状态切换（idle→busy 等）前先把已攒 output 吐出去，保证状态变更与
+      // 屏幕内容时序一致，不让前端看到"状态变了但终端还停在上一帧"。
+      flushSessionOutput(sessionId);
       const msg = JSON.stringify({ type: "status", sessionId, status, detail });
       for (const c of clients) {
         if (c.subs.has(sessionId)) safeSend(c.socket, msg);
@@ -187,6 +254,10 @@ function handleClientMsg(ctx: ClientCtx, msg: unknown): void {
         );
         return;
       }
+      // 先 flush 合并队列，保证 snapshot 之前所有已知 chunk 已广播到所有
+      // 订阅者，避免"客户端收到 replay 后又收到一条 output，但这段内容
+      // snapshot 里已经含"的语义不一致。flush 会同步把队列清掉。
+      flushSessionOutput(sid);
       const buf = ptyManager.getBuffer(sid);
       safeSend(
         ctx.socket,

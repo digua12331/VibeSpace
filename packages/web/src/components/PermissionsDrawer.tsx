@@ -819,7 +819,7 @@ function ButtonsTab() {
   return (
     <div className="flex-1 overflow-auto p-4 space-y-3">
       <div className="text-xs text-muted leading-relaxed">
-        自定义会显示在每个终端顶部栏上的快捷按钮。点击时会把命令发送给所属终端（自动追加回车）。
+        自定义会显示在每个终端悬浮输入框正上方一行的快捷按钮。点击时会把命令发送给所属终端（自动追加回车）。
         设置是全局的，所有终端共享。
       </div>
 
@@ -925,7 +925,7 @@ function ButtonRow({
             checked={btn.showInTopbar}
             onChange={(e) => onChange({ showInTopbar: e.target.checked })}
           />
-          显示在顶部栏
+          显示在输入框上方
         </label>
         <button
           onClick={onRemove}

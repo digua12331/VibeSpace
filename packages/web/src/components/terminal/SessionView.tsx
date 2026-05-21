@@ -257,6 +257,14 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const webglRef = useRef<WebglAddon | null>(null)
+  // 跟踪 active prop 的最新值，让 ResizeObserver 这种在 mount effect 里创建
+  // 的回调能动态判断"当前是否 active"——直接读 prop 会被闭包定死。
+  const activeRef = useRef(active)
+  useEffect(() => { activeRef.current = active }, [active])
+  // 一旦某 session 加载 WebGL 失败（驱动崩 / context 上限触顶等），就把它
+  // 永久降级到 xterm 的 DOM 渲染，不再在后续 active 切换里反复尝试——后台
+  // 反复重建 WebGL context 正是多终端卡顿的根因之一。
+  const webglFailedRef = useRef(false)
   // 跟踪上一次应用到 xterm 的主题——用来跳过初次 mount（创建时已经用了当前主题）
   const currentTheme = useThemeStore((s) => s.theme)
   const prevThemeRef = useRef<ThemeName>(currentTheme)
@@ -289,15 +297,17 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   useEffect(() => onCustomButtonsChange(setCustomButtonsState), [])
 
   // 拉取本机/项目级动态斜杠候选（skills + commands 目录扫描）。
-  // 失败 silent fallback 为空数组，菜单退化为只剩 slashCommands.ts 内置项。
+  // 走 store.ensureSlashCommands：多 SessionView 同时挂载时同一个 project+agent
+  // 只会发一次网络请求（命中缓存或 inflight）。失败 silent fallback 为空数组，
+  // 菜单退化为只剩 slashCommands.ts 内置项。
+  const ensureSlashCommands = useStore((s) => s.ensureSlashCommands)
   useEffect(() => {
     if (!session.projectId) {
       setDynamicSlash([])
       return
     }
     let cancelled = false
-    api
-      .listSlashCommands(session.projectId, session.agent)
+    ensureSlashCommands(session.projectId, session.agent)
       .then((cmds) => {
         if (!cancelled) setDynamicSlash(cmds)
       })
@@ -307,7 +317,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     return () => {
       cancelled = true
     }
-  }, [session.projectId, session.agent])
+  }, [session.projectId, session.agent, ensureSlashCommands])
 
   // Poll subagent runs while this session view is active. 5s cadence matches
   // MemoryView/JobsView; subagent Task calls last 30s+ so faster polling is
@@ -360,19 +370,10 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
 
     term.open(host)
 
-    // WebGL renderer loads after `open()` because it needs the host element
-    // in the DOM to grab a canvas. If the browser loses GPU context
-    // (e.g. tab backgrounded for long, driver reset), fall back by disposing
-    // the addon — xterm reverts to the DOM renderer automatically.
-    try {
-      const webgl = new WebglAddon()
-      webgl.onContextLoss(() => webgl.dispose())
-      term.loadAddon(webgl)
-      webglRef.current = webgl
-    } catch {
-      // Some headless / old browsers can't create a WebGL context; silently
-      // stay on DOM renderer.
-    }
+    // WebGL renderer 的挂载已经移到下方"active 切换" effect。原因：每个
+    // SessionView 都立刻挂一份 WebGL → Chromium 同时活跃 WebGL context 上限
+    // ~16 个，多终端同开会全员被踢回 DOM 渲染（更慢）。改为只给当前 active
+    // 终端挂一份；切 active 时迁移而不重建 Terminal 本体。
 
     try { fit.fit() } catch { /* ignore */ }
     termRef.current = term
@@ -455,9 +456,14 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
     })
 
     // Δh < 4px (under one xterm row) is IME / sub-pixel noise, not a real splitter drag — ignore.
+    // 仅 active 终端响应窗口缩放：拉浏览器窗口大小时所有 SessionView 的
+    // ResizeObserver 会同时被唤起，每次 fit() 都引发一次 reflow——N 个终端
+    // 同开等于 N 次串行 reflow。隐藏终端反正不显示，等切回 active 时下方
+    // active 切换 effect 会统一 fit 一次。
     let prevW = host.clientWidth
     let prevH = host.clientHeight
     const ro = new ResizeObserver(() => {
+      if (!activeRef.current) return
       if (!fitRef.current || !termRef.current) return
       const w = host.clientWidth
       const h = host.clientHeight
@@ -477,10 +483,14 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       aimonWS.sendResize(session.id, term.cols, term.rows)
     }
 
-    const off = aimonWS.onMessage((msg) => {
-      if (msg.type === 'output' && msg.sessionId === session.id) {
+    // 用 onSessionMessage（按 sessionId 路由）而不是全局 onMessage，避免
+    // N 个 SessionView 同时挂载时每条 output 都被 N 个回调依次看一眼（N²）。
+    // 桶里只会收到本 session 的 output/replay/status/exit；hello/log/error
+    // 仍走 main.tsx 的全局 onMessage，不在此处理。
+    const off = aimonWS.onSessionMessage(session.id, (msg) => {
+      if (msg.type === 'output') {
         term.write(msg.data)
-      } else if (msg.type === 'replay' && msg.sessionId === session.id) {
+      } else if (msg.type === 'replay') {
         term.reset()
         term.write(msg.data)
         if (!spawnEndMarkedRef.current) {
@@ -541,11 +551,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
           webglRef.current = null
           try {
             const webgl = new WebglAddon()
-            webgl.onContextLoss(() => webgl.dispose())
+            webgl.onContextLoss(() => {
+              try { webgl.dispose() } catch { /* ignore */ }
+              if (webglRef.current === webgl) webglRef.current = null
+              webglFailedRef.current = true
+            })
             term.loadAddon(webgl)
             webglRef.current = webgl
           } catch {
-            /* WebGL fail → fallback DOM renderer */
+            // 主题切换时 WebGL 重挂失败也走 session 级永久降级。
+            webglFailedRef.current = true
           }
         }
       },
@@ -555,10 +570,48 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
 
   // When this tab becomes active after being hidden, xterm's measured
   // dimensions are stale (display toggled). Re-fit on activation.
+  // 同时负责 WebGL 渲染层的迁移：active=true 时挂一份新的 WebglAddon；
+  // active=false 时把当前 addon dispose 释放 GPU context。整段不重建
+  // Terminal 本体，xterm 内部 buffer / 光标 / 主题 / 滚动位置不丢——
+  // WebglAddon 只是渲染加速层，dispose 后自动回退到 DOM 渲染。
+  // 另：scrollback 跟随 active 联动——active 终端保 5000 行历史，隐藏
+  // 终端压到 1000 行，避免 N 个后台终端持续累加历史占用内存。这是单向
+  // 取舍：从 5000 降到 1000 时超出部分会被 xterm 丢弃，不会回来。
   useEffect(() => {
     if (!active) {
       setMenu({ kind: 'none' })
+      // 离开 active：卸掉 WebGL，把 GPU context 让出去。失败标记保留，
+      // 下次回到 active 时不会重复尝试。
+      const cur = webglRef.current
+      if (cur) {
+        try { cur.dispose() } catch { /* ignore */ }
+        webglRef.current = null
+      }
+      if (termRef.current) {
+        try { termRef.current.options.scrollback = 1000 } catch { /* ignore */ }
+      }
       return
+    }
+    const term = termRef.current
+    if (term) {
+      try { term.options.scrollback = 5000 } catch { /* ignore */ }
+    }
+    // 进入 active：先尝试挂 WebGL（如果未失败过且尚未挂载），再 fit。
+    if (term && !webglRef.current && !webglFailedRef.current) {
+      try {
+        const webgl = new WebglAddon()
+        // context 丢失（标签页休眠后切回、GPU 驱动复位等）→ 当前实例 dispose，
+        // 并标记本 session 永久降级，避免在后台反复尝试恢复导致 context 爆炸。
+        webgl.onContextLoss(() => {
+          try { webgl.dispose() } catch { /* ignore */ }
+          if (webglRef.current === webgl) webglRef.current = null
+          webglFailedRef.current = true
+        })
+        term.loadAddon(webgl)
+        webglRef.current = webgl
+      } catch {
+        webglFailedRef.current = true
+      }
     }
     const raf = requestAnimationFrame(() => {
       try {
@@ -895,30 +948,42 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       // 所有非 shell agent（claude / codex / gemini / opencode 等 ink-based TUI）
       // 都走"bracketed paste 包整段 + 隔一帧发 \r"，单行也走，理由见下面注释。
       const useBracketedPaste = supportsBracketedPaste(session.agent)
-      // 诊断埋点：用来定位"Enter 偶尔只送达 prompt 不触发提交"。
-      // composingRef / isComposing / keyCode 三个字段一起看能区分是 IME 边界
-      // 漏报（值为 true 但守卫没拦住）还是 PTY/ink 侧 \r 没被识别为 submit。
-      // tailHex 是 payload 末尾两个 char code，用来确认没有尾随 \n / \r 误入。
-      const tailHex = Array.from(payload.slice(-2))
-        .map((ch) => ch.charCodeAt(0).toString(16))
-        .join(',')
-      pushLog({
-        level: 'info',
-        scope: 'session',
-        msg: 'input-submit',
-        projectId: session.projectId,
-        sessionId: session.id,
-        meta: {
-          agent: session.agent,
-          len: payload.length,
-          hasNewline,
-          bracketedPaste: useBracketedPaste,
-          tailHex,
-          composingRef: composingRef.current,
-          isComposing: e.nativeEvent.isComposing,
-          keyCode: e.keyCode,
-        },
-      })
+      // 诊断埋点：只在异常路径打日志，正常按 Enter 不再每次刷屏。两种触发：
+      //   1) IME composing 守卫意外没拦住（line 858 的三重守卫之后到这里
+      //      理论上 composingRef 应该是 false；若依然命中说明 IME 边界
+      //      漏报，是定位"Enter 偶尔不发送"老 bug 的诊断信号）
+      //   2) payload 超过 2KB，提示用户粘了一大坨内容（多见于不小心粘贴
+      //      日志/堆栈），方便排查 ink TUI 的粘贴鲁棒性问题
+      // 失败分支由 aimonWS 的连接状态变化路径单独覆盖，这里不重复埋。
+      const composingNow = composingRef.current
+      const isComposingEvt = e.nativeEvent.isComposing
+      const keyCodeEvt = e.keyCode
+      const isImeAnomaly = composingNow || isComposingEvt || keyCodeEvt === 229
+      const isLargePayload = payload.length > 2048
+      if (isImeAnomaly || isLargePayload) {
+        const tailHex = Array.from(payload.slice(-2))
+          .map((ch) => ch.charCodeAt(0).toString(16))
+          .join(',')
+        pushLog({
+          level: isImeAnomaly ? 'warn' : 'info',
+          scope: 'session',
+          msg: isImeAnomaly
+            ? 'input-submit IME 异常组合'
+            : 'input-submit 超长 payload',
+          projectId: session.projectId,
+          sessionId: session.id,
+          meta: {
+            agent: session.agent,
+            len: payload.length,
+            hasNewline,
+            bracketedPaste: useBracketedPaste,
+            tailHex,
+            composingRef: composingNow,
+            isComposing: isComposingEvt,
+            keyCode: keyCodeEvt,
+          },
+        })
+      }
       if (useBracketedPaste) {
         // ink-based TUI（claude / codex / gemini）：单行也走 bracketed paste。
         // 原本以为只有多行才出问题，但用户实测单行 `payload\r` 一个 chunk 里
@@ -1102,36 +1167,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
               >
                 ⟳ 重启
               </button>
-              {customButtons
-                .filter((b) => b.showInTopbar)
-                .map((b) => {
-                  const cmd = resolveCommand(b, session.agent)
-                  if (!cmd) return null
-                  return (
-                    <button
-                      key={b.id}
-                      onClick={() => {
-                        aimonWS.sendInput(
-                          session.id,
-                          wrapBracketedPaste(session.agent, cmd) + '\r',
-                        )
-                        pushLog({
-                          level: 'info',
-                          scope: 'session',
-                          msg: `quick-button 发送 ${b.text}`,
-                          projectId: session.projectId,
-                          sessionId: session.id,
-                          meta: { buttonId: b.id, agent: session.agent, cmd },
-                        })
-                      }}
-                      disabled={busy}
-                      title={`发送到 ${session.agent}: ${cmd}`}
-                      className={`fluent-btn px-2 py-0.5 text-xs rounded border disabled:opacity-50 ${BUTTON_COLOR_CLASSES[b.color]}`}
-                    >
-                      {b.text}
-                    </button>
-                  )
-                })}
+              {/* customButtons 已迁移到悬浮输入框正上方一行渲染，见下方 quickButtonRow */}
               <button
                 onClick={() => setConfirmClose(true)}
                 disabled={busy}
@@ -1229,9 +1265,47 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
               })
               .catch(() => { /* clipboard blocked — silent */ })
           }}
-          style={{ bottom: 72, background: 'rgb(var(--color-xterm-bg))' }}
+          style={{ bottom: 112, background: 'rgb(var(--color-xterm-bg))' }}
           className={`absolute top-0 left-0 right-0 p-1 ${isDead ? 'opacity-60' : ''}`}
         />
+
+        {!isDead && (() => {
+          const visibleButtons = customButtons
+            .filter((b) => b.showInTopbar)
+            .map((b) => ({ btn: b, cmd: resolveCommand(b, session.agent) }))
+            .filter((x) => x.cmd.length > 0)
+          if (visibleButtons.length === 0) return null
+          return (
+            <div
+              className="absolute bottom-[76px] left-3 right-3 z-10 flex items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5"
+            >
+              {visibleButtons.map(({ btn: b, cmd }) => (
+                <button
+                  key={b.id}
+                  onClick={() => {
+                    aimonWS.sendInput(
+                      session.id,
+                      wrapBracketedPaste(session.agent, cmd) + '\r',
+                    )
+                    pushLog({
+                      level: 'info',
+                      scope: 'session',
+                      msg: `quick-button 发送 ${b.text}`,
+                      projectId: session.projectId,
+                      sessionId: session.id,
+                      meta: { buttonId: b.id, agent: session.agent, cmd },
+                    })
+                  }}
+                  disabled={busy}
+                  title={`发送到 ${session.agent}: ${cmd}`}
+                  className={`fluent-btn shrink-0 max-w-[180px] truncate px-2 py-0.5 text-xs rounded border disabled:opacity-50 ${BUTTON_COLOR_CLASSES[b.color]}`}
+                >
+                  {b.text}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
 
         <div
           ref={inputBarRef}

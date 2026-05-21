@@ -4,6 +4,7 @@ import * as api from '../../api'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { logAction } from '../../logs'
+import { sendToSession } from '../../sendToSession'
 
 interface ContextMenuState {
   projectId: string
@@ -19,6 +20,8 @@ export default function ProjectsColumn({
 }) {
   const projects = useStore((s) => s.projects)
   const sessions = useStore((s) => s.sessions)
+  const liveStatus = useStore((s) => s.liveStatus)
+  const activeSessionIdByProject = useStore((s) => s.activeSessionIdByProject)
   const selected = useStore((s) => s.selectedProjectId)
   const select = useStore((s) => s.selectProject)
   const setActivity = useStore((s) => s.setActivity)
@@ -122,7 +125,7 @@ export default function ProjectsColumn({
     e.preventDefault()
     e.stopPropagation()
     const MENU_W = 180
-    const MENU_H = 140
+    const MENU_H = 170
     const EDGE_PAD = 4
     // Anchor the menu's left edge to the project row's left edge. The
     // projects column is narrow, so opening to the right of the row would
@@ -147,6 +150,20 @@ export default function ProjectsColumn({
   function openFilesFor(pid: string) {
     select(pid)
     setActivity('files')
+  }
+
+  function pickCurrentTerminal(): { projectId: string; id: string; agent: typeof sessions[number]['agent'] } | null {
+    const pid = selected
+    if (!pid) return null
+    const alive = sessions.filter((s) => {
+      if (s.projectId !== pid) return false
+      const status = liveStatus[s.id] ?? s.status
+      return status !== 'stopped' && status !== 'crashed'
+    })
+    if (alive.length === 0) return null
+    const activeId = activeSessionIdByProject[pid]
+    const pick = alive.find((s) => s.id === activeId) ?? alive[0]
+    return { projectId: pid, id: pick.id, agent: pick.agent }
   }
 
   return (
@@ -278,6 +295,50 @@ export default function ProjectsColumn({
           >
             📁 文件
           </button>
+          {(() => {
+            const target = pickCurrentTerminal()
+            const disabled = !target
+            return (
+              <button
+                role="menuitem"
+                disabled={disabled}
+                title={
+                  target
+                    ? `把项目路径填入当前 ${target.agent} 终端的输入框`
+                    : '请先在另一个项目里打开终端，再来这里发送路径'
+                }
+                onClick={() => {
+                  if (!target) return
+                  const { projectId } = menu
+                  const proj = projects.find((p) => p.id === projectId)
+                  setMenu(null)
+                  if (!proj) return
+                  const text = `"${proj.path}" `
+                  void sendToSession(
+                    target.projectId,
+                    { id: target.id, agent: target.agent },
+                    text,
+                    {
+                      scope: 'project',
+                      meta: {
+                        source: 'projects-column',
+                        sourceProjectId: projectId,
+                        path: proj.path,
+                        agent: target.agent,
+                      },
+                    },
+                  )
+                }}
+                className={`fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded ${
+                  disabled
+                    ? 'opacity-40 cursor-not-allowed'
+                    : 'hover:bg-white/[0.06]'
+                }`}
+              >
+                💬 发送到终端
+              </button>
+            )
+          })()}
           <button
             role="menuitem"
             onClick={async () => {
