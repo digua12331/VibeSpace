@@ -1265,7 +1265,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
               })
               .catch(() => { /* clipboard blocked — silent */ })
           }}
-          style={{ bottom: 112, background: 'rgb(var(--color-xterm-bg))' }}
+          style={{ bottom: 124, background: 'rgb(var(--color-xterm-bg))' }}
           className={`absolute top-0 left-0 right-0 p-1 ${isDead ? 'opacity-60' : ''}`}
         />
 
@@ -1277,12 +1277,13 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
           if (visibleButtons.length === 0) return null
           return (
             <div
-              className="absolute bottom-[76px] left-3 right-3 z-10 flex items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5"
+              className="absolute bottom-[80px] left-3 right-3 z-10 flex items-center gap-1 overflow-x-auto whitespace-nowrap rounded-win border border-border bg-card shadow-flyout px-2 py-1"
             >
               {visibleButtons.map(({ btn: b, cmd }) => (
                 <button
                   key={b.id}
-                  onClick={() => {
+                  type="button"
+                  onClick={(e) => {
                     aimonWS.sendInput(
                       session.id,
                       wrapBracketedPaste(session.agent, cmd) + '\r',
@@ -1295,6 +1296,11 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
                       sessionId: session.id,
                       meta: { buttonId: b.id, agent: session.agent, cmd },
                     })
+                    // 焦点收回 textarea：否则按钮保留 focus，用户在 claude TUI
+                    // 菜单里按 Enter/方向键时会被 button 默认行为拦截，导致
+                    // "再次点击" → 命令重发死循环。让方向键透传 PTY 的路径接管。
+                    e.currentTarget.blur()
+                    inputRef.current?.focus()
                   }}
                   disabled={busy}
                   title={`发送到 ${session.agent}: ${cmd}`}
