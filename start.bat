@@ -8,7 +8,7 @@ echo   VibeSpace - AI monitor dashboard launcher
 echo ========================================
 echo.
 
-REM --- identity: path containing "stable" -> stable副本, else dev副本 ---
+REM --- identity: path containing "stable" -> stable instance, else dev instance ---
 echo %~dp0 | findstr /I "stable" >nul
 if errorlevel 1 (
   set VIBE_ID=dev
@@ -34,33 +34,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM Rebuild native modules when the better-sqlite3 .node binding is missing
-REM (covers fresh install, Node ABI upgrade, pnpm cache wipe, cross-machine sync).
-set "BSQLITE_BIN_FOUND="
-for /f "delims=" %%F in ('dir /s /b "node_modules\.pnpm\better-sqlite3@*\node_modules\better-sqlite3\build\Release\better_sqlite3.node" 2^>nul') do set "BSQLITE_BIN_FOUND=1"
-if not defined BSQLITE_BIN_FOUND (
-  echo [VibeSpace] rebuilding native modules for Windows ^(better-sqlite3 binding missing^) ...
-  call pnpm --filter @aimon/server rebuild @homebridge/node-pty-prebuilt-multiarch better-sqlite3
-)
-
 echo [VibeSpace] cleaning residual node processes under this project ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$root = '%~dp0'.TrimEnd('\');" ^
-  "$pattern = [regex]::Escape($root);" ^
-  "$toKill = @{};" ^
-  "$victims = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match $pattern };" ^
-  "foreach ($v in $victims) {" ^
-  "  $cur = $v;" ^
-  "  while ($true) {" ^
-  "    $toKill[[int]$cur.ProcessId] = $true;" ^
-  "    if (-not $cur.ParentProcessId) { break };" ^
-  "    $parent = Get-CimInstance Win32_Process -Filter \"ProcessId=$($cur.ParentProcessId)\" -ErrorAction SilentlyContinue;" ^
-  "    if (-not $parent -or $parent.Name -ne 'node.exe') { break };" ^
-  "    $cur = $parent" ^
-  "  }" ^
-  "};" ^
-  "if ($toKill.Count -gt 0) { Write-Host ('[VibeSpace]   killing node PIDs: ' + ($toKill.Keys -join ', ')) };" ^
-  "foreach ($procId in $toKill.Keys) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }"
+REM Single CIM query + 30s timeout. The old version walked every node
+REM process up its parent chain, firing one WMI query per hop -- on a busy
+REM machine that stalls for a very long time, and a PID-reuse cycle could
+REM even spin forever. This does ONE query, kills node.exe whose command
+REM line contains the project root. -OperationTimeoutSec guards a wedged WMI.
+REM NOTE: keep this file ASCII -- cmd mis-parses non-ASCII chars in .bat.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = '%~dp0'.TrimEnd('\'); Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -OperationTimeoutSec 30 -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($root) } | ForEach-Object { Write-Host ('[VibeSpace]   killing node PID ' + $_.ProcessId); Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 
 echo [VibeSpace] cleaning any stale listeners on !VIBE_BACKEND! / !VIBE_WEB! ...
 for %%P in (!VIBE_BACKEND! !VIBE_WEB!) do (
@@ -72,6 +53,18 @@ for %%P in (!VIBE_BACKEND! !VIBE_WEB!) do (
 
 REM small delay so Windows releases file locks / sockets
 powershell -NoProfile -Command "Start-Sleep -Milliseconds 800" >nul 2>&1
+
+REM Rebuild native modules when the better-sqlite3 .node binding is missing
+REM (covers fresh install, Node ABI upgrade, pnpm cache wipe, cross-machine sync).
+REM MUST run AFTER killing old instances + the delay above: a still-running
+REM VibeSpace holds node-pty's conpty.node open, and rebuilding it then fails
+REM with EBUSY (resource busy / locked).
+set "BSQLITE_BIN_FOUND="
+for /f "delims=" %%F in ('dir /s /b "node_modules\.pnpm\better-sqlite3@*\node_modules\better-sqlite3\build\Release\better_sqlite3.node" 2^>nul') do set "BSQLITE_BIN_FOUND=1"
+if not defined BSQLITE_BIN_FOUND (
+  echo [VibeSpace] rebuilding native modules for Windows ^(better-sqlite3 binding missing^) ...
+  call pnpm --filter @aimon/server rebuild @homebridge/node-pty-prebuilt-multiarch better-sqlite3
+)
 
 echo [VibeSpace] scheduling browser open on http://127.0.0.1:!VIBE_WEB! (in 6s) ...
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; Start-Process 'http://127.0.0.1:!VIBE_WEB!'"
