@@ -80,7 +80,7 @@ export default function Workbench() {
     wsState === 'open' ? 'connected' : wsState === 'connecting' ? 'connecting' : 'closed'
 
   return (
-    <div className="h-full flex flex-col bg-bg text-fg">
+    <div className="app-frame h-full flex flex-col bg-bg text-fg">
       {wsState === 'closed' && (
         <div className="px-4 py-1.5 text-xs text-rose-200 bg-rose-900/30 border-b border-rose-700/40 flex items-center justify-between">
           <span>

@@ -30,6 +30,23 @@ body {
   background-attachment: fixed;
 }
 
+/* ---- App frame — 圆角嵌入外壳 -------------------------------------------- */
+/* #root 四周留 10px 窄边距，body 的 vignette 背景从缝隙透出；Workbench 根 div
+ * 套 .app-frame 得到 12px 圆角 + 细边框 + 柔和阴影 + 内容裁切，整体像一块精致
+ * 面板浮在窗口里。刻意不引入 transform / backdrop-filter —— 否则会把
+ * position:fixed 的弹窗（DialogHost / SettingsDialog / ContextMenu /
+ * StartSessionMenu）变成被裁的包含块。box-sizing:border-box 全局已设，
+ * #root 加 padding 后 Workbench 的 h-full 仍正确填满内容区。 */
+#root {
+  padding: 10px;
+}
+.app-frame {
+  border-radius: var(--radius-xl);
+  border: var(--border-width) solid rgb(var(--color-border));
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.45);
+  overflow: hidden;
+}
+
 * {
   box-sizing: border-box;
 }
