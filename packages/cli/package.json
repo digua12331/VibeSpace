@@ -1,0 +1,14 @@
+{
+  "name": "@aimon/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VibeSpace CLI — drive the backend from AI terminals (Claude / Codex / shell).",
+  "main": "src/index.mjs",
+  "bin": {
+    "vibespace": "bin/vibespace.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

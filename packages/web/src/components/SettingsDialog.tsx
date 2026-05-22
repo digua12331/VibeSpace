@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getAppSettings, updateAppSettings } from '../api'
 import { logAction } from '../logs'
+import { currentPermission, requestPermission } from '../notify'
+import { useStore } from '../store'
 import type { AppSettings, HibernationSettings } from '../types'
 
 /**
@@ -30,7 +32,7 @@ const RETENTION_OPTIONS: Array<{ value: number; label: string }> = [
 ]
 
 const DEFAULT_HIBERNATION: HibernationSettings = {
-  enabled: true,
+  enabled: false,
   idleMinutes: 15,
   includeShells: false,
 }
@@ -43,6 +45,9 @@ export default function SettingsDialog() {
   const [retention, setRetention] = useState<number>(1)
   const [hibernation, setHibernation] =
     useState<HibernationSettings>(DEFAULT_HIBERNATION)
+  const [requestingNotify, setRequestingNotify] = useState(false)
+  const notifyPerm = useStore((s) => s.notifyPerm)
+  const setNotifyPerm = useStore((s) => s.setNotifyPerm)
 
   useEffect(() => {
     const l = (next: boolean) => setOpen(next)
@@ -54,6 +59,8 @@ export default function SettingsDialog() {
 
   useEffect(() => {
     if (!open) return
+    // 打开设置时重新同步浏览器通知权限（用户可能在浏览器设置里改过）。
+    setNotifyPerm(currentPermission())
     setLoading(true)
     setError(null)
     getAppSettings()
@@ -65,7 +72,7 @@ export default function SettingsDialog() {
         setError(e instanceof Error ? e.message : String(e))
       })
       .finally(() => setLoading(false))
-  }, [open])
+  }, [open, setNotifyPerm])
 
   useEffect(() => {
     if (!open) return
@@ -106,7 +113,35 @@ export default function SettingsDialog() {
     }
   }
 
+  async function onRequestNotify() {
+    setRequestingNotify(true)
+    try {
+      await logAction('settings', 'request-notify-permission', async () => {
+        const next = await requestPermission()
+        setNotifyPerm(next)
+        return next
+      })
+    } finally {
+      setRequestingNotify(false)
+    }
+  }
+
   if (!open) return null
+
+  const notifyTone =
+    notifyPerm === 'granted'
+      ? 'text-emerald-300 border-emerald-600/40 bg-emerald-500/10'
+      : notifyPerm === 'denied' || notifyPerm === 'unsupported'
+        ? 'text-rose-300 border-rose-600/40 bg-rose-500/10'
+        : 'text-muted border-border'
+  const notifyLabel =
+    notifyPerm === 'granted'
+      ? '已启用'
+      : notifyPerm === 'denied'
+        ? '被拒绝（请在浏览器设置中开启）'
+        : notifyPerm === 'unsupported'
+          ? '此浏览器不支持'
+          : '未启用'
 
   return (
     <div
@@ -190,6 +225,36 @@ export default function SettingsDialog() {
             />
             <span>同时冬眠纯 shell（cmd / pwsh / bash），不推荐 — 会丢 cd 历史</span>
           </label>
+        </section>
+
+        <section className="mb-4 border-t border-border/40 pt-4">
+          <div className="text-sm text-fg/90 mb-1">桌面通知</div>
+          <div className="text-xs text-muted mb-2 leading-relaxed">
+            AI 会话等待你输入、而浏览器标签页不在前台时，会弹一条系统桌面通知提醒你。
+            需要先授权浏览器通知权限；授权一次后长期有效。
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-xs px-2 py-1 rounded border ${notifyTone}`}>
+              🔔 {notifyLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => void onRequestNotify()}
+              disabled={
+                requestingNotify ||
+                notifyPerm === 'granted' ||
+                notifyPerm === 'denied' ||
+                notifyPerm === 'unsupported'
+              }
+              className="fluent-btn px-3 py-1.5 text-xs rounded-md border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+            >
+              {requestingNotify
+                ? '请求中…'
+                : notifyPerm === 'granted'
+                  ? '已授权'
+                  : '请求授权'}
+            </button>
+          </div>
         </section>
 
         {error && (

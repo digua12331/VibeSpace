@@ -26,7 +26,6 @@ import type {
   DocFileKind,
   DocTaskSummary,
   IssuesPayload,
-  JobItem,
   MemoryPayload,
   MemoryRollbackSelection,
   ProjectDocsListResult,
@@ -35,10 +34,8 @@ import type {
   GraphCommit,
   InstallJob,
   PermissionCatalog,
-  ClaudeUsage,
   Project,
   ProjectFilesResult,
-  ProjectPerf,
   Session,
   SessionIsolation,
   SubagentRun,
@@ -304,30 +301,6 @@ export function listProjectSkills(
 ): Promise<ProjectSkillSummary[]> {
   return request<ProjectSkillSummary[]>(
     `/api/projects/${encodeURIComponent(projectId)}/skills`,
-  )
-}
-
-// ---------- Jobs ----------
-
-export function listJobs(): Promise<JobItem[]> {
-  return request<JobItem[]>('/api/jobs')
-}
-
-export function getClaudeUsage(): Promise<ClaudeUsage> {
-  return request<ClaudeUsage>('/api/usage/claude')
-}
-
-export function cancelJob(id: string): Promise<void> {
-  return request<void>(
-    `/api/jobs/${encodeURIComponent(id)}/cancel`,
-    { method: 'POST' },
-  )
-}
-
-export function deleteJob(id: string): Promise<void> {
-  return request<void>(
-    `/api/jobs/${encodeURIComponent(id)}`,
-    { method: 'DELETE' },
   )
 }
 
@@ -739,14 +712,6 @@ export function rollbackMemory(
 export function listProjectDocs(projectId: string): Promise<ProjectDocsListResult> {
   return request<ProjectDocsListResult>(
     `/api/projects/${encodeURIComponent(projectId)}/project-docs`,
-  )
-}
-
-// ---------- Perf ----------
-
-export function getProjectPerf(projectId: string): Promise<ProjectPerf> {
-  return request<ProjectPerf>(
-    `/api/projects/${encodeURIComponent(projectId)}/metrics`,
   )
 }
 

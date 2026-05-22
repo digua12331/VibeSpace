@@ -456,14 +456,18 @@ async function startSession(
         const runtimeDir = pathJoin(proj.path, ".aimon", "runtime");
         await mkdir(runtimeDir, { recursive: true });
         const runtimePath = pathJoin(runtimeDir, `${sessionId}-prompt.md`);
-        await writeFile(runtimePath, buildRuntimePrompt(matched), "utf8");
+        await writeFile(
+          runtimePath,
+          buildRuntimePrompt(matched.map((m) => m.skill)),
+          "utf8",
+        );
         spawnEnv.AIMON_SESSION_PROMPT_PATH = runtimePath;
         serverLog("info", "skills", "injected", {
           projectId,
           sessionId,
           meta: {
             taskName: task,
-            skills: matched.map((s) => s.name),
+            skills: matched.map((m) => ({ name: m.skill.name, source: m.source })),
             runtimePath,
           },
         });

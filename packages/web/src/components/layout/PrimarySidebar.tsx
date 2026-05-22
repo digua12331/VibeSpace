@@ -1,19 +1,15 @@
 import { lazy, Suspense } from 'react'
 import { useStore } from '../../store'
 
-// 11 个 sidebar view 全部 lazy。首屏只 parse PrimarySidebar 容器本身，
+// sidebar view 全部 lazy。首屏只 parse PrimarySidebar 容器本身，
 // 切到对应 activity 时才下载并 mount。Suspense 边界包一层在根，所有
 // view 共用同一个 fallback——任意时刻只 active 一个 view，单层够用。
 const ScmView = lazy(() => import('../sidebar/ScmView'))
 const LogsView = lazy(() => import('../sidebar/LogsView'))
-const InboxView = lazy(() => import('../sidebar/InboxView'))
 const DocsView = lazy(() => import('../sidebar/DocsView'))
 const OpenSpecView = lazy(() => import('../sidebar/OpenSpecView'))
 const FilesView = lazy(() => import('../sidebar/FilesView'))
 const ProjectDocsView = lazy(() => import('../sidebar/ProjectDocsView'))
-const PerfView = lazy(() => import('../sidebar/PerfView'))
-const JobsView = lazy(() => import('../sidebar/JobsView'))
-const UsageView = lazy(() => import('../sidebar/UsageView'))
 const AppearanceView = lazy(() => import('../sidebar/AppearanceView'))
 const SkillsView = lazy(() => import('../sidebar/SkillsView'))
 
@@ -21,11 +17,7 @@ const STATIC_TITLES: Record<string, string> = {
   scm: '源代码更改',
   files: '文件',
   projectdocs: '文档',
-  perf: '性能',
   logs: '日志',
-  inbox: '通知',
-  jobs: '后台任务',
-  usage: '使用量',
   appearance: '外观',
   skills: '技能',
 }
@@ -87,20 +79,8 @@ export default function PrimarySidebar() {
     case 'projectdocs':
       body = <ProjectDocsView />
       break
-    case 'perf':
-      body = <PerfView />
-      break
     case 'logs':
       body = <LogsView />
-      break
-    case 'inbox':
-      body = <InboxView />
-      break
-    case 'jobs':
-      body = <JobsView />
-      break
-    case 'usage':
-      body = <UsageView />
       break
     case 'appearance':
       body = <AppearanceView />

@@ -238,7 +238,10 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
   `AIMON_SESSION_PROMPT_PATH`. Whether the agent reads that path is up
   to user-side configuration (e.g. add a one-liner to project CLAUDE.md
   asking the agent to consume it). Add `.aimon/runtime/` to `.gitignore`;
-  `.aimon/skills/` should normally be checked in.
+  `.aimon/skills/` should normally be checked in. Skills are scanned from
+  **two locations**: the project's own `.aimon/skills/` and a home-directory
+  global pool `~/.aimon/skills/`; a project-level skill **overrides** a
+  global one with the same filename.
 - **Comments system.** Inline comments on project files. Each comment is
   anchored to a specific block in the file with a content hash for
   stability. Comments can be created, updated, and deleted via the API.
@@ -252,6 +255,41 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
 - **Usage statistics.** Tracks Claude CLI usage statistics, including
   files scanned, entries scanned, and skipped items. Helps monitor
   resource consumption and optimize workflows.
+
+## Product self-loop skill pack
+
+`.aimon/skills/<name>.md` skills are now scanned from **two locations**: the
+project's own `<project>/.aimon/skills/` and a home-directory global pool
+`~/.aimon/skills/`. Same name → the project-level skill wins. Install a
+generic skill once and every project's sessions can trigger it by task name.
+
+The repo ships a **product self-loop skill pack** under `.aimon/global-skills/`
+— 5 skills (one overview + 4 steps) teaching the AI the pipeline: *fetch a
+GitHub issue → branch & code → record a demo video → open a PR + publish to
+social platforms → comment and close the issue*. It is **not** hard-wired into
+VibeSpace: the AI calls plain tools directly, credentials go through
+`gh auth` / `git`'s system credential store — VibeSpace never touches a token.
+
+**Install into the global pool** (PowerShell):
+
+```powershell
+New-Item -ItemType Directory -Force $HOME\.aimon\skills | Out-Null
+Copy-Item .aimon\global-skills\*.md $HOME\.aimon\skills\ -Force
+```
+
+**Prerequisites** (you install these; if missing, the skills tell the AI to
+stop and report rather than fake it):
+
+- `gh` (GitHub CLI, run `gh auth login` once)
+- `git`
+- Node + npx + FFmpeg — for the demo video. **The first `npx hyperframes`
+  run downloads a few hundred MB of browser + deps; it looks frozen for
+  5–15 minutes — that is normal.**
+- Python 3 + your own `publish_social.py` (wraps Bilibili / YouTube upload;
+  VibeSpace does not write this for you)
+
+The publish step (push / open PR / upload video) is hard-required by the
+skill to wait for **human confirmation** before running.
 
 ## HTTP API
 
@@ -330,6 +368,44 @@ Server → client:
 
 `SessionStatus ∈ { starting, running, working, waiting_input, idle, stopped, crashed }`.
 
+## CLI (terminal interface for AI)
+
+`@aimon/cli` exposes the VibeSpace backend to terminals via a `vibespace`
+command, so AI agents (Claude / Codex / Gemini) can create projects, start
+sessions, and read/write Dev Docs without UI clicks. The backend must be
+running (`pnpm dev`).
+
+Quick start:
+
+```bash
+pnpm exec vibespace ping                    # check backend reachability
+pnpm exec vibespace project list --json     # list projects
+pnpm exec vibespace project create demo     # create project
+pnpm exec vibespace project switch <id>     # set default project
+pnpm exec vibespace session start claude    # start a claude session
+pnpm exec vibespace docs read <task> --type plan
+pnpm exec vibespace docs write <task> --type plan --stdin    # content from stdin
+pnpm exec vibespace docs archive <task> --yes
+pnpm exec vibespace skill install           # install the AI skill into ~/.claude/skills/
+```
+
+Conventions:
+
+- Read / list commands default to a human format; pass `--json` for AI parsing.
+- Errors: `error: <short_code>\n<one-line message>` on stderr.
+- Exit codes: **0** ok · **1** business error · **2** backend unreachable · **3** invalid args / refusal.
+- Destructive commands (`project delete`, `docs archive`) require `--yes`.
+- IDs are exact-match only — no fuzzy lookup.
+
+Configuration resolution: `--backend` / `--project` flags > env
+`VIBESPACE_BACKEND` / `VIBESPACE_PROJECT` > `~/.vibespace/config.json` (written
+by `vibespace project switch <id>`) > defaults (`http://127.0.0.1:8787`).
+
+The Claude skill installed by `vibespace skill install` teaches Claude when and
+how to invoke this CLI. Source of truth: `packages/cli/skill/vibespace-cli.md`.
+
+Full docs: [packages/cli/README.md](packages/cli/README.md).
+
 ## Windows known issues
 
 - Killing the server with `taskkill /F` causes node-pty's helper to print
@@ -392,8 +468,12 @@ VibeSpace/
 │   │           ├── dialog/         DialogHost (in-page modal queue)
 │   │           ├── FilePreview · CodeView · DiffView · MarkdownView · GitGraph · ChangesList
 │   │           └── StartSessionMenu · CliInstallerDialog · PermissionsDrawer · NewProjectDialog
-│   └── hook-script
-│       └── aimon-hook.mjs          installed into Claude settings, POSTs /api/hooks/claude
+│   ├── hook-script
+│   │   └── aimon-hook.mjs          installed into Claude settings, POSTs /api/hooks/claude
+│   └── cli                         vibespace CLI — drive backend from AI terminals
+│       ├── bin/vibespace.mjs       entry (shebang + dispatch)
+│       ├── src/                    args + config + api + commands/*
+│       └── skill/vibespace-cli.md  source of truth for ~/.claude/skills/vibespace-cli
 └── scripts                         smoke harnesses
     ├── server-smoke.mjs
     ├── refresh-smoke.mjs

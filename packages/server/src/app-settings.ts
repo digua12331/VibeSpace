@@ -31,7 +31,9 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   pasteImageRetentionDays: 1,
   hibernation: {
-    enabled: true,
+    // 默认关闭：闲置自动休眠会 kill 掉正在跑的 AI 会话 PTY，用户感知为
+    // "终端放着不动就没了"。想省资源的用户可在「设置」对话框手动开启。
+    enabled: false,
     idleMinutes: 15,
     includeShells: false,
   },

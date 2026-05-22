@@ -184,6 +184,35 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
 - **使用统计**：跟踪 Claude CLI 使用统计，包括扫描的文件数、扫描的条目数和跳过的
   项目。有助于监控资源消耗和优化工作流。
 
+## 产品自闭环 skill 包
+
+`.aimon/skills/<name>.md`（单文件 + 触发词，由 SessionStart hook 注入提示词）现在
+**同时扫描两个位置**：项目自己的 `<项目>/.aimon/skills/`，以及家目录全局池
+`~/.aimon/skills/`。同名时**项目级覆盖全局级**。这样一套通用 skill 装一次，所有
+项目的会话都能按任务名触发。
+
+仓库 `.aimon/global-skills/` 下随附一个 **产品自闭环 skill 包**——5 个 skill 教 AI
+走完「GitHub issue 捞取 → 切分支改代码 → 录演示视频 → 提 PR + 发社交平台 → 评论
+关闭 issue」流水线（总纲 + 4 个分步）。它跟 VibeSpace 不硬绑：AI 直接调通用工具，
+凭证走 `gh auth` / `git` 系统凭证，VibeSpace 不碰 token。
+
+**安装到全局池**（PowerShell）：
+
+```powershell
+New-Item -ItemType Directory -Force $HOME\.aimon\skills | Out-Null
+Copy-Item .aimon\global-skills\*.md $HOME\.aimon\skills\ -Force
+```
+
+**前置依赖**（由你自行安装，缺了 skill 会指导 AI 停下报告）：
+
+- `gh`（GitHub CLI，需 `gh auth login` 登录一次）
+- `git`
+- Node + npx + FFmpeg —— 录演示视频用。**首次跑 `npx hyperframes` 会下载几百 MB
+  的浏览器和依赖，耗时 5–15 分钟看似卡住，属正常现象。**
+- Python 3 + 自备的 `publish_social.py`（封装 B 站 / YouTube 上传，VibeSpace 不代写）
+
+发布步骤（push / 提 PR / 发视频）在 skill 里被硬性要求**人工确认**后才执行。
+
 ## HTTP API
 
 | 方法 | 路径 | 说明 |
@@ -261,6 +290,43 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
 
 `SessionStatus ∈ { starting, running, working, waiting_input, idle, stopped, crashed }`。
 
+## CLI（给 AI 用的命令行）
+
+`@aimon/cli` 把 VibeSpace 后端暴露成命令行接口（`vibespace`），让 AI
+助手（Claude / Codex / Gemini）能在自己的终端里**直接**创建项目、起会话、
+读写 Dev Docs，不用每次点 UI。**后端必须在跑**（在仓库根 `pnpm dev`）。
+
+快速开始：
+
+```bash
+pnpm exec vibespace ping                    # 检查后端连通
+pnpm exec vibespace project list --json     # 列项目
+pnpm exec vibespace project create demo     # 创项目
+pnpm exec vibespace project switch <id>     # 设默认项目（后续命令省 --project）
+pnpm exec vibespace session start claude    # 起一个 claude 会话
+pnpm exec vibespace docs read <task> --type plan
+pnpm exec vibespace docs write <task> --type plan --stdin    # 内容从管道
+pnpm exec vibespace docs archive <task> --yes
+pnpm exec vibespace skill install           # 把 skill 装到 ~/.claude/skills/
+```
+
+约定：
+
+- 读 / 列出类命令默认人类可读，加 `--json` 给 AI 解析。
+- 错误格式：`error: <short_code>\n<一行说明>` 写到 stderr。
+- 退出码：**0** 成功 · **1** 业务错误 · **2** 后端不可达 · **3** 参数错 / 拒绝执行。
+- 破坏性命令（`project delete` / `docs archive`）必须加 `--yes` 才真执行。
+- ID 必须完整传，不做模糊匹配。
+
+配置优先级：`--backend` / `--project` 参数 > 环境变量
+`VIBESPACE_BACKEND` / `VIBESPACE_PROJECT` > `~/.vibespace/config.json`（由
+`vibespace project switch <id>` 写入）> 默认值（`http://127.0.0.1:8787`）。
+
+`vibespace skill install` 装的 Claude skill 会教 Claude **什么时候**该用这个 CLI、
+**怎么用**。真源在 `packages/cli/skill/vibespace-cli.md`。
+
+详细文档：[packages/cli/README.md](packages/cli/README.md)。
+
 ## Windows 已知问题
 
 - 用 `taskkill /F` 杀服务端会触发 node-pty 辅助进程输出
@@ -322,8 +388,12 @@ VibeSpace/
 │   │           ├── dialog/         DialogHost（内部 modal 队列）
 │   │           ├── FilePreview · CodeView · DiffView · MarkdownView · GitGraph · ChangesList
 │   │           └── StartSessionMenu · CliInstallerDialog · PermissionsDrawer · NewProjectDialog
-│   └── hook-script
-│       └── aimon-hook.mjs          装到 Claude 设置里，回调 /api/hooks/claude
+│   ├── hook-script
+│   │   └── aimon-hook.mjs          装到 Claude 设置里，回调 /api/hooks/claude
+│   └── cli                         VibeSpace CLI — 从 AI 终端驱动后端
+│       ├── bin/vibespace.mjs       入口（shebang + dispatch）
+│       ├── src/                    args + config + api + commands/*
+│       └── skill/vibespace-cli.md  ~/.claude/skills/vibespace-cli 的真源
 └── scripts                         smoke 测试
     ├── server-smoke.mjs
     ├── refresh-smoke.mjs

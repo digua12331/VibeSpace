@@ -14,9 +14,13 @@ import type { Session } from '../../types'
  * 提到这里后，跨项目切换只改 SessionView 的 `active` prop（visibility:hidden 隐藏，组件本身
  * 不卸载），xterm 实例和 PTY 订阅原地保留。
  *
- * 内存兜底：当 store.keepAliveDegraded === true（usedJSHeapSize 超过 2GB 触发）后，本组件
- * 把渲染范围收窄到 recentProjectOrder 前 3 个项目（+ 当前 selectedProjectId 兜底），其余项目
- * 的 SessionView 卸载并跑原 dispose 路径，释放内存。
+ * 保活预算：始终只渲染「当前 selectedProjectId + recentProjectOrder 前 KEEPALIVE_LRU_LIMIT
+ * 个项目」的 SessionView，其余项目的会话只留标签、不挂 xterm。这样跨项目开很多会话时后台
+ * 不会无限累积 xterm 实例。被剔除的 SessionView 走原 unmount 路径（term.dispose() + WS
+ * 退订），用户切回该项目时重新挂载并 replay 后端历史。
+ *
+ * 内存兜底：当 store.keepAliveDegraded === true（usedJSHeapSize 超过 2GB 触发）后，预算进一步
+ * 收窄到仅当前 selectedProjectId 一个项目，作为第二道防线。
  */
 const ALL_KEY = '__all__'
 
@@ -32,17 +36,16 @@ function TerminalHostInner() {
   const setActiveSession = useStore((s) => s.setActiveSession)
   const setActiveTabKind = useStore((s) => s.setActiveTabKind)
 
+  // 保活集合：当前项目 + 最近 N 个项目。降级时 N=0（只剩当前项目）。
   const liveProjectFilter = useMemo(() => {
-    if (!keepAliveDegraded) return null
-    const keep = new Set<string>(recentProjectOrder.slice(0, KEEPALIVE_LRU_LIMIT))
+    const limit = keepAliveDegraded ? 0 : KEEPALIVE_LRU_LIMIT
+    const keep = new Set<string>(recentProjectOrder.slice(0, limit))
     if (selectedProjectId != null) keep.add(selectedProjectId)
     return keep
   }, [keepAliveDegraded, recentProjectOrder, selectedProjectId])
 
   const renderable = useMemo(() => {
-    const base = liveProjectFilter
-      ? sessions.filter((s) => liveProjectFilter.has(s.projectId))
-      : sessions
+    const base = sessions.filter((s) => liveProjectFilter.has(s.projectId))
     return [...base].sort((a, b) => a.started_at - b.started_at)
   }, [sessions, liveProjectFilter])
 

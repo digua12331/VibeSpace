@@ -277,22 +277,6 @@ export interface SubagentRun {
   endedAt: number | null
 }
 
-// ---------- Jobs (后台任务面板) ----------
-
-export type JobKind = 'review' | 'install'
-export type JobState = 'running' | 'done' | 'failed' | 'cancelled'
-
-export interface JobItem {
-  id: string
-  kind: JobKind
-  title: string
-  state: JobState
-  startedAt: number
-  endedAt: number | null
-  projectId?: string
-  error?: string
-}
-
 export type ClientMsg =
   | { type: 'subscribe'; sessionIds: string[] }
   | { type: 'unsubscribe'; sessionIds: string[] }
@@ -729,59 +713,6 @@ export interface ProjectDocFile {
 
 export interface ProjectDocsListResult {
   docs: ProjectDocFile[]
-}
-
-// ---------- Perf ----------
-
-export interface SessionPerfSample {
-  sessionId: string
-  agent: AgentKind
-  pid: number | null
-  /** Percentage, 0-100+ (multi-core can exceed 100). */
-  cpu: number
-  /** Resident set size in bytes. */
-  memRss: number
-  sampledAt: number
-  /** If set, the sample failed — UI should show "—" rather than 0. */
-  error?: string
-}
-
-export interface ProjectPerf {
-  projectId: string
-  sessions: SessionPerfSample[]
-  totalCpu: number
-  totalRssBytes: number
-  sampledAt: number
-}
-
-export type ModelFamily = 'opus' | 'sonnet' | 'haiku' | 'other'
-
-export interface UsageByModel {
-  inputTokens: number
-  outputTokens: number
-  cacheCreationTokens: number
-  cacheReadTokens: number
-}
-
-export interface UsageBucket {
-  total: UsageByModel
-  byModel: Record<ModelFamily, UsageByModel>
-}
-
-export interface UsageDayPoint {
-  date: string
-  totalTokens: number
-}
-
-export interface ClaudeUsage {
-  today: UsageBucket
-  last5h: UsageBucket & { windowStartMs: number; windowEndMs: number }
-  last7days: UsageDayPoint[]
-  skipped: number
-  filesScanned: number
-  entriesScanned: number
-  asOf: number
-  note?: string
 }
 
 // ---------- Skill catalog (.claude|.codex|.opencode/skills/) ----------

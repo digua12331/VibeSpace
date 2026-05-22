@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import simpleGit from "simple-git";
 import { appendLessons } from "./memory-service.js";
-import { jobsService } from "./jobs-service.js";
+import { serverLog } from "./log-bus.js";
 
 /** Hard ceiling — abort the CLI child after this. */
 const HARD_TIMEOUT_MS = 120_000;
@@ -26,15 +26,10 @@ export function kickoffArchiveReview(
   archivedDirName: string,
   projectId?: string,
 ): void {
-  // Register with the global JobsService so the Jobs sidebar tab reflects
-  // progress; throwing inside the runner is captured by JobsService and
-  // surfaces as state='failed'. The original setImmediate behaviour is
-  // preserved (job runs on next tick, register() returns immediately).
-  jobsService.register({
-    kind: "review",
-    title: taskName,
-    projectId,
-    runner: () => runArchiveReview(projectPath, taskName, archivedDirName),
+  // Fire-and-forget on the next tick; the archive API does NOT wait.
+  // Progress/failure surface through serverLog → LogsView (scope=docs).
+  setImmediate(() => {
+    void runArchiveReview(projectPath, taskName, archivedDirName, projectId);
   });
 }
 
@@ -42,8 +37,11 @@ async function runArchiveReview(
   projectPath: string,
   taskName: string,
   archivedDirName: string,
+  projectId?: string,
 ): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
+  const startedAt = Date.now();
+  serverLog("info", "docs", `归档评审 开始: ${taskName}`, { projectId });
   console.log(`[review-runner] started ${taskName} (archived as ${archivedDirName})`);
   try {
     const prompt = await buildPrompt(projectPath, taskName, archivedDirName, today);
@@ -51,10 +49,22 @@ async function runArchiveReview(
     const lessons = extractLessons(raw, taskName, today).slice(0, MAX_LESSONS);
     if (lessons.length === 0) {
       console.log(`[review-runner] ${taskName}: 0 lessons extracted (success but empty)`);
+      serverLog(
+        "info",
+        "docs",
+        `归档评审 成功: ${taskName} (0 条经验, ${Date.now() - startedAt}ms)`,
+        { projectId },
+      );
       return;
     }
     await appendLessons(projectPath, "auto", lessons);
     console.log(`[review-runner] ${taskName}: appended ${lessons.length} lessons`);
+    serverLog(
+      "info",
+      "docs",
+      `归档评审 成功: ${taskName} (${lessons.length} 条经验, ${Date.now() - startedAt}ms)`,
+      { projectId },
+    );
   } catch (err) {
     const msg = (err instanceof Error ? err.message : String(err))
       .replace(/\r?\n/g, " ")
@@ -67,6 +77,15 @@ async function runArchiveReview(
       console.error(`[review-runner] failed to append rejected entry for ${taskName}:`, inner);
     }
     console.error(`[review-runner] ${taskName} failed: ${msg}`);
+    serverLog("error", "docs", `归档评审 失败: ${taskName} — ${msg || "unknown error"}`, {
+      projectId,
+      meta: {
+        error: {
+          name: err instanceof Error ? err.name : "Error",
+          message: msg || "unknown error",
+        },
+      },
+    });
   }
 }
 

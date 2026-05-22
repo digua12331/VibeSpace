@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { PanelImperativeHandle, PanelSize } from 'react-resizable-panels'
 import { useStore } from '../../store'
-import { currentPermission, requestPermission } from '../../notify'
+import { currentPermission } from '../../notify'
 import { aimonWS } from '../../ws'
 import ActivityBar from './ActivityBar'
 import PrimarySidebar from './PrimarySidebar'
@@ -18,7 +18,6 @@ export default function Workbench() {
   const serverVersion = useStore((s) => s.serverVersion)
   const refreshProjects = useStore((s) => s.refreshProjects)
   const refreshSessions = useStore((s) => s.refreshSessions)
-  const notifyPerm = useStore((s) => s.notifyPerm)
   const setNotifyPerm = useStore((s) => s.setNotifyPerm)
 
   const projectsColumnSize = useStore((s) => s.projectsColumnSize)
@@ -60,13 +59,6 @@ export default function Workbench() {
     if (sidebarCollapsed) h.collapse()
     else if (h.isCollapsed()) h.expand()
   }, [sidebarCollapsed])
-
-  async function onNotifyClick() {
-    if (notifyPerm === 'default') {
-      const next = await requestPermission()
-      setNotifyPerm(next)
-    }
-  }
 
   function onRetry() {
     setBootError(null)
@@ -190,22 +182,6 @@ export default function Workbench() {
             title="设置"
           >
             ⚙ 设置
-          </button>
-          <button
-            onClick={() => void onNotifyClick()}
-            disabled={notifyPerm === 'unsupported' || notifyPerm === 'denied'}
-            title={
-              notifyPerm === 'granted'
-                ? '通知已开启'
-                : notifyPerm === 'denied'
-                  ? '通知被拒绝 (浏览器设置中开启)'
-                  : notifyPerm === 'unsupported'
-                    ? '此浏览器不支持通知'
-                    : '点击启用 waiting_input 通知'
-            }
-            className="hover:text-fg disabled:cursor-not-allowed"
-          >
-            🔔 {notifyPerm}
           </button>
           <button
             onClick={() => setNewProjectOpen(true)}

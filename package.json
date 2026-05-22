@@ -22,6 +22,7 @@
     "smoke:git-ops": "node scripts/git-ops-smoke.mjs",
     "smoke:worktree": "node scripts/worktree-smoke.mjs",
     "smoke:memory-parse": "node scripts/memory-parse-smoke.mjs",
+    "smoke:global-skills": "node scripts/global-skills-smoke.mjs",
     "smoke:error-pattern": "node scripts/error-pattern-smoke.mjs",
     "smoke:error-pattern-e2e": "node scripts/error-pattern-e2e-smoke.mjs"
   },

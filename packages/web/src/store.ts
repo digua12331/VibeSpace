@@ -46,7 +46,16 @@ export interface SelectedChange {
   status?: string
 }
 
-export type Activity = 'scm' | 'files' | 'docs' | 'perf' | 'logs' | 'inbox' | 'projectdocs' | 'jobs' | 'usage' | 'appearance' | 'skills'
+const ACTIVITIES = [
+  'scm',
+  'files',
+  'docs',
+  'logs',
+  'projectdocs',
+  'appearance',
+  'skills',
+] as const
+export type Activity = (typeof ACTIVITIES)[number]
 
 export type EditorTabKind = 'file'
 
@@ -87,6 +96,10 @@ interface WorkbenchPersisted {
   activeSessionIdByProject?: Record<string, string>
 }
 
+function isValidActivity(v: unknown): v is Activity {
+  return typeof v === 'string' && (ACTIVITIES as readonly string[]).includes(v)
+}
+
 function readWorkbench(): WorkbenchPersisted {
   if (typeof localStorage === 'undefined') return {}
   try {
@@ -94,7 +107,13 @@ function readWorkbench(): WorkbenchPersisted {
     if (!raw) return {}
     const parsed = JSON.parse(raw) as unknown
     if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as WorkbenchPersisted
+    const wb = parsed as WorkbenchPersisted
+    // 老用户 localStorage 可能残留已删除的 activity（perf/usage/jobs/inbox）。
+    // 失效值丢弃，让初始化时回落到默认值，避免 sidebar 卡在空白。
+    if (wb.activity !== undefined && !isValidActivity(wb.activity)) {
+      wb.activity = undefined
+    }
+    return wb
   } catch {
     return {}
   }

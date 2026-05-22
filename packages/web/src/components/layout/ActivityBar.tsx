@@ -15,8 +15,6 @@ export default function ActivityBar() {
   const logErrorCount = useStore(
     (s) => s.logs.filter((l) => l.level === 'error').length,
   )
-  const notifyCount = useStore((s) => s.notifyingSessions.size)
-  const notifyPerm = useStore((s) => s.notifyPerm)
   const selectedProjectId = useStore((s) => s.selectedProjectId)
   const projects = useStore((s) => s.projects)
   const currentProject = selectedProjectId
@@ -40,21 +38,12 @@ export default function ActivityBar() {
     { id: 'scm', icon: '🌿', label: '源代码更改' },
     ...(docsItem ? [docsItem] : []),
     { id: 'projectdocs', icon: '📄', label: '文档' },
-    { id: 'perf', icon: '📊', label: '性能' },
-    { id: 'usage', icon: '📈', label: '使用量' },
-    { id: 'jobs', icon: '🛠', label: '后台任务' },
     { id: 'skills', icon: '🧩', label: '技能' },
     {
       id: 'logs',
       icon: '📋',
       label: '日志',
       badge: logErrorCount > 0 ? logErrorCount : undefined,
-    },
-    {
-      id: 'inbox',
-      icon: '🔔',
-      label: '通知',
-      badge: notifyCount > 0 ? notifyCount : undefined,
     },
     { id: 'appearance', icon: '🎨', label: '外观' },
   ]
@@ -96,29 +85,6 @@ export default function ActivityBar() {
             </button>
           )
         })}
-      </div>
-      <div className="flex flex-col gap-0.5 pb-1">
-        <button
-          title={
-            notifyPerm === 'granted'
-              ? '通知已开启'
-              : notifyPerm === 'denied'
-                ? '通知被拒绝'
-                : notifyPerm === 'unsupported'
-                  ? '浏览器不支持'
-                  : '点击 🔔 标签启用'
-          }
-          className={`w-9 h-9 flex items-center justify-center rounded-md text-[12px] ${
-            notifyPerm === 'granted'
-              ? 'text-emerald-300'
-              : notifyPerm === 'denied' || notifyPerm === 'unsupported'
-                ? 'text-rose-300'
-                : 'text-muted'
-          }`}
-          disabled
-        >
-          ●
-        </button>
       </div>
     </nav>
   )
