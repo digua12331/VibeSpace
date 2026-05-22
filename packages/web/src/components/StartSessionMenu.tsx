@@ -280,9 +280,6 @@ export default function StartSessionMenu({
             title="安装 / 管理 AI CLI"
           >
             📦
-            {missingCount > 0 && (
-              <span className="ml-1 text-[10px] text-amber-300">+{missingCount}</span>
-            )}
           </button>
         )}
         {open && anchor && (

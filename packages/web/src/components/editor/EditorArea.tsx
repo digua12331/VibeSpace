@@ -323,7 +323,7 @@ export default function EditorArea() {
           <StartSessionMenu
             projectId={selectedProjectId}
             compact
-            triggerLabel="+ 启动 AI / 终端"
+            triggerLabel="+"
             onStarted={(s) => {
               setActiveSession(s.projectId, s.id)
               setActiveTabKind('session')
@@ -428,7 +428,7 @@ function EmptyState({ projectId }: { projectId: string | null }) {
         <div>从左侧「源代码更改」中选择一个文件</div>
         <div className="text-xs text-subtle">
           {projectId
-            ? '或点击右上角「+ 启动 AI / 终端」打开菜单，选一个 AI agent 或 shell'
+            ? '或点击右上角「+」按钮打开菜单，选一个 AI agent 或 shell'
             : '请先在「项目」中选择一个项目再启动 session'}
         </div>
       </div>
