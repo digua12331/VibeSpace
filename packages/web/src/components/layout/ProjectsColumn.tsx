@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useStore } from '../../store'
+import { useStore, HUB_PROJECT_ID } from '../../store'
 import * as api from '../../api'
 import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
@@ -27,6 +27,7 @@ export default function ProjectsColumn({
   const setActivity = useStore((s) => s.setActivity)
   const refreshProjects = useStore((s) => s.refreshProjects)
   const refreshSessions = useStore((s) => s.refreshSessions)
+  const memByProject = useStore((s) => s.memByProject)
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [permProjectId, setPermProjectId] = useState<string | null>(null)
@@ -38,6 +39,8 @@ export default function ProjectsColumn({
     const active: typeof projects = []
     const inactive: typeof projects = []
     for (const p of projects) {
+      // __hub__ 系统项目永远不出现在普通项目卡列表（顶部窄图标按钮单独渲染）
+      if (p.id === HUB_PROJECT_ID) continue
       const count = sessions.filter((s) => s.projectId === p.id && s.ended_at == null).length
       if (count >= 1) active.push(p)
       else inactive.push(p)
@@ -121,6 +124,17 @@ export default function ProjectsColumn({
     return sessions.filter((s) => s.projectId === pid && s.ended_at == null).length
   }
 
+  // 项目级 AI 终端内存：后端 mem-stats ticker 每 10s 推一次（字节）。
+  // 0/缺失 → 返回 null，前端不渲染数字（无 AI 会话/快照失败时静默）。
+  // <1 GB 显示整数 MB；≥1 GB 显示 1 位小数 GB。tabular-nums 等宽对齐。
+  function memFor(pid: string): string | null {
+    const bytes = memByProject[pid]
+    if (!bytes || bytes <= 0) return null
+    const mb = bytes / (1024 * 1024)
+    if (mb < 1024) return `${Math.round(mb)} MB`
+    return `${(mb / 1024).toFixed(1)} GB`
+  }
+
   function openMenu(e: React.MouseEvent, id: string, name: string) {
     e.preventDefault()
     e.stopPropagation()
@@ -192,19 +206,36 @@ export default function ProjectsColumn({
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-1.5 space-y-0.5">
-        <button
-          onClick={() => select(null)}
-          className={`fluent-btn relative w-full text-left pl-3 pr-3 py-2 text-sm rounded-md ${
-            selected === null
-              ? 'fluent-selection-indicator bg-white/[0.06] text-fg'
-              : 'text-fg hover:bg-white/[0.04]'
-          }`}
-        >
-          <span className={selected === null ? 'font-medium' : 'opacity-90'}>
-            全部 sessions
-          </span>
-          <span className="ml-2 text-xs text-subtle">({sessions.length})</span>
-        </button>
+        {/* 总控台入口：缩成 ActivityBar 风格的 44px 窄图标按钮（hover tooltip
+            显完整文字）。__hub__ 是系统项目，点击 = selectProject('__hub__')
+            自动切到 hub-dashboard activity (见 store.selectProject)。 */}
+        <div className="flex items-center gap-1 px-1 py-1">
+          <button
+            onClick={() => select(HUB_PROJECT_ID)}
+            onContextMenu={(e) => e.preventDefault()}
+            className={`w-9 h-9 inline-flex items-center justify-center rounded-md text-lg border ${
+              selected === HUB_PROJECT_ID
+                ? 'bg-accent/20 border-accent/50 text-accent'
+                : 'border-transparent text-fg hover:bg-white/[0.06]'
+            }`}
+            title="总控台：跨项目状态看板 + 派工"
+          >
+            📊
+          </button>
+          <button
+            onClick={() => select(null)}
+            className={`fluent-btn flex-1 text-left pl-2 pr-2 py-1.5 text-sm rounded-md ${
+              selected === null
+                ? 'fluent-selection-indicator bg-white/[0.06] text-fg'
+                : 'text-fg hover:bg-white/[0.04]'
+            }`}
+          >
+            <span className={selected === null ? 'font-medium' : 'opacity-90'}>
+              全部 sessions
+            </span>
+            <span className="ml-2 text-xs text-subtle">({sessions.length})</span>
+          </button>
+        </div>
         {projects.length === 0 && (
           <div className="px-3 py-6 text-xs text-muted text-center">
             还没有项目
@@ -247,9 +278,19 @@ export default function ProjectsColumn({
             >
               🌿
             </button>
-            <span className="text-xs text-subtle shrink-0 tabular-nums min-w-[16px] text-right">
-              {countFor(p.id)}
-            </span>
+            {(() => {
+              const mem = memFor(p.id)
+              return (
+                <span className="flex items-center gap-2 shrink-0 text-xs text-subtle tabular-nums">
+                  {mem && (
+                    <span title="该项目下所有 AI 终端进程树的驻留内存（每 10s 刷新）">
+                      {mem}
+                    </span>
+                  )}
+                  <span className="min-w-[16px] text-right">{countFor(p.id)}</span>
+                </span>
+              )
+            })()}
           </div>
         ))}
       </div>

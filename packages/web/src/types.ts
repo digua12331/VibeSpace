@@ -309,6 +309,13 @@ export type ServerMsg =
       meta?: unknown
     }
   | { type: 'error-pattern-alert'; alert: ErrorPatternAlert }
+  | {
+      // 项目级 AI 终端内存占用（字节）。后端 process-mem-service 每 10s 推一次；
+      // ProjectsColumn 渲染到每行末尾。无 alive AI 会话时 byProject 为空对象。
+      type: 'mem-stats'
+      byProject: Record<string, number>
+      ts: number
+    }
 
 export type WSConnState = 'connecting' | 'open' | 'closed'
 
@@ -868,4 +875,94 @@ export interface ClaudeGlobalSettings {
 export interface ClaudeSettingsPatch {
   skillOverrides?: Record<string, 'off' | null>
   enabledPlugins?: Record<string, boolean>
+}
+
+// ---------- Hub (总控台) ----------
+
+/** Mirrors the shape returned by `GET /api/hub/status`. See routes/hub.ts. */
+export interface HubSession {
+  id: string
+  agent: string
+  status: SessionStatus
+  pid: number | null
+  startedAt: number
+  lastInputAt: number | null
+  lastOutputAt: number | null
+}
+
+export interface HubProject {
+  id: string
+  name: string
+  path: string
+  /** Count of alive AI sessions (shell sessions excluded — matches mem-service口径). */
+  aliveSessionCount: number
+  sessions: HubSession[]
+  /** Sum of WorkingSet across all alive AI sessions' process trees; 0 when
+   *  process-mem-service can't sample (non-Windows or no recent tick). */
+  totalMemBytes: number
+  lastActivityAt: number | null
+}
+
+export interface HubStatusResponse {
+  projects: HubProject[]
+  ts: number
+}
+
+/** Mirrors `GET /api/hub/projects/:id/detail`. */
+export interface HubProjectDetail {
+  gitDirty: {
+    enabled: boolean
+    branch: string | null
+    ahead: number
+    behind: number
+    staged: number
+    unstaged: number
+    untracked: number
+  } | null
+  devTasks: Array<{
+    name: string
+    status: string
+    checked: number
+    total: number
+    updatedAt: number
+  }>
+  /** Reserved for Phase 2 wiring; always null in Phase 1. */
+  errorCount24h: number | null
+}
+
+export interface HubDispatchRequest {
+  targetProjectId: string
+  agent: string
+  text: string
+}
+
+export interface HubDispatchResponse {
+  sessionId: string
+  /** false when PTY died between spawn and the first write (rare). */
+  firstInputWritten: boolean
+}
+
+// ---------- Recent PTY output (用于 hub read_session_output 等) ----------
+
+export interface SessionRecentOutput {
+  sessionId: string
+  agent: string
+  status: SessionStatus
+  linesRequested: number
+  linesReturned: number
+  bufferAlive: boolean
+  content: string
+}
+
+// ---------- Hub dispatch to existing IDLE session (第 3 期 B1) ----------
+
+export interface DispatchToIdleSessionRequest {
+  targetSessionId: string
+  text: string
+}
+
+export interface DispatchToIdleSessionResponse {
+  sessionId: string
+  status: SessionStatus
+  idleAge?: number
 }

@@ -17,6 +17,7 @@ import {
 import { ptyManager } from "../pty-manager.js";
 import { removeWorktree } from "../git-service.js";
 import { serverLog } from "../log-bus.js";
+import { HUB_PROJECT_ID } from "../hub-project.js";
 import { listSkills } from "../skills-service.js";
 import {
   applyWorkflowToProject,
@@ -148,6 +149,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   app.post<{ Params: { id: string }; Body: unknown }>(
     "/api/projects/:id/workflow",
     async (req, reply) => {
+      if (req.params.id === HUB_PROJECT_ID) {
+        serverLog("warn", "hub", "拒绝 apply-workflow 到 __hub__", {
+          projectId: HUB_PROJECT_ID,
+        });
+        return reply.code(400).send({ error: "hub_no_workflow" });
+      }
       const proj = getProject(req.params.id);
       if (!proj) return reply.code(404).send({ error: "not_found" });
 
@@ -251,6 +258,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
   app.delete<{ Params: { id: string }; Body: unknown }>(
     "/api/projects/:id/workflow",
     async (req, reply) => {
+      if (req.params.id === HUB_PROJECT_ID) {
+        serverLog("warn", "hub", "拒绝 remove-workflow 从 __hub__", {
+          projectId: HUB_PROJECT_ID,
+        });
+        return reply.code(400).send({ error: "hub_no_workflow" });
+      }
       const proj = getProject(req.params.id);
       if (!proj) return reply.code(404).send({ error: "not_found" });
 
@@ -421,6 +434,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     "/api/projects/:id",
     async (req, reply) => {
       const { id } = req.params;
+      if (id === HUB_PROJECT_ID) {
+        serverLog("warn", "hub", "拒绝 delete __hub__ 系统项目", {
+          projectId: HUB_PROJECT_ID,
+        });
+        return reply.code(400).send({ error: "cannot_delete_hub" });
+      }
       const proj = getProject(id);
       if (!proj) return reply.code(404).send({ error: "not_found" });
 

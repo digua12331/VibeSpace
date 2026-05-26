@@ -1,4 +1,4 @@
-import { useStore, type Activity } from '../../store'
+import { useStore, HUB_PROJECT_ID, type Activity } from '../../store'
 
 interface Item {
   id: Activity
@@ -33,7 +33,14 @@ export default function ActivityBar() {
 
   // Icons are chosen so no two items share a silhouette — at 16px each row
   // has to be readable at a glance.
+  // hub-dashboard 只在选了 __hub__ 项目时出现 (Codex 第 30 点：避免普通项目
+  // 下用户以为看板是项目级 view)
+  const isHubProject = selectedProjectId === HUB_PROJECT_ID
+
   const items: Item[] = [
+    ...(isHubProject
+      ? [{ id: 'hub-dashboard' as Activity, icon: '📊', label: '总控台看板' }]
+      : []),
     { id: 'files', icon: '📁', label: '文件' },
     { id: 'scm', icon: '🌿', label: '源代码更改' },
     ...(docsItem ? [docsItem] : []),

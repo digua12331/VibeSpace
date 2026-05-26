@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "aimon-mcp-hub": "dist/mcp-hub/index.js"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
@@ -15,6 +18,7 @@
     "@fastify/static": "^9.1.1",
     "@fastify/websocket": "^11.2.0",
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.9.0",
     "fastify": "^5.8.5",
     "nanoid": "^5.1.9",

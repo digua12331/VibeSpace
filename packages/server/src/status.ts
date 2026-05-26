@@ -13,9 +13,27 @@ import type { SessionStatus } from "./db.js";
  *
  * Phase 3/4 will add 'working' / 'waiting_input' via onClaudeHook / onCodexHook.
  */
+/**
+ * Result of {@link StatusManager.claimIdle}. Hub dispatch route maps the
+ * `code` field to HTTP 400 / structured MCP error for hub claude.
+ */
+export interface ClaimIdleResult {
+  ok: boolean;
+  code?: "not_idle" | "idle_too_fresh" | "locked" | "not_found";
+  currentStatus?: SessionStatus;
+  /** Milliseconds the session has been in its current status. */
+  idleAge?: number;
+}
+
 export class StatusManager extends EventEmitter {
   private statuses = new Map<string, SessionStatus>();
   private gotData = new Set<string>();
+  // 跟踪 status 最后变更时间（毫秒）—— claimIdle 检查 idleAge 用，防 Claude
+  // `Stop` hook 异步滞后导致刚转 idle 就被派工 (D2 = 800ms 持续窗口)。
+  private statusChangedAt = new Map<string, number>();
+  // 派工锁：被 hub claimIdle 抢占的 session id 集合。一旦 hook 把 status 回
+  // 转到 'idle' (通过 set() 内部检测)，自动清除——下一次 claim 可重新评估。
+  private dispatchLocks = new Set<string>();
 
   get(sessionId: string): SessionStatus | undefined {
     return this.statuses.get(sessionId);
@@ -25,7 +43,56 @@ export class StatusManager extends EventEmitter {
     const prev = this.statuses.get(sessionId);
     if (prev === status) return;
     this.statuses.set(sessionId, status);
+    this.statusChangedAt.set(sessionId, Date.now());
+    // status 自然回 idle 时自动释放 hub claim lock；调用方不需要手动 release。
+    if (status === "idle") {
+      this.dispatchLocks.delete(sessionId);
+    }
     this.emit("change", sessionId, status, detail);
+  }
+
+  /**
+   * Hub dispatch 抢占：检查 status==='idle' && idleAge>=minIdleAgeMs && 未锁，
+   * 全过则**同步原子**地加 lock + 把 status 改为 'working'，返回 ok=true。
+   * 失败返结构化 code 让 hub claude 自我修复（如 not_idle → 改用新建路径）。
+   *
+   * JS 单线程同步保证：read → check → write 在同一 microtask 内不会被别的
+   * 回调插入，等价于"原子操作"。
+   */
+  claimIdle(sessionId: string, opts: { minIdleAgeMs: number }): ClaimIdleResult {
+    const cur = this.statuses.get(sessionId);
+    if (cur == null) {
+      return { ok: false, code: "not_found" };
+    }
+    if (cur !== "idle") {
+      return { ok: false, code: "not_idle", currentStatus: cur };
+    }
+    if (this.dispatchLocks.has(sessionId)) {
+      return { ok: false, code: "locked", currentStatus: cur };
+    }
+    const changedAt = this.statusChangedAt.get(sessionId) ?? 0;
+    const sinceMs = Date.now() - changedAt;
+    if (sinceMs < opts.minIdleAgeMs) {
+      return {
+        ok: false,
+        code: "idle_too_fresh",
+        currentStatus: cur,
+        idleAge: sinceMs,
+      };
+    }
+    // 抢占：先加 lock 再改 status。set() 内部的"status===idle 清 lock"在这里
+    // 不会触发因为我们设的是 'working'。
+    this.dispatchLocks.add(sessionId);
+    this.set(sessionId, "working", "hub-dispatch");
+    return { ok: true, currentStatus: "working", idleAge: sinceMs };
+  }
+
+  /**
+   * 主动释放 claim 锁。**只**在 hub dispatch 流程后续步骤失败需要回滚时调；
+   * 正常成功路径不必调——hook 把 status 转回 idle 时 set() 会自动清。
+   */
+  releaseIdleClaim(sessionId: string): void {
+    this.dispatchLocks.delete(sessionId);
   }
 
   onSpawn(sessionId: string): void {

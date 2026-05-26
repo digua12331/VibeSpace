@@ -177,20 +177,24 @@ export default function MarkdownView({
   const components = useMemo(() => {
     const base: Record<string, unknown> = {
       code(props: {
-        inline?: boolean
         className?: string
         children?: React.ReactNode
       }) {
-        const { inline, className, children } = props
+        // react-markdown v10 removed the `inline` prop entirely. Detect block
+        // code via the `language-xxx` class remark attaches, or by content
+        // containing a newline (fenced block without a language hint).
+        // Anything else is inline `code`.
+        const { className, children } = props
         const text = String(children ?? '').replace(/\n$/, '')
-        if (inline) {
+        const match = /language-([\w+-]+)/.exec(className ?? '')
+        const isBlock = match != null || text.includes('\n')
+        if (!isBlock) {
           return (
             <code className="px-1 py-0.5 rounded bg-white/[0.06] text-[13px] font-mono border border-white/[0.06]">
               {children}
             </code>
           )
         }
-        const match = /language-([\w+-]+)/.exec(className ?? '')
         return <CodeBlock code={text} lang={match?.[1] ?? null} />
       },
       a(props: { href?: string; children?: React.ReactNode }) {

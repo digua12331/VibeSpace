@@ -19,10 +19,15 @@
  */
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { serverLog } from "./log-bus.js";
+import { HUB_PROJECT_ID } from "./hub-project.js";
+import { getHubToken } from "./hub-token.js";
+import { getHubWorkspaceDir } from "./hub-workspace.js";
 
 const MCP_KEY = "browser-use";
+const HUB_MCP_KEY = "aimon-hub";
 
 interface ClaudeMcpEntry {
   command: string;
@@ -35,8 +40,29 @@ const DESIRED_ENTRY: ClaudeMcpEntry = {
   args: ["--from", "browser-use[cli]", "browser-use", "--mcp"],
 };
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SERVER_ROOT = resolve(__dirname, "..");
+const MCP_HUB_BIN_PATH = resolve(SERVER_ROOT, "dist", "mcp-hub", "index.js");
+
+/** Build the desired aimon-hub MCP entry for the current process (port + token). */
+function buildHubEntry(): ClaudeMcpEntry {
+  return {
+    command: process.execPath,
+    args: [MCP_HUB_BIN_PATH],
+    env: {
+      HUB_TOKEN: getHubToken(),
+      AIMON_BACKEND_PORT: String(process.env.AIMON_PORT || 8787),
+    },
+  };
+}
+
 /**
  * Best-effort inject. Never throws — caller pattern is `await ... .catch(noop)`.
+ *
+ * **D4 (总控台体验对齐 plan)**: when `projectId === '__hub__'` we write to
+ * `hub-workspace/.mcp.json` (containing both browser-use + aimon-hub). For
+ * any other project we write only browser-use to the project root — normal
+ * sessions must NOT see aimon-hub tools.
  */
 export async function injectMcpForAgent(
   agent: string,
@@ -45,6 +71,13 @@ export async function injectMcpForAgent(
   projectId?: string,
 ): Promise<void> {
   try {
+    if (projectId === HUB_PROJECT_ID) {
+      // Hub project: merge browser-use + aimon-hub into hub-workspace/.mcp.json.
+      // Both claude & codex inside hub workspace pick the same file up (claude
+      // via cwd auto-discovery, codex via --mcp-config CLI flag).
+      await injectHubMcps(sessionId);
+      return;
+    }
     if (agent === "claude") {
       await injectClaude(projectPath, sessionId, projectId);
     } else if (agent === "codex") {
@@ -261,6 +294,85 @@ async function injectCodex(
       projectId,
       sessionId,
       meta: { agent: "codex", configPath: targetForLog, changed: true },
+    },
+  );
+}
+
+/**
+ * Write `hub-workspace/.mcp.json` with both browser-use + aimon-hub. Hub
+ * claude/codex sessions pick it up from their cwd (which is hub-workspace).
+ *
+ * Merges with any existing servers (preserves user-added entries; updates
+ * aimon-hub when token / port rotated). Idempotent for steady-state runs.
+ */
+async function injectHubMcps(sessionId: string): Promise<void> {
+  const target = join(getHubWorkspaceDir(), ".mcp.json");
+  const targetForLog = target.replace(/\\/g, "/");
+  const t0 = Date.now();
+  serverLog("info", "installer", "inject-mcp-hub 开始", {
+    projectId: HUB_PROJECT_ID,
+    sessionId,
+    meta: { configPath: targetForLog },
+  });
+
+  let existing: Record<string, unknown> = {};
+  try {
+    const raw = await readFile(target, "utf8");
+    if (raw.trim()) existing = JSON.parse(raw) as Record<string, unknown>;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      const e = err as Error;
+      serverLog("error", "installer", `inject-mcp-hub 失败: ${e.message}`, {
+        projectId: HUB_PROJECT_ID,
+        sessionId,
+        meta: { configPath: targetForLog, error: { name: e.name, message: e.message } },
+      });
+      return;
+    }
+  }
+
+  const servers = (existing.mcpServers ?? {}) as Record<string, ClaudeMcpEntry>;
+  const hubEntry = buildHubEntry();
+
+  // Idempotent check: both browser-use and aimon-hub already at desired shape.
+  const browserOk = servers[MCP_KEY] && deepEqualEntry(servers[MCP_KEY], DESIRED_ENTRY);
+  const hubOk = servers[HUB_MCP_KEY] && deepEqualEntry(servers[HUB_MCP_KEY], hubEntry);
+  if (browserOk && hubOk) {
+    serverLog(
+      "info",
+      "installer",
+      `inject-mcp-hub 成功 (${Date.now() - t0}ms, 无变化)`,
+      {
+        projectId: HUB_PROJECT_ID,
+        sessionId,
+        meta: { configPath: targetForLog, changed: false },
+      },
+    );
+    return;
+  }
+
+  const next = {
+    ...existing,
+    mcpServers: {
+      ...servers,
+      [MCP_KEY]: DESIRED_ENTRY,
+      [HUB_MCP_KEY]: hubEntry,
+    },
+  };
+
+  const tmp = target + ".aimon-tmp";
+  await writeFile(tmp, JSON.stringify(next, null, 2) + "\n", "utf8");
+  await rename(tmp, target);
+
+  serverLog(
+    "info",
+    "installer",
+    `inject-mcp-hub 成功 (${Date.now() - t0}ms)`,
+    {
+      projectId: HUB_PROJECT_ID,
+      sessionId,
+      // 故意不记 HUB_TOKEN 进 meta — 防泄漏。
+      meta: { configPath: targetForLog, changed: true, mergedKeys: Object.keys(next.mcpServers ?? {}) },
     },
   );
 }

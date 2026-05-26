@@ -48,6 +48,13 @@ import type {
   OpenSpecChangeFile,
   GstackStatus,
   GstackInstallResult,
+  HubStatusResponse,
+  HubProjectDetail,
+  HubDispatchRequest,
+  HubDispatchResponse,
+  SessionRecentOutput,
+  DispatchToIdleSessionRequest,
+  DispatchToIdleSessionResponse,
   SkillAgentType,
   SkillCatalogResult,
   SkillAddResult,
@@ -944,5 +951,41 @@ export function patchClaudeSettings(
   return request<ClaudeGlobalSettings>(
     '/api/claude-settings',
     jsonInit('PUT', patch),
+  )
+}
+
+// ---------- Hub (总控台) ----------
+
+export function getHubStatus(): Promise<HubStatusResponse> {
+  return request<HubStatusResponse>('/api/hub/status')
+}
+
+export function getHubProjectDetail(id: string): Promise<HubProjectDetail> {
+  return request<HubProjectDetail>(
+    `/api/hub/projects/${encodeURIComponent(id)}/detail`,
+  )
+}
+
+export function hubDispatch(input: HubDispatchRequest): Promise<HubDispatchResponse> {
+  return request<HubDispatchResponse>('/api/hub/dispatch', jsonInit('POST', input))
+}
+
+export function dispatchToIdleSession(
+  input: DispatchToIdleSessionRequest,
+): Promise<DispatchToIdleSessionResponse> {
+  return request<DispatchToIdleSessionResponse>(
+    '/api/hub/dispatch-to-idle-session',
+    jsonInit('POST', input),
+  )
+}
+
+// ---------- Session recent output (hub read_session_output 同源接口) ----------
+
+export function getSessionRecentOutput(
+  sessionId: string,
+  lines = 200,
+): Promise<SessionRecentOutput> {
+  return request<SessionRecentOutput>(
+    `/api/hub/sessions/${encodeURIComponent(sessionId)}/recent-output?lines=${lines}`,
   )
 }

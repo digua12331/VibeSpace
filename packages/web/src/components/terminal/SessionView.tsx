@@ -292,9 +292,16 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const [busy, setBusy] = useState(false)
   const [showExitInfo, setShowExitInfo] = useState(true)
   const [confirmClose, setConfirmClose] = useState(false)
-  const [customButtons, setCustomButtonsState] = useState<CustomButton[]>(() => getCustomButtons())
+  const [customButtons, setCustomButtonsState] = useState<CustomButton[]>(() => {
+    // Project may have been deleted while this tab is still open — return [] so
+    // we don't seed defaults into a dead project bucket.
+    if (!projects.some((p) => p.id === session.projectId)) return []
+    return getCustomButtons(session.projectId)
+  })
 
-  useEffect(() => onCustomButtonsChange(setCustomButtonsState), [])
+  useEffect(() => onCustomButtonsChange((pid, list) => {
+    if (pid === session.projectId) setCustomButtonsState(list)
+  }), [session.projectId])
 
   // 拉取本机/项目级动态斜杠候选（skills + commands 目录扫描）。
   // 走 store.ensureSlashCommands：多 SessionView 同时挂载时同一个 project+agent

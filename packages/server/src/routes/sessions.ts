@@ -23,6 +23,7 @@ import {
 import { ptyManager } from "../pty-manager.js";
 import { statusManager } from "../status.js";
 import { getCliEntry } from "../cli-catalog.js";
+import { HUB_PROJECT_ID } from "../hub-project.js";
 import {
   addWorktree,
   isGitRepo,
@@ -122,6 +123,18 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
     const parsed = CreateSessionSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+    }
+    // hub-workspace 不是 git 仓库，worktree 隔离会失败；拒在路由层避免脏 state
+    // (Codex 必做第 3 点)
+    if (
+      parsed.data.projectId === HUB_PROJECT_ID
+      && parsed.data.isolation === "worktree"
+    ) {
+      serverLog("warn", "hub", "拒绝在 __hub__ 下创建 worktree 隔离 session", {
+        projectId: HUB_PROJECT_ID,
+        meta: { agent: parsed.data.agent },
+      });
+      return reply.code(400).send({ error: "hub_no_worktree" });
     }
     return startSession(
       parsed.data.projectId,

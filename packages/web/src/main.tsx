@@ -46,6 +46,9 @@ aimonWS.onMessage((msg) => {
     case 'error-pattern-alert':
       st.appendAlert(msg.alert)
       break
+    case 'mem-stats':
+      st.setMemByProject(msg.byProject)
+      break
     default:
       break
   }

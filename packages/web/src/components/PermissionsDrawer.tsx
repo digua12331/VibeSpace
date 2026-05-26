@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import * as api from '../api'
-import { logAction } from '../logs'
+import { logAction, pushLog } from '../logs'
 import { useStore } from '../store'
 import { alertDialog, confirmDialog } from './dialog/DialogHost'
 import {
@@ -367,7 +367,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
           <WorkflowTab project={project} onSwitchToTools={() => setMode('tools')} />
         )}
 
-        {mode === 'buttons' && <ButtonsTab />}
+        {mode === 'buttons' && <ButtonsTab project={project} />}
 
         {mode === 'tools' && <ToolsTab />}
       </div>
@@ -786,15 +786,32 @@ function OptionPill({
   )
 }
 
-function ButtonsTab() {
-  const [list, setList] = useState<CustomButton[]>(() => getCustomButtons())
+function ButtonsTab({ project }: { project: Project }) {
+  const projectId = project.id
+  const [list, setList] = useState<CustomButton[]>(() => getCustomButtons(projectId))
 
-  useEffect(() => onCustomButtonsChange(setList), [])
+  // Re-read whenever the project this drawer is bound to changes (defensive —
+  // PermissionsDrawer is normally re-mounted per project, but covers the case
+  // where it's kept open across switches).
+  useEffect(() => {
+    setList(getCustomButtons(projectId))
+  }, [projectId])
 
-  function persist(next: CustomButton[]) {
-    setCustomButtons(next)
-    // setCustomButtons emits to listeners (including our own), which updates
-    // `list`. No local setState call needed.
+  // Subscribe to cross-component button changes; filter to this project so
+  // edits in other projects don't bounce our state.
+  useEffect(() => onCustomButtonsChange((pid, next) => {
+    if (pid === projectId) setList(next)
+  }), [projectId])
+
+  function persist(next: CustomButton[], action: 'add' | 'update' | 'remove') {
+    setCustomButtons(projectId, next)
+    pushLog({
+      level: 'info',
+      scope: 'session',
+      msg: 'custom-buttons-saved',
+      projectId,
+      meta: { action, count: next.length },
+    })
   }
 
   function addNew() {
@@ -805,22 +822,23 @@ function ButtonsTab() {
       command: '',
       showInTopbar: true,
     }
-    persist([...list, next])
+    persist([...list, next], 'add')
   }
 
   function update(id: string, patch: Partial<CustomButton>) {
-    persist(list.map((b) => (b.id === id ? { ...b, ...patch } : b)))
+    persist(list.map((b) => (b.id === id ? { ...b, ...patch } : b)), 'update')
   }
 
   function remove(id: string) {
-    persist(list.filter((b) => b.id !== id))
+    persist(list.filter((b) => b.id !== id), 'remove')
   }
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-3">
       <div className="text-xs text-muted leading-relaxed">
-        自定义会显示在每个终端悬浮输入框正上方一行的快捷按钮。点击时会把命令发送给所属终端（自动追加回车）。
-        设置是全局的，所有终端共享。
+        当前项目 <span className="text-fg">“{project.name}”</span> 的快捷按钮，会显示在该项目下每个终端悬浮输入框正上方。
+        点击时会把命令发送给所属终端（自动追加回车）。
+        <span className="block mt-1">每个项目独立配置，互不影响。</span>
       </div>
 
       <div className="flex items-center justify-between">

@@ -42,7 +42,15 @@ import { registerOpenspecRoutes } from "./routes/openspec.js";
 import { registerExternalToolsRoutes } from "./routes/external-tools.js";
 import { registerAppSettingsRoutes } from "./routes/app-settings.js";
 import { registerClaudeSettingsRoutes } from "./routes/claude-settings.js";
+import { registerHubRoutes } from "./routes/hub.js";
+import { getHubToken } from "./hub-token.js";
+import { ensureHubWorkspace } from "./hub-workspace.js";
+import { ensureHubProject } from "./hub-project.js";
 import { startHibernateSweeper } from "./hibernate-sweeper.js";
+import {
+  startProcessMemTicker,
+  stopProcessMemTicker,
+} from "./process-mem-service.js";
 import { pruneOldPastedImages } from "./paste-image-cleaner.js";
 import { installClaudeHooks } from "./hook-installer.js";
 
@@ -50,6 +58,11 @@ const PORT = Number(process.env.AIMON_PORT || 8787);
 const HOST = "127.0.0.1";
 
 async function main(): Promise<void> {
+  // D1 翻转 (总控台体验对齐 plan)：必须在第一次 getDb() / syncProjectsTable
+  // 之前确保 __hub__ 系统项目在 projects.json 里——否则 DB 同步发现 __hub__
+  // 不在 JSON 里会 ON DELETE CASCADE 删 hub sessions (Codex 第 1 点警告)。
+  ensureHubProject();
+
   getDb();
 
   // Reap orphans: any session left with ended_at = null from a previous boot
@@ -101,6 +114,39 @@ async function main(): Promise<void> {
   });
   await app.register(fastifyWebsocket);
 
+  // ---- /api/hub/* 鉴权 ----
+  // 防多 VibeSpace 实例 (dev 9787 / stable 8787) 同机时 hub MCP server 子进程
+  // 误连错 backend。规则：
+  //   header X-Hub-Token == 当前 getHubToken() → 放行
+  //   未带 token 但 req.ip 是 loopback (127.0.0.1 / ::1 / ::ffff:127.0.0.1) → 放行
+  //     (浏览器 UI 不需要 token，因为它本来就在用户机器上)
+  //   其它 → 401
+  // 不是为防本机恶意用户；本地单用户场景下没有完整鉴权需求。
+  app.addHook("onRequest", async (req, reply) => {
+    if (!req.url.startsWith("/api/hub/")) return;
+    const presented = req.headers["x-hub-token"];
+    // 客户端显式带了 token → 必须校验通过；不能 fallback 到 loopback 放行，
+    // 否则 token 写错就完全没人提醒。
+    if (typeof presented === "string") {
+      if (presented === getHubToken()) return;
+      serverLog("warn", "hub", "unauthorized /api/hub/* 请求 (token 错误)", {
+        meta: { ip: req.ip ?? "", url: req.url },
+      });
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    // 无 token → 仅本机 loopback 放行（浏览器 UI 走这条）
+    const ip = req.ip ?? "";
+    if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") return;
+    serverLog("warn", "hub", "unauthorized /api/hub/* 请求 (非 loopback 且无 token)", {
+      meta: { ip, url: req.url },
+    });
+    return reply.code(401).send({ error: "unauthorized" });
+  });
+
+  // hub workspace 一次性初始化（mkdir + README）。.mcp.json 留待
+  // hub-session-runtime 启动每个 hub session 时再写（含当时 token + port）。
+  ensureHubWorkspace();
+
   // ---- wire PTY events ----
   // In-process agent cache so the heuristic detector doesn't hit SQLite per chunk.
   const agentCache = new Map<string, SessionRowAgent>();
@@ -118,6 +164,7 @@ async function main(): Promise<void> {
   ptyManager.on("output", (sessionId: string, chunk: string) => {
     statusManager.onData(sessionId, chunk);
     codexDetector.onData(sessionId, chunk);
+    recordPtyChunk(sessionId, chunk);
   });
   ptyManager.on(
     "exit",
@@ -177,6 +224,7 @@ async function main(): Promise<void> {
   await registerExternalToolsRoutes(app);
   await registerAppSettingsRoutes(app);
   await registerClaudeSettingsRoutes(app);
+  await registerHubRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });
@@ -196,6 +244,12 @@ async function main(): Promise<void> {
   // each tick so flipping the master switch in SettingsDialog takes effect
   // without a restart.
   startHibernateSweeper();
+  // 项目级 AI 终端内存占用 ticker：每 10s 一次 CIM 快照，按项目 broadcast
+  // mem-stats。前端 ProjectsColumn 渲染到每行末尾。详见 process-mem-service.ts。
+  startProcessMemTicker();
+  // 诊断埋点：每 30s 打印 PTY 吞吐 + 进程内存，定位 "多终端长跑 OOM" 是不是
+  // native 侧 external/rss 持续上涨。LogsView 看 scope=pty-stats。
+  startPtyStatsLogger();
   // Keep these two as plain console.log — they're startup-only path hints
   // for the operator, not operation events that need to reach LogsView.
   console.log(`VibeSpace db: ${getDbPath()}`);
@@ -207,6 +261,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     app.log.info({ sig }, "shutting down");
     try {
+      stopProcessMemTicker();
       for (const s of listSessions()) {
         if (ptyManager.has(s.id)) {
           try { endSession(s.id, "stopped", null); } catch { /* ignore */ }
@@ -223,6 +278,112 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
+}
+
+// ---------- PTY 吞吐 + 进程内存诊断埋点 ----------
+// 用于排查 "多个 claude 终端长跑后 server OOM (Fatal process out of memory: Zone)"。
+// 主要看：external / arrayBuffers / rss 是否随时间持续上涨（指向 node-pty native
+// 侧的内存累积）。窗口口径 30s，与 hibernate-sweeper 对齐方便交叉对比。
+
+interface PtySessionStats {
+  agent: string;
+  bytesTotal: number;
+  chunksTotal: number;
+  bytesWindow: number;
+  chunksWindow: number;
+}
+
+const PTY_STATS_WINDOW_MS = 30_000;
+const PTY_STATS_TOP_N = 10;
+const ptyStatsStartedAt = Date.now();
+let ptyBytesTotal = 0;
+let ptyChunksTotal = 0;
+let ptyBytesWindow = 0;
+let ptyChunksWindow = 0;
+const ptyPerSession = new Map<string, PtySessionStats>();
+
+function recordPtyChunk(sessionId: string, chunk: string): void {
+  const bytes = Buffer.byteLength(chunk, "utf8");
+  ptyBytesTotal += bytes;
+  ptyBytesWindow += bytes;
+  ptyChunksTotal += 1;
+  ptyChunksWindow += 1;
+  let s = ptyPerSession.get(sessionId);
+  if (!s) {
+    const row = getSession(sessionId);
+    s = {
+      agent: row?.agent ?? "unknown",
+      bytesTotal: 0,
+      chunksTotal: 0,
+      bytesWindow: 0,
+      chunksWindow: 0,
+    };
+    ptyPerSession.set(sessionId, s);
+  }
+  s.bytesTotal += bytes;
+  s.bytesWindow += bytes;
+  s.chunksTotal += 1;
+  s.chunksWindow += 1;
+}
+
+function startPtyStatsLogger(): void {
+  const timer = setInterval(() => {
+    const mem = process.memoryUsage();
+    const alive = new Set(ptyManager.listAlive());
+    // 只保留还活着的 session 累计；进程长跑时已退出 session 的 totals 没人看，
+    // 留在 map 里只会拖大日志体积。
+    for (const id of [...ptyPerSession.keys()]) {
+      if (!alive.has(id)) ptyPerSession.delete(id);
+    }
+    const all = [...ptyPerSession.entries()].map(([id, s]) => ({
+      id,
+      agent: s.agent,
+      bytesWindow: s.bytesWindow,
+      chunksWindow: s.chunksWindow,
+      bytesTotal: s.bytesTotal,
+      chunksTotal: s.chunksTotal,
+    }));
+    all.sort((a, b) => b.bytesWindow - a.bytesWindow);
+    const top = all.slice(0, PTY_STATS_TOP_N);
+    const restCount = all.length - top.length;
+    const restBytesWindow = all.slice(PTY_STATS_TOP_N).reduce((a, b) => a + b.bytesWindow, 0);
+    const restChunksWindow = all.slice(PTY_STATS_TOP_N).reduce((a, b) => a + b.chunksWindow, 0);
+
+    serverLog("info", "pty-stats", "30s 窗口 PTY 吞吐 + 进程内存", {
+      meta: {
+        uptimeMs: Date.now() - ptyStatsStartedAt,
+        aliveCount: alive.size,
+        windowMs: PTY_STATS_WINDOW_MS,
+        windowBytes: ptyBytesWindow,
+        windowChunks: ptyChunksWindow,
+        totalBytes: ptyBytesTotal,
+        totalChunks: ptyChunksTotal,
+        mem: {
+          rss: mem.rss,
+          heapUsed: mem.heapUsed,
+          heapTotal: mem.heapTotal,
+          external: mem.external,
+          arrayBuffers: mem.arrayBuffers,
+        },
+        topSessions: top,
+        restCount,
+        restBytesWindow,
+        restChunksWindow,
+      },
+    });
+
+    // 重置窗口计数，累计不动
+    ptyBytesWindow = 0;
+    ptyChunksWindow = 0;
+    for (const s of ptyPerSession.values()) {
+      s.bytesWindow = 0;
+      s.chunksWindow = 0;
+    }
+  }, PTY_STATS_WINDOW_MS);
+  timer.unref();
+  serverLog("info", "pty-stats", "诊断埋点已启用", {
+    meta: { windowMs: PTY_STATS_WINDOW_MS, topN: PTY_STATS_TOP_N },
+  });
 }
 
 main().catch((err) => {

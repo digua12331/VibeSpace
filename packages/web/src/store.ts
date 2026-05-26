@@ -54,8 +54,12 @@ const ACTIVITIES = [
   'projectdocs',
   'appearance',
   'skills',
+  'hub-dashboard',
 ] as const
 export type Activity = (typeof ACTIVITIES)[number]
+
+/** Special system project id for 总控台 (D1 翻转, 总控台体验对齐 plan). */
+export const HUB_PROJECT_ID = '__hub__'
 
 export type EditorTabKind = 'file'
 
@@ -150,6 +154,10 @@ interface AlertEntry extends ErrorPatternAlert {
 
 const SELECTED_PROJECT_LS_KEY = 'aimon_selected_project_v1'
 const WORKBENCH_LS_KEY = 'aimon_workbench_v3'
+
+// 总控台体验对齐: D1 翻转后 selectedView 概念废弃；hub 是真项目，主区
+// 永远是普通 EditorArea + SessionView。currentHubSession + sessionStorage
+// 也一并废弃 (hub session 现在是普通 session 走 store.sessions)。
 
 function readSelectedProject(): string | null {
   if (typeof localStorage === 'undefined') return null
@@ -297,6 +305,11 @@ interface State {
   /** Optimistic local mirror after apply/remove workflow succeeds; lets the
    *  互斥渲染（DocsView ↔ OpenSpecView）立刻响应而无需 refreshProjects 拉全量。 */
   setWorkflowMode: (projectId: string, mode: WorkflowMode | null) => void
+
+  /** 项目级 AI 终端内存占用（字节）。后端 mem-stats WS 消息推过来；
+   *  ProjectsColumn 渲染到每个项目行末尾。无 alive AI 会话时为空对象。 */
+  memByProject: Record<string, number>
+  setMemByProject: (m: Record<string, number>) => void
 
   /** Cached subagent-run lists keyed by parent sessionId. Polled by SessionView. */
   subagentRunsBySession: Record<string, SubagentRun[]>
@@ -601,8 +614,17 @@ export const useStore = create<State>((set, get) => ({
           : st.activeTabKind
       const nextSelectedChange =
         id != null && st.selectedChange ? null : st.selectedChange
+      // 选 __hub__ 自动切到 hub-dashboard activity；选别的项目时如果当前
+       // 在 hub-dashboard 上切回 'scm' (默认)，避免普通项目下侧栏一片空白。
+      const isHubProject = id === HUB_PROJECT_ID
+      const nextActivity = isHubProject
+        ? ('hub-dashboard' as const)
+        : st.activity === 'hub-dashboard'
+          ? ('scm' as const)
+          : st.activity
       return {
         selectedProjectId: id,
+        activity: nextActivity,
         openFiles: nextOpenFiles,
         activeFileKey: nextActiveFileKey,
         activeTabKind: nextActiveTabKind,
@@ -751,6 +773,9 @@ export const useStore = create<State>((set, get) => ({
       next[idx] = { ...next[idx], workflowMode: mode }
       return { projects: next }
     }),
+
+  memByProject: {},
+  setMemByProject: (m) => set({ memByProject: m }),
 
   subagentRunsBySession: {},
   refreshSubagentRuns: async (sessionId) => {

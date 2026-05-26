@@ -12,6 +12,7 @@ import {
   toRepoRelative,
 } from "../git-service.js";
 import { serverLog } from "../log-bus.js";
+import { HUB_PROJECT_ID } from "../hub-project.js";
 
 const HTML_SUFFIX_RE = /\.(html?|xhtml)$/i;
 
@@ -187,6 +188,12 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string }; Body: unknown }>(
     "/api/projects/:id/fs/gitignore-add",
     async (req, reply) => {
+      if (req.params.id === HUB_PROJECT_ID) {
+        serverLog("warn", "hub", "拒绝在 __hub__ workspace 改 .gitignore", {
+          projectId: HUB_PROJECT_ID,
+        });
+        return reply.code(400).send({ error: "cannot_modify_hub_workspace" });
+      }
       const proj = await loadProjectOr404(reply, req.params.id);
       if (!proj) return;
       const parsed = PathBody.safeParse(req.body);
@@ -239,6 +246,12 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string }; Querystring: unknown }>(
     "/api/projects/:id/fs/entry",
     async (req, reply) => {
+      if (req.params.id === HUB_PROJECT_ID) {
+        serverLog("warn", "hub", "拒绝从 __hub__ workspace 删文件", {
+          projectId: HUB_PROJECT_ID,
+        });
+        return reply.code(400).send({ error: "cannot_modify_hub_workspace" });
+      }
       const proj = await loadProjectOr404(reply, req.params.id);
       if (!proj) return;
       const parsed = PathQuery.safeParse(req.query);
