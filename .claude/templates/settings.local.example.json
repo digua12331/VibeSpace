@@ -1,0 +1,45 @@
+{
+  "_doc": {
+    "tier": "project-local (template)",
+    "purpose": "拷到新项目根的 .claude/settings.local.json，本机使用不进 git。这是 VibeSpace 体系常用命令族的通配权限起点，覆盖日常 git/gh/findstr/MCP 调用/端口启动等",
+    "rules": "已经清理过一轮的可复用集合，不含具体 PID / 临时路径 / 一次性 JSON body。新增条目前请按 docs/claude-config-tiers.md 的归位三问判断",
+    "checklist": [
+      "拷到 <新项目>/.claude/settings.local.json 即可直接生效",
+      "新项目 .gitignore 要确认包含 .claude/settings.local.json（默认在 .claude/* + 白名单方案下已被屏蔽）",
+      "若新项目不用 AIMON_PORT 这类项目专属环境变量启动，删 Bash(AIMON_PORT=*) 那行",
+      "若新项目没装 codex / gemini / opencode 插件，删对应 Bash(...:*) 行"
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(gemini:*)",
+      "Bash(codex:*)",
+      "Bash(opencode:*)",
+      "Bash(claude:*)",
+      "Bash(where:*)",
+      "Bash(findstr:*)",
+      "Bash(wmic:*)",
+      "Bash(tee:*)",
+      "Bash(vibespace:*)",
+      "Bash(python3 -c *)",
+      "Bash(node -e *)",
+      "Bash(AIMON_PORT=*)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(winget *)",
+      "PowerShell(uv *)",
+      "PowerShell(pnpm *)",
+      "PowerShell(openspec *)",
+      "mcp__plugin_context7_context7__*",
+      "mcp__gemini-cli__*",
+      "mcp__browser-use__*",
+      "mcp__codegraph__*",
+      "Skill(codex:rescue)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

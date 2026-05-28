@@ -79,11 +79,19 @@ Claude Code 会忽略未识别的顶层键（`_aimon_hooks_version` 已经在用
 
 ## 五、复用到新项目的流程
 
-1. 把 `<本仓库>/.claude/templates/` 整个目录复制到新项目根的 `.claude/templates/`（也可以只复制其中一个文件）。
-2. 用 `settings.project.example.json` 作起点，复制为 `<新项目>/.claude/settings.json`：
+> **VibeSpace 项目首选 UI 面板预设**：进项目「设置 → 权限」，点 `🚀 VibeSpace 推荐` 预设按钮一键应用 ~100 条权限规则，包含 AI CLI（gh/gemini/codex/opencode）/ MCP 工具族（browser-use/codegraph/gemini-cli/context7）/ Windows 搜索（findstr/wmic）/ 关键 PowerShell（Get-Process/Get-NetTCPConnection 等）/ Skill(codex:rescue) / VibeSpace 项目专用（AIMON_PORT 启动、vibespace CLI）。点完保存即写入 `.claude/settings.local.json`。catalog 源在 `templates/cli-configs/permission-catalog.json`——加新规则也走这里。
+>
+> 下面的「复制 .claude/templates 模板」流程仅适用于：(a) 不装 VibeSpace 的纯 Claude Code 项目；(b) 想离线复制一份基础权限到新机器；(c) 想看默认权限集大致样貌再手工裁剪。
+
+1. 把 `<本仓库>/.claude/templates/` 整个目录复制到新项目根的 `.claude/templates/`（要复制整套，方便新项目以后也能再衍生）。
+2. **项目共享层**：把 `settings.project.example.json` 复制为 `<新项目>/.claude/settings.json`：
    - 改 `_doc.purpose` 为新项目说明。
-   - 把 `allow` 里 `<pkg>` / `<script>` 占位换成真实值。
-3. 在新项目的 `.gitignore` 末尾加：
+   - 把 `allow` 里 `<pkg>` / `<script>` 占位换成真实值；用不到的整条删。
+3. **项目本机层**：把 `settings.local.example.json` 复制为 `<新项目>/.claude/settings.local.json`：
+   - 这份是已经清理过一轮的 VibeSpace 常用命令族通配集，开箱即用。
+   - 检查 `Bash(AIMON_PORT=*)`、`Bash(vibespace:*)`、`Bash(codex:*)` 等——新项目用不到的删，省得无关条目堆积。
+4. **系统级层**（首次配机器才需要做，跨项目共用一份）：把 `settings.system.example.json` 内容 merge 进 `~/.claude/settings.json`，**不要整段覆盖**——你已有的 hooks/plugins/env 要保留。
+5. 在新项目的 `.gitignore` 末尾加：
    ```
    .claude/*
    !.claude/settings.json
@@ -91,7 +99,7 @@ Claude Code 会忽略未识别的顶层键（`_aimon_hooks_version` 已经在用
    !.claude/templates/**
    ```
    注意是 `.claude/*` 不是 `.claude/`——后者是目录排除，会让 `!` 白名单失效。
-4. 在新项目根 `CLAUDE.md` 顶部加一句：
+6. 在新项目根 `CLAUDE.md` 顶部加一句：
    > Claude Code 权限分层规则参考 `<本仓库>/docs/claude-config-tiers.md`；新项目复用模板见本仓库 `.claude/templates/`。
 
 ## 六、本仓库现状速查
