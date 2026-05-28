@@ -424,7 +424,21 @@ pnpm smoke:codex         # codex 启发式判定器
 pnpm smoke:persistence   # DB 行跨重启存活，重启后被收编成 stopped
 pnpm smoke:web           # 静态资源 serve + 验证
 pnpm smoke:git           # changes / diff / stage / unstage / commit
+pnpm smoke:issues-jobs   # /api/issues/batch-dispatch 拒绝路径 + issue-jobs CRUD
+pnpm smoke:budget-cutoff # 任务预算闸 + STATUS.md 自动接力 + SessionStart 注入
+pnpm smoke:task-subtasks # 大任务自拆并行：plan 解析 / 拓扑 / 循环依赖 / 派工 / approve
 ```
+
+## 大任务自拆并行
+
+写一个 dev/active 主任务（≥ 5 个独立可并行子任务）时，AI 可以在 `plan.md` 末尾追加 `## 自拆与依赖` 段，里面写一段 JSON 描述子任务结构。前端 Dev Docs 任务行展开后会自动出现"子任务"面板：
+
+- **一键派工**：按拓扑序给每个子任务开独立 worktree（git 的临时副本）+ 独立 Claude session 同时跑，互不踩脚
+- **状态流转**：`pending → running → verifying → review-ready` 实时在面板上可见
+- **approve 全部**：按拓扑序逐个 `git merge --no-ff` 子任务的 worktree 到主分支；merge 冲突立即停下显眼标红
+- **依赖检测**：`write_files` 重叠的两个子任务后端自动追加依赖边（保证写同一文件的不并发）；依赖图有环时 dispatch 接口直接 400 拒绝
+
+JSON 段语法见 `.aimon/templates/subtasks-syntax.example.md`。任务 plan 不写 `## 自拆与依赖` 段时，子任务面板自动隐藏（按单任务长跑路径走）。
 
 ## 路线图
 
