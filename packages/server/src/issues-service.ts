@@ -1,13 +1,18 @@
 import { readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve as resolvePath, relative as relativePath, sep } from "node:path";
+import { createHash } from "node:crypto";
 
 export interface IssueItem {
   /** 1-based line number in dev/issues.md. */
   line: number;
-  /** Original text after the checkbox marker. */
+  /** Text after the checkbox marker, with the optional `[auto]` prefix stripped. */
   text: string;
   done: boolean;
+  /** Whether the line is tagged `[auto]` and eligible for batch dispatch. */
+  auto: boolean;
+  /** Stable id for cross-edit lookup: first 16 hex chars of sha1(text after auto strip). */
+  hash: string;
 }
 
 export interface IssuesPayload {
@@ -50,6 +55,11 @@ function assertContained(projectPath: string, candidate: string): void {
 }
 
 const LINE_RE = /^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/;
+const AUTO_PREFIX_RE = /^\s*\[auto\]\s+/i;
+
+function hashIssueText(text: string): string {
+  return createHash("sha1").update(text, "utf8").digest("hex").slice(0, 16);
+}
 
 function parseItems(content: string): IssueItem[] {
   const out: IssueItem[] = [];
@@ -57,13 +67,29 @@ function parseItems(content: string): IssueItem[] {
   for (let i = 0; i < lines.length; i += 1) {
     const m = LINE_RE.exec(lines[i]);
     if (!m) continue;
+    const rawText = m[2];
+    const auto = AUTO_PREFIX_RE.test(rawText);
+    const text = auto ? rawText.replace(AUTO_PREFIX_RE, "") : rawText;
     out.push({
       line: i + 1,
-      text: m[2],
+      text,
       done: m[1] !== " ",
+      auto,
+      hash: hashIssueText(text),
     });
   }
   return out;
+}
+
+/**
+ * Locate an issue by its stable hash. Returns null when absent (e.g. the line
+ * was edited so the hash no longer matches anything).
+ */
+export function findIssueByHash(items: IssueItem[], hash: string): IssueItem | null {
+  for (const it of items) {
+    if (it.hash === hash) return it;
+  }
+  return null;
 }
 
 export async function readIssues(projectPath: string): Promise<IssuesPayload> {

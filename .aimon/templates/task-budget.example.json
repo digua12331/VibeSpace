@@ -1,0 +1,7 @@
+{
+  "_doc": "示例：把这份 copy 成项目根 .aimon/task-budget.json 可覆盖 Dev Docs 任务的默认预算闸。坏 JSON 会被忽略并使用默认值（80/120/15/3）。",
+  "maxRounds": 80,
+  "maxElapsedMinutes": 120,
+  "maxStallMinutes": 15,
+  "maxVerifyFails": 3
+}

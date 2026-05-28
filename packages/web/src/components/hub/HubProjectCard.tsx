@@ -82,44 +82,50 @@ export default function HubProjectCard({
 
   return (
     <div className="border border-border/60 rounded-md bg-bg/40">
-      <div className="px-4 py-3 flex items-center gap-3">
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-6 h-6 inline-flex items-center justify-center text-muted hover:text-fg shrink-0"
-          title={expanded ? '折叠' : '展开'}
-        >
-          {expanded ? '▼' : '▶'}
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm text-fg truncate">{project.name}</div>
-          <div className="text-xs text-muted truncate font-mono">{project.path}</div>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-muted shrink-0">
-          <span
-            className={`px-1.5 py-0.5 rounded ${
-              project.aliveSessionCount > 0
-                ? 'bg-emerald-500/15 text-emerald-300'
-                : 'bg-white/[0.03]'
-            }`}
+      <div className="px-3 py-2.5 flex flex-col gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="w-6 h-6 inline-flex items-center justify-center text-muted hover:text-fg shrink-0"
+            title={expanded ? '折叠' : '展开'}
           >
-            🟢 {project.aliveSessionCount}
-          </span>
-          <span className="tabular-nums w-16 text-right">
-            {formatMem(project.totalMemBytes)}
-          </span>
-          <span className="w-20 text-right">{formatRelativeTime(project.lastActivityAt)}</span>
+            {expanded ? '▼' : '▶'}
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-fg truncate">{project.name}</div>
+            <div className="text-xs text-muted truncate font-mono">{project.path}</div>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted shrink-0">
+            <span
+              className={`px-1.5 py-0.5 rounded whitespace-nowrap ${
+                project.aliveSessionCount > 0
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'bg-white/[0.03]'
+              }`}
+            >
+              🟢 {project.aliveSessionCount}
+            </span>
+            {project.totalMemBytes > 0 && (
+              <span className="tabular-nums whitespace-nowrap">
+                {formatMem(project.totalMemBytes)}
+              </span>
+            )}
+            <span className="whitespace-nowrap">
+              {formatRelativeTime(project.lastActivityAt)}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 justify-end flex-wrap">
           <button
             onClick={onOpen}
-            className="fluent-btn px-2 py-1 text-xs rounded border border-border hover:border-accent/60 hover:bg-accent/10"
+            className="fluent-btn px-2 py-1 text-xs rounded border border-border hover:border-accent/60 hover:bg-accent/10 whitespace-nowrap"
             title="切换到该项目主界面"
           >
             打开
           </button>
           <button
             onClick={onDispatch}
-            className="fluent-btn px-2 py-1 text-xs rounded border border-accent/40 bg-accent/15 text-accent hover:bg-accent/25"
+            className="fluent-btn px-2 py-1 text-xs rounded border border-accent/40 bg-accent/15 text-accent hover:bg-accent/25 whitespace-nowrap"
             title="在该项目下新建 session 并把任务文本作为首句发送"
           >
             + 派任务
@@ -127,7 +133,7 @@ export default function HubProjectCard({
           {project.aliveSessionCount > 0 && (
             <button
               onClick={onStopAll}
-              className="fluent-btn px-2 py-1 text-xs rounded border border-rose-700/60 text-rose-300 hover:bg-rose-900/30"
+              className="fluent-btn px-2 py-1 text-xs rounded border border-rose-700/60 text-rose-300 hover:bg-rose-900/30 whitespace-nowrap"
               title="停止该项目下所有 AI 终端"
             >
               停所有

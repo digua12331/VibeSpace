@@ -9,6 +9,9 @@ import type {
   GitRef,
   GraphCommit,
   IssuesPayload,
+  IssueJob,
+  BudgetStateSnapshot,
+  SubtaskOverview,
   MemoryPayload,
   MemoryRollbackSelection,
   LogEntry,
@@ -260,6 +263,20 @@ interface State {
   issuesError: Record<string, string | null>
   refreshIssues: (projectId: string) => Promise<void>
 
+  /** ----- Issue Jobs（批量派工 + 待 review 队列） ----- */
+  issueJobsData: Record<string, IssueJob[] | undefined>
+  issueJobsLoading: Record<string, boolean>
+  issueJobsError: Record<string, string | null>
+  refreshIssueJobs: (projectId: string) => Promise<void>
+
+  /** ----- Task Budget（执行不打扰最小闭环） ----- */
+  taskBudgets: Record<string, BudgetStateSnapshot[] | undefined>
+  refreshTaskBudgets: (projectId: string) => Promise<void>
+
+  /** ----- Task Subtasks（大任务自拆并行） ----- */
+  taskSubtasks: Record<string, Record<string, SubtaskOverview | undefined>>
+  refreshTaskSubtasks: (projectId: string, taskName: string) => Promise<void>
+
   /** ----- 记忆（auto / manual / rejected） ----- */
   memoryData: Record<string, MemoryPayload | undefined>
   memoryLoading: Record<string, boolean>
@@ -401,6 +418,13 @@ export const useStore = create<State>((set, get) => ({
   issuesData: {},
   issuesLoading: {},
   issuesError: {},
+
+  issueJobsData: {},
+  issueJobsLoading: {},
+  issueJobsError: {},
+
+  taskBudgets: {},
+  taskSubtasks: {},
 
   memoryData: {},
   memoryLoading: {},
@@ -923,6 +947,55 @@ export const useStore = create<State>((set, get) => ({
         issuesError: { ...st.issuesError, [projectId]: msg },
       }))
       throw e
+    }
+  },
+
+  refreshIssueJobs: async (projectId) => {
+    set((st) => ({
+      issueJobsLoading: { ...st.issueJobsLoading, [projectId]: true },
+      issueJobsError: { ...st.issueJobsError, [projectId]: null },
+    }))
+    try {
+      const { jobs } = await api.listIssueJobs(projectId)
+      set((st) => ({
+        issueJobsData: { ...st.issueJobsData, [projectId]: jobs },
+        issueJobsLoading: { ...st.issueJobsLoading, [projectId]: false },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set((st) => ({
+        issueJobsLoading: { ...st.issueJobsLoading, [projectId]: false },
+        issueJobsError: { ...st.issueJobsError, [projectId]: msg },
+      }))
+      throw e
+    }
+  },
+
+  refreshTaskBudgets: async (projectId) => {
+    try {
+      const { budgets } = await api.listTaskBudgets(projectId)
+      set((st) => ({
+        taskBudgets: { ...st.taskBudgets, [projectId]: budgets },
+      }))
+    } catch {
+      // Silent — budget polling is best-effort; errors don't surface to user.
+    }
+  },
+
+  refreshTaskSubtasks: async (projectId, taskName) => {
+    try {
+      const overview = await api.getTaskSubtasks(projectId, taskName)
+      set((st) => ({
+        taskSubtasks: {
+          ...st.taskSubtasks,
+          [projectId]: {
+            ...(st.taskSubtasks[projectId] ?? {}),
+            [taskName]: overview,
+          },
+        },
+      }))
+    } catch {
+      // Silent — same posture as budget polling.
     }
   },
 

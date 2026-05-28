@@ -607,8 +607,13 @@ export interface DocFileContent {
 export interface IssueItem {
   /** 1-based line number in dev/issues.md. */
   line: number
+  /** Text after the checkbox marker, with optional `[auto]` prefix stripped. */
   text: string
   done: boolean
+  /** True when the line is tagged `- [ ] [auto] ...` and eligible for batch dispatch. */
+  auto: boolean
+  /** Stable id for cross-edit lookup: first 16 hex chars of sha1(text after auto strip). */
+  hash: string
 }
 
 export interface IssuesPayload {
@@ -617,6 +622,131 @@ export interface IssuesPayload {
   content: string
   items: IssueItem[]
   updatedAt: number
+}
+
+// ---------- Task Budget（执行不打扰最小闭环） ----------
+
+export interface BudgetLimits {
+  maxRounds: number
+  maxElapsedMinutes: number
+  maxStallMinutes: number
+  maxVerifyFails: number
+}
+
+export type BudgetCutoffReason =
+  | 'rounds-exceeded'
+  | 'elapsed-exceeded'
+  | 'stall-exceeded'
+  | 'verify-failed-too-many'
+
+export interface BudgetCutoff {
+  reason: BudgetCutoffReason
+  at: number
+  message: string
+  nextStep: string
+}
+
+export interface BudgetStateSnapshot {
+  taskName: string
+  projectId: string
+  startedAt: number
+  lastActivityAt: number
+  rounds: number
+  tokensApprox: number
+  verifyFailCount: number
+  sessionIds: string[]
+  cutoff: BudgetCutoff | null
+  limits: BudgetLimits
+  elapsedMinutes: number
+  stallMinutes: number
+}
+
+// ---------- Issue Jobs（批量派工） ----------
+
+export type IssueJobState =
+  | 'pending'
+  | 'running'
+  | 'verifying'
+  | 'review-ready'
+  | 'failed'
+  | 'cancelled'
+  | 'merge-conflict'
+  | 'unknown'
+
+export interface IssueJob {
+  /** Server-minted nanoid; stable across reconnects until server restart. */
+  jobId: string
+  projectId: string
+  /** sha1 hash of the issue text (matches IssueItem.hash). */
+  issueHash: string
+  /** Issue text snapshot at dispatch time (without [auto] prefix). */
+  issueText: string
+  /** Filesystem path of the worktree dedicated to this job. */
+  worktreePath: string
+  /** Git branch backing the worktree. Persists after worktree deletion. */
+  branch: string
+  /** PTY session id running claude inside the worktree (null after end / cancellation). */
+  sessionId: string | null
+  state: IssueJobState
+  /** Last verify-pipeline log slice (tail-truncated). Empty until verify starts. */
+  verifyLog: string
+  startedAt: number
+  endedAt: number | null
+  /** Free-form reason for failed / merge-conflict / unknown / cancelled states. */
+  errorReason: string | null
+}
+
+// ---------- Task Subtasks（大任务自拆并行） ----------
+
+export type SubtaskRunState =
+  | 'pending'
+  | 'running'
+  | 'verifying'
+  | 'review-ready'
+  | 'failed'
+  | 'cancelled'
+  | 'merge-conflict'
+  | 'merged'
+  | 'unknown'
+
+export interface SubtaskSpec {
+  id: number
+  title: string
+  write_files: string[]
+  depends_on: number[]
+}
+
+export interface SubtaskGraph {
+  schema_version: number
+  subtasks: SubtaskSpec[]
+  order: number[]
+  auto_edges: Array<{ from: number; to: number; reason: string }>
+}
+
+export interface SubtaskRun {
+  runId: string
+  projectId: string
+  taskName: string
+  subtaskId: number
+  title: string
+  worktreePath: string
+  branch: string
+  sessionId: string | null
+  state: SubtaskRunState
+  verifyLog: string
+  startedAt: number
+  endedAt: number | null
+  mergedAt: number | null
+  errorReason: string | null
+}
+
+export interface SubtaskOverview {
+  parsed: boolean
+  graph: SubtaskGraph | null
+  runs: SubtaskRun[]
+  /** Set when parsed=false; explains why parse failed. */
+  parseReason?: string
+  parseDetail?: string | null
 }
 
 // ---------- Comments（md 文件 tab 评论） ----------

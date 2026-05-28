@@ -2,6 +2,17 @@
 
 记录在做主线任务时顺手发现的、跟当前任务无关的可疑问题。每条单行，按 `- [ ] / - [x]` 状态管理。
 
+**`[auto]` 标签语法**：在 `- [ ]` 后紧跟 `[auto] ` 可以让该 issue 出现在 VibeSpace「Dev Docs → 问题」面板的批量派工选项里——勾选若干 `[auto]` 行 → 按"⚡ 批量派工"→ 后端给每条单独开 worktree 跑 Claude，跑完进「队列」tab 等你 approve & merge 或 reject & 丢。不带 `[auto]` 的 issue 只能用末尾🤖按钮单条派。例：
+
+```
+- [ ] [auto] 把某某文件里的某某 typo 改掉（文件 xx.ts:42；上下文：…）
+- [ ] 改一个会牵动多模块的复杂问题（文件 …；上下文：… 不适合自动派，留人工）
+```
+
+默认 `[auto]` 列表为空——大哥手动标第一条试水。第一版没做 UI 改标签编辑器，要标 / 取消标都是直接编辑本文件。
+
+> **大任务自拆并行**：dev/active 下的常规大任务也可以自动拆成 N 个子任务并行跑——AI 在 plan.md 末尾加 `## 自拆与依赖` JSON 段即可（语法见 `.aimon/templates/subtasks-syntax.example.md`）。本面板只管 `dev/issues.md` 单条 issue 派工，**主任务子任务面板**在 Dev Docs 任务行展开后的子任务区域。
+
 - [x] 中文 IME composition 进行中按 Enter 会立即上屏并发送给 AI，导致中文打到一半就被误发（文件 packages/web/src/components/terminal/SessionView.tsx:320-326；上下文：onInputKey 仅判断 e.key === 'Enter'，未检查 e.nativeEvent.isComposing）
 - [x] migrate() 里 syncProjectsTable 每次都 DELETE FROM projects 触发 sessions 表 ON DELETE CASCADE 清空，导致 tsx-watch 重载一次就丢掉所有 sessions 行（文件 packages/server/src/db.ts:79-88；上下文：projects.json 存在时每次 migrate 都执行一次，stable 用 dist 不命中、dev tsx watch 命中。建议改成 UPSERT 避免级联）
 - [x] .codex/config.toml 看起来是每台机器各自的 codex CLI 本地配置（注释managed by aimon UI），不建议入库，建议加到 .gitignore（文件 .codex/config.toml；上下文：2026-04-23 打 tag 时顺手发现，当前未在 .gitignore 中）

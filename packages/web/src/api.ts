@@ -26,6 +26,10 @@ import type {
   DocFileKind,
   DocTaskSummary,
   IssuesPayload,
+  IssueJob,
+  BudgetStateSnapshot,
+  SubtaskGraph,
+  SubtaskOverview,
   MemoryPayload,
   MemoryRollbackSelection,
   ProjectDocsListResult,
@@ -684,11 +688,148 @@ export function deleteComment(
   )
 }
 
+// ---------- Task Budget（执行不打扰最小闭环） ----------
+
+export function listTaskBudgets(
+  projectId: string,
+): Promise<{ budgets: BudgetStateSnapshot[] }> {
+  return request<{ budgets: BudgetStateSnapshot[] }>(
+    `/api/projects/${encodeURIComponent(projectId)}/task-budgets`,
+  )
+}
+
 // ---------- Issues 档案 ----------
 
 export function listIssues(projectId: string): Promise<IssuesPayload> {
   return request<IssuesPayload>(
     `/api/projects/${encodeURIComponent(projectId)}/issues`,
+  )
+}
+
+// ---------- Issue Jobs（批量派工） ----------
+
+export interface BatchDispatchResultItem {
+  issueHash: string
+  ok: boolean
+  jobId?: string
+  reason?: string
+}
+
+export function batchDispatchIssues(
+  projectId: string,
+  issueHashes: string[],
+  maxConcurrency?: number,
+): Promise<{ results: BatchDispatchResultItem[] }> {
+  const body: Record<string, unknown> = { issueHashes }
+  if (maxConcurrency !== undefined) body.maxConcurrency = maxConcurrency
+  return request<{ results: BatchDispatchResultItem[] }>(
+    `/api/projects/${encodeURIComponent(projectId)}/issues/batch-dispatch`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export function listIssueJobs(projectId: string): Promise<{ jobs: IssueJob[] }> {
+  return request<{ jobs: IssueJob[] }>(
+    `/api/projects/${encodeURIComponent(projectId)}/issue-jobs`,
+  )
+}
+
+export function approveIssueJob(
+  projectId: string,
+  jobId: string,
+): Promise<{ ok: true }> {
+  return request<{ ok: true }>(
+    `/api/projects/${encodeURIComponent(projectId)}/issue-jobs/${encodeURIComponent(jobId)}/approve`,
+    { method: 'POST' },
+  )
+}
+
+export function rejectIssueJob(
+  projectId: string,
+  jobId: string,
+): Promise<{ ok: true }> {
+  return request<{ ok: true }>(
+    `/api/projects/${encodeURIComponent(projectId)}/issue-jobs/${encodeURIComponent(jobId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+// ---------- Task Subtasks（大任务自拆并行） ----------
+
+export function getTaskSubtasks(
+  projectId: string,
+  taskName: string,
+): Promise<SubtaskOverview> {
+  return request<SubtaskOverview>(
+    `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskName)}/subtasks`,
+  )
+}
+
+export interface DispatchSubtasksResult {
+  ok: true
+  graph: SubtaskGraph
+  firstWaveResults: Array<{
+    subtaskId: number
+    ok: boolean
+    runId?: string
+    reason?: string
+  }>
+  totalWaves: number
+}
+
+export function dispatchSubtasks(
+  projectId: string,
+  taskName: string,
+  opts?: { agent?: 'claude' | 'codex' | 'shell'; maxConcurrency?: number },
+): Promise<DispatchSubtasksResult> {
+  const body = opts ?? {}
+  return request<DispatchSubtasksResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskName)}/dispatch-subtasks`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export function approveAllSubtasks(
+  projectId: string,
+  taskName: string,
+): Promise<{
+  ok: boolean
+  merged: number[]
+  failed: Array<{ subtaskId: number; reason: string }>
+}> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskName)}/approve-all`,
+    { method: 'POST' },
+  )
+}
+
+export function approveSubtask(
+  projectId: string,
+  taskName: string,
+  subtaskId: number,
+): Promise<{ ok: true }> {
+  return request<{ ok: true }>(
+    `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskName)}/subtasks/${subtaskId}/approve`,
+    { method: 'POST' },
+  )
+}
+
+export function rejectSubtask(
+  projectId: string,
+  taskName: string,
+  subtaskId: number,
+): Promise<{ ok: true }> {
+  return request<{ ok: true }>(
+    `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskName)}/subtasks/${subtaskId}`,
+    { method: 'DELETE' },
   )
 }
 

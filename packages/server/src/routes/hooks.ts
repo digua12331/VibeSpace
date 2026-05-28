@@ -5,6 +5,12 @@ import { statusManager } from "../status.js";
 import { readMemory, type MemoryEntry } from "../memory-service.js";
 import { subagentRuns } from "../subagent-runs.js";
 import { serverLog } from "../log-bus.js";
+import {
+  budgetManager,
+  estimateTokens,
+  loadProjectBudgetLimits,
+} from "../task-budget.js";
+import { readStatusSummary } from "../task-status.js";
 
 /** Cap the injected memory header at ~10KB so it never drowns the system prompt. */
 const MEMORY_HEADER_MAX_BYTES = 10_000;
@@ -39,13 +45,38 @@ function buildMemoryHeader(auto: MemoryEntry[], manual: MemoryEntry[]): string {
   return out;
 }
 
+/** Per-task STATUS.md tail injection budget. Independent from MEMORY_HEADER_MAX_BYTES
+ *  so a long status log can't squeeze out project memory. */
+const STATUS_TAIL_MAX_BYTES = 3 * 1024;
+
 async function buildSessionStartAdditionalContext(sessionId: string): Promise<string> {
   const session = getSession(sessionId);
   if (!session) return "";
   const project = getProject(session.projectId);
   if (!project) return "";
   const payload = await readMemory(project.path);
-  return buildMemoryHeader(payload.auto, payload.manual);
+  const memoryHeader = buildMemoryHeader(payload.auto, payload.manual);
+
+  // When the session is bound to a task with prior STATUS.md activity, append
+  // the tail so the new session sees its predecessor's progress / cutoff
+  // reason / next-step suggestion without the user having to type "继续 X".
+  let statusBlock = "";
+  if (session.task) {
+    try {
+      const tail = await readStatusSummary(
+        project.path,
+        session.task,
+        STATUS_TAIL_MAX_BYTES,
+      );
+      if (tail) {
+        statusBlock = `\n\n# 上次执行状态（任务 \`${session.task}\` 自动接力，由 SessionStart hook 注入）\n\n${tail}\n`;
+      }
+    } catch {
+      /* status read is best-effort */
+    }
+  }
+
+  return memoryHeader + statusBlock;
 }
 
 const ClaudeHookSchema = z.object({
@@ -123,6 +154,55 @@ function extractTaskInvocation(payload: unknown): TaskInvocation | null {
   return { subagentType, description, prompt, toolUseId };
 }
 
+/**
+ * Make sure BudgetManager has a state entry for the task this session is
+ * bound to. The first call for a task lazy-loads its `.aimon/task-budget.json`
+ * limits; subsequent calls are O(1) (registerTask is idempotent).
+ */
+async function ensureBudgetForSession(sessionId: string): Promise<void> {
+  const session = getSession(sessionId);
+  if (!session?.task) return;
+  const existing = budgetManager.getState(session.task);
+  if (existing && existing.projectId === session.projectId) {
+    budgetManager.attachSession(session.task, sessionId);
+    return;
+  }
+  const proj = getProject(session.projectId);
+  if (!proj) return;
+  const limits = await loadProjectBudgetLimits(proj.path);
+  budgetManager.registerTask({
+    taskName: session.task,
+    projectId: session.projectId,
+    projectPath: proj.path,
+    limits,
+  });
+  budgetManager.attachSession(session.task, sessionId);
+}
+
+/**
+ * Approximate token cost of a single hook event. Uses input + output text
+ * length / 4 (see D4 in dev/active/执行不打扰最小闭环/context.md).
+ */
+function estimateHookTokens(payload: unknown): number {
+  if (!payload || typeof payload !== "object") return 0;
+  const p = payload as Record<string, unknown>;
+  const inputText = p.tool_input ? safeStringify(p.tool_input) : "";
+  const outputText = p.tool_response
+    ? safeStringify(p.tool_response)
+    : p.tool_output
+      ? safeStringify(p.tool_output)
+      : "";
+  return estimateTokens(inputText, outputText);
+}
+
+function safeStringify(v: unknown): string {
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export async function registerHookRoutes(app: FastifyInstance): Promise<void> {
   app.post("/api/hooks/claude", async (req) => {
     // Fail-open posture: any infra error → no decision field → claude proceeds.
@@ -142,6 +222,25 @@ export async function registerHookRoutes(app: FastifyInstance): Promise<void> {
         statusManager.handleClaudeHook(sessionId, event, payload);
       } catch (err) {
         app.log.warn({ err, sessionId, event }, "handleClaudeHook failed");
+      }
+
+      // Budget tracking: lazy-register the task on first hook event for a
+      // task-bound session, then route the event into BudgetManager. Errors
+      // here are non-fatal (the hook handler is fail-open).
+      try {
+        await ensureBudgetForSession(sessionId);
+        const session = getSession(sessionId);
+        if (session?.task) {
+          if (event === "PreToolUse") {
+            const tokens = estimateHookTokens(payload);
+            budgetManager.recordRound(session.task, tokens);
+          } else if (event === "PostToolUse") {
+            const tokens = estimateHookTokens(payload);
+            budgetManager.addTokens(session.task, tokens);
+          }
+        }
+      } catch (err) {
+        app.log.warn({ err, sessionId, event }, "budget tracking failed");
       }
 
       if (event === "SessionStart") {

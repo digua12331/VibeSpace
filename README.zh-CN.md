@@ -177,8 +177,12 @@ pnpm dev:web      # Vite on 127.0.0.1:8788
   批量采样 + 1 秒缓存。仅 PTY 直接子进程；AI 自己派生的孙进程暂不计。
 - **评论系统**：项目文件的内联评论。每条评论锚定到文件的特定区块，带有内容哈希
   以保持稳定性。评论可通过 API 创建、更新和删除，适用于代码审查和协作。
-- **问题跟踪**：从 `<项目>/dev/issues.md` 读取问题并在侧栏显示。问题可作为
-  开发工作流的一部分进行跟踪和管理。
+- **问题跟踪 + 批量派工**：从 `<项目>/dev/issues.md` 读取问题并在「Dev Docs → 问题」
+  面板显示。在 issue 行的 `- [ ]` 后紧跟 `[auto] ` 标签的条目可被勾选 + 批量派工
+  ——后端给每条单独开 worktree（git 临时副本）+ 起独立 Claude session 跑专门的
+  "消化 issue" prompt，跑完自动 typecheck/lint/smoke，全绿进「队列」tab 等用户
+  approve & merge 或 reject & 丢。不带 `[auto]` 的 issue 只能用末尾🤖按钮单条派。
+  并发上限 3，worktree 池上限 5，单 session 90 分钟硬熔断。**不自动 merge**。
 - **记忆系统**：读取和管理 `<项目>/dev/memory/auto.md` 和 `manual.md` 中的记忆
   条目。如需要可回滚记忆条目。该系统有助于跨会话和任务维护上下文。
 - **使用统计**：跟踪 Claude CLI 使用统计，包括扫描的文件数、扫描的条目数和跳过的
@@ -258,7 +262,11 @@ Copy-Item .aimon\global-skills\*.md $HOME\.aimon\skills\ -Force
 | POST | `/api/projects/:id/comments` | `{ path, anchor, body }` — 创建评论 |
 | PATCH | `/api/projects/:id/comments/:cid` | `{ path, body }` — 更新评论内容 |
 | DELETE | `/api/projects/:id/comments/:cid?path=` | 删除评论 |
-| GET  | `/api/projects/:id/issues` | 从 `dev/issues.md` 读取问题列表 |
+| GET  | `/api/projects/:id/issues` | 从 `dev/issues.md` 读取问题列表（含 `auto` / `hash` 字段） |
+| POST | `/api/projects/:id/issues/batch-dispatch` | `{ issueHashes, maxConcurrency? }` — 批量派工：每条 `[auto]` issue 开独立 worktree + Claude session |
+| GET  | `/api/projects/:id/issue-jobs` | 列出 issue-job 队列（含孤儿恢复） |
+| POST | `/api/projects/:id/issue-jobs/:jobId/approve` | merge worktree → 主分支并删 worktree（分支保留） |
+| DELETE | `/api/projects/:id/issue-jobs/:jobId` | 删 worktree（分支保留） |
 | GET  | `/api/projects/:id/memory` | 读取 `dev/memory/auto.md` 和 `manual.md` |
 | POST | `/api/projects/:id/memory/rollback` | `{ items: [{kind, line}] }` — 回滚记忆条目 |
 | GET  | `/api/usage/claude` | Claude 使用统计 |
