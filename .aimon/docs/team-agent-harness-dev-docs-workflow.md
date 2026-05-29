@@ -11,7 +11,7 @@
 
 默认行为：
 
-- Plan 阶段默认走 Claude / Gemini / Codex 三模型会审，Codex 综合定稿，主 Claude 白话化落盘；只停一次等大哥确认。**这是整条流程里唯一一次**。
+- Plan 阶段默认走 Claude / Codex 双模型会审，Codex 综合定稿，主 Claude 白话化落盘；只停一次等大哥确认。**这是整条流程里唯一一次**。
 - Context / Tasks / 执行阶段不等确认。Context 写完直接进 Tasks，不要发“context 写好了请确认”这种消息。
 - 技术细节自行决定。
 - 所有执行通过文件、日志、任务状态留痕。
@@ -47,8 +47,7 @@
 需求进入
   -> 判断量级
   -> Claude 整理本地 plan 草案 + 事实包
-  -> Gemini 补边界
-  -> Codex 综合定稿 plan.md
+  -> Codex 评审补边界 + 综合定稿 plan.md
   -> 主 Claude 白话化落盘
   -> 等大哥确认一次
   -> 写 context.md
@@ -68,19 +67,19 @@
 |---|---|---|
 | 极小 | 改文案、改标题、加一个无风险小菜单 | 直接做，不写 Dev Docs |
 | 小 | 1-2 个文件、无数据风险、用户说“按你想法做” | 可写 Dev Docs，但全程不停 |
-| 默认 | 新功能、bug、UI 改动、多文件、跨模块 | 完整 Dev Docs + 三模型会审，只在 plan 后确认一次 |
-| 高风险 | 数据库、核心流程、不可逆操作、并发 agent | 完整 Dev Docs + 三模型会审 + worktree + 更严格验收 |
+| 默认 | 新功能、bug、UI 改动、多文件、跨模块 | 完整 Dev Docs + 双模型会审，只在 plan 后确认一次 |
+| 高风险 | 数据库、核心流程、不可逆操作、并发 agent | 完整 Dev Docs + 双模型会审 + worktree + 更严格验收 |
 
 ### 2.2 Plan 阶段
 
-默认/高风险任务的 Plan 阶段按 `CLAUDE.md` 走“三模型会审”：
+默认/高风险任务的 Plan 阶段按 `CLAUDE.md` 走“双模型会审”：
 
 1. Claude 读 memory、按需 skill prompt 和代码，整理本地 plan 草案 + 事实包。
-2. Gemini 基于 Claude 草案查上游依赖、边界情况和长上下文遗漏。
-3. Codex 做结构评审，并综合用户需求、Claude 事实包、Gemini 评审输出最终 plan。
+2. Codex 基于 Claude 草案做结构评审，查上游依赖、边界情况和显著更简的写法。
+3. Codex 综合用户需求、Claude 事实包和自己的评审输出最终 plan。
 4. Claude 只做白话化兜底、术语翻译、大哥偏好核对和 Dev Docs 落盘。
 
-`plan.md` 末尾必须保留 `## 多模型 Plan 会审`，记录 Gemini、Codex、Claude 各自贡献；外部工具不可用时也要写清跳过原因。极小/小任务可以跳过多模型会审。
+`plan.md` 末尾必须保留 `## 多模型 Plan 会审`，记录 Codex、Claude 各自贡献；外部工具不可用时也要写清跳过原因。极小/小任务可以跳过多模型会审。
 
 Plan 文件**第一段必须是大哥摘要**，3-5 行白话：
 

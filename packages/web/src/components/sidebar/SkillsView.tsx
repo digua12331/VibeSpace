@@ -12,6 +12,10 @@ import {
   type LocalLibrary,
   type MarketSearchResult,
   type MarketSkill,
+  type McpServerEntry,
+  type McpServerListResult,
+  type PluginOverrideState,
+  type ProjectClaudeSettings,
   type SkillAgentType,
   type SkillCatalogResult,
   type SkillEntry,
@@ -55,6 +59,10 @@ export default function SkillsView() {
     useState<ClaudeGlobalSettings | null>(null)
   const [claudeSettingsState, setClaudeSettingsState] =
     useState<LoadState>('idle')
+  const [projectClaudeSettings, setProjectClaudeSettings] =
+    useState<ProjectClaudeSettings | null>(null)
+  const [mcpData, setMcpData] = useState<McpServerListResult | null>(null)
+  const [mcpState, setMcpState] = useState<LoadState>('idle')
   const [toggleBusy, setToggleBusy] = useState<string | null>(null)
 
   async function refreshCatalog(pid: string, ag: SkillAgentType) {
@@ -109,6 +117,26 @@ export default function SkillsView() {
     }
   }
 
+  async function refreshProjectClaudeSettings(pid: string) {
+    try {
+      const r = await api.getProjectClaudeSettings(pid)
+      setProjectClaudeSettings(r)
+    } catch {
+      setProjectClaudeSettings(null)
+    }
+  }
+
+  async function refreshMcpServers(pid: string) {
+    setMcpState('loading')
+    try {
+      const r = await api.listMcpServers(pid)
+      setMcpData(r)
+      setMcpState('ready')
+    } catch {
+      setMcpState('error')
+    }
+  }
+
   useEffect(() => {
     if (mode !== 'catalog') return
     if (agent !== 'claude-code') return
@@ -116,6 +144,18 @@ export default function SkillsView() {
       /* state already records the error */
     })
   }, [mode, agent])
+
+  useEffect(() => {
+    if (mode !== 'catalog') return
+    if (agent !== 'claude-code') return
+    if (!projectId) return
+    refreshProjectClaudeSettings(projectId).catch(() => {
+      /* state already records the error */
+    })
+    refreshMcpServers(projectId).catch(() => {
+      /* state already records the error */
+    })
+  }, [mode, agent, projectId])
 
   function isSkillOn(name: string): boolean {
     return claudeSettings?.skillOverrides?.[name] !== 'off'
@@ -181,6 +221,102 @@ export default function SkillsView() {
         { enabledPlugins: { [key]: !cur } },
         { plugin: key, nextState: !cur },
       )
+    } finally {
+      setToggleBusy(null)
+    }
+  }
+
+  function pluginOverrideStateFor(key: string): PluginOverrideState {
+    const v = projectClaudeSettings?.enabledPlugins?.[key]
+    if (v === true) return 'force-on'
+    if (v === false) return 'force-off'
+    return 'inherit'
+  }
+
+  function skillOverrideStateFor(name: string): PluginOverrideState {
+    // skills only have "off" or absent; project-scope off = force-off, absent = inherit.
+    // No project-level "force-on" because skillOverrides has no explicit 'on' value.
+    const v = projectClaudeSettings?.skillOverrides?.[name]
+    if (v === 'off') return 'force-off'
+    return 'inherit'
+  }
+
+  async function applyProjectClaudePatch(
+    action: string,
+    patch: ClaudeSettingsPatch,
+    meta: Record<string, unknown>,
+  ): Promise<void> {
+    if (!projectId) return
+    try {
+      const next = await logAction(
+        'project-claude-settings',
+        action,
+        () => api.patchProjectClaudeSettings(projectId, patch),
+        { projectId, meta },
+      )
+      setProjectClaudeSettings(next)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      await alertDialog(msg, { title: '写入项目级 settings.json 失败', variant: 'danger' })
+    }
+  }
+
+  async function onSetPluginOverride(
+    key: string,
+    next: PluginOverrideState,
+  ): Promise<void> {
+    if (toggleBusy) return
+    setToggleBusy(`plugin-override:${key}`)
+    try {
+      // null deletes the entry → reverts to "follow global".
+      const value: boolean | null =
+        next === 'inherit' ? null : next === 'force-on' ? true : false
+      await applyProjectClaudePatch(
+        'set-plugin-override',
+        { enabledPlugins: { [key]: value } },
+        { plugin: key, nextState: next },
+      )
+    } finally {
+      setToggleBusy(null)
+    }
+  }
+
+  async function onSetSkillOverride(
+    name: string,
+    next: PluginOverrideState,
+  ): Promise<void> {
+    if (toggleBusy) return
+    if (next === 'force-on') {
+      // skillOverrides has no explicit 'on' — silently treat as inherit.
+      next = 'inherit'
+    }
+    setToggleBusy(`skill-override:${name}`)
+    try {
+      const value: 'off' | null = next === 'force-off' ? 'off' : null
+      await applyProjectClaudePatch(
+        'set-skill-override',
+        { skillOverrides: { [name]: value } },
+        { skill: name, nextState: next },
+      )
+    } finally {
+      setToggleBusy(null)
+    }
+  }
+
+  async function onToggleMcp(name: string, nextEnabled: boolean): Promise<void> {
+    if (!projectId || toggleBusy) return
+    setToggleBusy(`mcp:${name}`)
+    try {
+      const next = await logAction(
+        'claude-settings',
+        'toggle-mcp',
+        () => api.toggleMcpServer(projectId, name, nextEnabled),
+        { projectId, meta: { name, nextEnabled } },
+      )
+      setMcpData(next)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      await alertDialog(msg, { title: '切换 MCP 失败', variant: 'danger' })
     } finally {
       setToggleBusy(null)
     }
@@ -659,6 +795,8 @@ export default function SkillsView() {
                       agent === 'claude-code' &&
                       claudeSettingsState === 'ready' &&
                       !claudeSettings?.parseError
+                    const showOverride =
+                      showToggle && projectClaudeSettings != null
                     return (
                       <div className="flex items-center gap-1.5">
                         {showToggle && (
@@ -668,6 +806,14 @@ export default function SkillsView() {
                             onClick={() => onToggleSkill(s.name)}
                             titleOn="已启用（点击关闭：把描述从系统提示中移除）"
                             titleOff="已关闭（点击启用：恢复描述注入）"
+                          />
+                        )}
+                        {showOverride && (
+                          <OverrideButtons
+                            state={skillOverrideStateFor(s.name)}
+                            allowForceOn={false}
+                            disabled={toggleBusy != null || bulkBusy != null}
+                            onChange={(next) => onSetSkillOverride(s.name, next)}
                           />
                         )}
                         <button
@@ -736,9 +882,23 @@ export default function SkillsView() {
                     <PluginsSection
                       plugins={claudeSettings?.enabledPlugins ?? {}}
                       onToggle={onTogglePlugin}
+                      overrideStateFor={
+                        projectClaudeSettings ? pluginOverrideStateFor : undefined
+                      }
+                      onSetOverride={
+                        projectClaudeSettings ? onSetPluginOverride : undefined
+                      }
                       disabled={toggleBusy != null || bulkBusy != null}
                     />
                   )}
+                {agent === 'claude-code' && projectId && (
+                  <McpServersSection
+                    data={mcpData}
+                    state={mcpState}
+                    onToggle={onToggleMcp}
+                    disabled={toggleBusy != null || bulkBusy != null}
+                  />
+                )}
                 <LibrarySection
                   library={library}
                   state={libState}
@@ -1400,10 +1560,20 @@ function Toggle({ on, disabled, onClick, titleOn, titleOff }: ToggleProps) {
 interface PluginsSectionProps {
   plugins: Record<string, boolean>
   onToggle: (key: string) => void
+  /** When present (project picked + project settings loaded), each row shows
+   *  an extra three-state override group: 跟随全局 / 项目强制开 / 项目强制关. */
+  overrideStateFor?: (key: string) => PluginOverrideState
+  onSetOverride?: (key: string, next: PluginOverrideState) => void
   disabled: boolean
 }
 
-function PluginsSection({ plugins, onToggle, disabled }: PluginsSectionProps) {
+function PluginsSection({
+  plugins,
+  onToggle,
+  overrideStateFor,
+  onSetOverride,
+  disabled,
+}: PluginsSectionProps) {
   const entries = Object.entries(plugins).sort(([a], [b]) => a.localeCompare(b))
   return (
     <section className="border-b border-border/40">
@@ -1449,7 +1619,7 @@ function PluginsSection({ plugins, onToggle, disabled }: PluginsSectionProps) {
                     </span>
                   </div>
                 </div>
-                <div className="shrink-0">
+                <div className="shrink-0 flex items-center gap-1.5">
                   <Toggle
                     on={on}
                     disabled={disabled}
@@ -1457,10 +1627,176 @@ function PluginsSection({ plugins, onToggle, disabled }: PluginsSectionProps) {
                     titleOn="已启用（点击关闭：将连同此插件提供的 skill 和 agent 一并停用）"
                     titleOff="已关闭（点击启用：恢复此插件提供的所有能力）"
                   />
+                  {overrideStateFor && onSetOverride && (
+                    <OverrideButtons
+                      state={overrideStateFor(key)}
+                      allowForceOn={true}
+                      disabled={disabled}
+                      onChange={(next) => onSetOverride(key, next)}
+                    />
+                  )}
                 </div>
               </li>
             )
           })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Three-state button group for per-project plugin/skill overrides.
+ *  - `inherit`: follow the global setting (no project-scope entry)
+ *  - `force-on`: project-scope = true (only for plugins; skills don't have an
+ *    explicit "on" since skillOverrides only ever stores `'off'`)
+ *  - `force-off`: project-scope = false / 'off'
+ *
+ * `allowForceOn=false` hides the middle button so the skill case still feels
+ * symmetric with the toggle column above it.
+ */
+interface OverrideButtonsProps {
+  state: PluginOverrideState
+  allowForceOn: boolean
+  disabled: boolean
+  onChange: (next: PluginOverrideState) => void
+}
+
+function OverrideButtons({
+  state,
+  allowForceOn,
+  disabled,
+  onChange,
+}: OverrideButtonsProps) {
+  const btn = (
+    label: string,
+    next: PluginOverrideState,
+    title: string,
+    accent: string,
+  ): React.ReactNode => {
+    const active = state === next
+    return (
+      <button
+        key={next}
+        onClick={() => onChange(next)}
+        disabled={disabled || active}
+        title={title}
+        className={`fluent-btn text-[10px] px-1.5 py-0.5 rounded border transition-colors disabled:opacity-60 ${
+          active
+            ? `${accent} text-fg`
+            : 'border-border text-muted hover:text-fg hover:bg-white/[0.04]'
+        }`}
+      >
+        {label}
+      </button>
+    )
+  }
+  return (
+    <div className="inline-flex items-center gap-0.5" title="项目级覆盖">
+      {btn(
+        '跟随',
+        'inherit',
+        '跟随全局设置（删除项目级覆盖）',
+        'border-sky-700/40 bg-sky-500/10',
+      )}
+      {allowForceOn &&
+        btn(
+          '项目开',
+          'force-on',
+          '仅在本项目强制启用（写入项目级 settings.json）',
+          'border-emerald-700/40 bg-emerald-500/15',
+        )}
+      {btn(
+        '项目关',
+        'force-off',
+        '仅在本项目强制关闭（写入项目级 settings.json）',
+        'border-rose-700/40 bg-rose-500/15',
+      )}
+    </div>
+  )
+}
+
+/**
+ * "MCP servers" section — combined view of the user-global
+ * `~/.claude.json.mcpServers` and the per-project
+ * `<projectPath>/.mcp.json.mcpServers`, with one toggle per entry that flips
+ * the per-project disable flag in `~/.claude.json.projects.<absPath>
+ * .disabledMcpServers`. Turning OFF a project-scope entry also reverse-removes
+ * the stale auto-injected `.mcp.json` line so the next session won't see it.
+ */
+interface McpServersSectionProps {
+  data: McpServerListResult | null
+  state: LoadState
+  onToggle: (name: string, nextEnabled: boolean) => void
+  disabled: boolean
+}
+
+function McpServersSection({
+  data,
+  state,
+  onToggle,
+  disabled,
+}: McpServersSectionProps) {
+  return (
+    <section className="border-b border-border/40">
+      <div className="px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-subtle font-medium flex items-center gap-2">
+        <span>MCP servers</span>
+        <span className="text-[10px] text-muted normal-case tracking-normal font-normal truncate">
+          关掉的 MCP 仅在本项目下次新开 Claude 会话生效；已开着的终端不受影响
+        </span>
+      </div>
+      {state === 'loading' && (
+        <div className="px-3 py-2 text-[12px] text-muted">扫描中…</div>
+      )}
+      {state === 'error' && (
+        <div className="px-3 py-2 text-[12px] text-rose-300">扫描失败</div>
+      )}
+      {state === 'ready' && (data?.servers ?? []).length === 0 && (
+        <div className="px-3 py-2 text-[12px] text-muted">暂无 MCP server</div>
+      )}
+      {state === 'ready' && (data?.servers ?? []).length > 0 && (
+        <ul className="pb-2">
+          {data!.servers.map((s: McpServerEntry) => (
+            <li
+              key={`${s.scope}:${s.name}`}
+              className="px-3 py-1.5 hover:bg-white/[0.03] flex items-start gap-2"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-[12.5px] flex items-center gap-1.5">
+                  <span className="truncate" title={s.name}>
+                    {s.name}
+                  </span>
+                  <span
+                    className="text-[9px] px-1 rounded border border-border bg-white/[0.04] text-muted"
+                    title={
+                      s.scope === 'global'
+                        ? '来自 ~/.claude.json 的全局配置'
+                        : '来自 <项目>/.mcp.json 的项目配置（多数由 VibeSpace 自动写入）'
+                    }
+                  >
+                    {s.scope === 'global' ? '全局' : '项目'}
+                  </span>
+                </div>
+                {(s.command || (s.args && s.args.length > 0)) && (
+                  <div
+                    className="text-[10.5px] text-subtle truncate"
+                    title={`${s.command ?? ''} ${(s.args ?? []).join(' ')}`}
+                  >
+                    {s.command ?? ''} {(s.args ?? []).join(' ')}
+                  </div>
+                )}
+              </div>
+              <div className="shrink-0">
+                <Toggle
+                  on={s.enabled}
+                  disabled={disabled}
+                  onClick={() => onToggle(s.name, !s.enabled)}
+                  titleOn="已启用 — 点击关闭：仅在本项目下次新开 Claude 时不再启动该 MCP"
+                  titleOff="已关闭 — 点击启用：仅在本项目下次新开 Claude 时启动该 MCP"
+                />
+              </div>
+            </li>
+          ))}
         </ul>
       )}
     </section>

@@ -71,6 +71,9 @@ import type {
   DeleteLibrarySkillResult,
   ClaudeGlobalSettings,
   ClaudeSettingsPatch,
+  ProjectClaudeSettings,
+  McpServerListResult,
+  McpServerToggleResult,
 } from './types'
 
 const BASE: string =
@@ -1092,6 +1095,43 @@ export function patchClaudeSettings(
   return request<ClaudeGlobalSettings>(
     '/api/claude-settings',
     jsonInit('PUT', patch),
+  )
+}
+
+export function getProjectClaudeSettings(
+  projectId: string,
+): Promise<ProjectClaudeSettings> {
+  return request<ProjectClaudeSettings>(
+    `/api/project-claude-settings?projectId=${encodeURIComponent(projectId)}`,
+  )
+}
+
+export function patchProjectClaudeSettings(
+  projectId: string,
+  patch: ClaudeSettingsPatch,
+): Promise<ProjectClaudeSettings> {
+  return request<ProjectClaudeSettings>(
+    '/api/project-claude-settings',
+    jsonInit('PUT', { projectId, ...patch }),
+  )
+}
+
+export function listMcpServers(
+  projectId: string,
+): Promise<McpServerListResult> {
+  return request<McpServerListResult>(
+    `/api/mcp-servers?projectId=${encodeURIComponent(projectId)}`,
+  )
+}
+
+export function toggleMcpServer(
+  projectId: string,
+  name: string,
+  enabled: boolean,
+): Promise<McpServerToggleResult> {
+  return request<McpServerToggleResult>(
+    '/api/mcp-servers/toggle',
+    jsonInit('PUT', { projectId, name, enabled }),
   )
 }
 

@@ -999,12 +999,61 @@ export interface ClaudeGlobalSettings {
 /**
  * Patch body for `PUT /api/claude-settings`.
  * `skillOverrides[name] = 'off'` → write entry; `= null` → delete entry.
- * `enabledPlugins[key] = boolean` → set value.
+ * `enabledPlugins[key] = boolean` → set value; `= null` → delete entry
+ * (used by project-scoped "follow global" state — at the global route only
+ * `boolean` is accepted via zod, but the shared type allows null because
+ * the project-scoped route reuses the same patch contract).
  * At least one of the two maps must be provided.
  */
 export interface ClaudeSettingsPatch {
   skillOverrides?: Record<string, 'off' | null>
-  enabledPlugins?: Record<string, boolean>
+  enabledPlugins?: Record<string, boolean | null>
+}
+
+/**
+ * Per-project `<projectPath>/.claude/settings.json` projection.
+ * Claude Code's settings hierarchy lets these override `~/.claude/settings.json`
+ * on a per-key basis (Managed > Local > **Project** > User).
+ */
+export interface ProjectClaudeSettings {
+  skillOverrides: Record<string, 'off'>
+  enabledPlugins: Record<string, boolean>
+  path: string
+  exists: boolean
+  parseError?: string
+}
+
+/** Patch body for `PUT /api/project-claude-settings`. */
+export interface ProjectClaudeSettingsPatch extends ClaudeSettingsPatch {
+  projectId: string
+}
+
+/** Three-state UI for plugin/skill overrides:
+ *  - `inherit`: follow global (delete the project-scope entry)
+ *  - `force-on`: project-scope = true / no `off`
+ *  - `force-off`: project-scope = false / `off` */
+export type PluginOverrideState = 'inherit' | 'force-on' | 'force-off'
+
+/** One MCP server entry, scoped to a given project context. */
+export interface McpServerEntry {
+  name: string
+  scope: 'global' | 'project'
+  enabled: boolean
+  command?: string
+  args?: string[]
+}
+
+/** Response of `GET /api/mcp-servers?projectId=X`. */
+export interface McpServerListResult {
+  servers: McpServerEntry[]
+  disabled: string[]
+  projectPath: string
+}
+
+/** Response of `PUT /api/mcp-servers/toggle` — same shape plus a hint about
+ *  whether a stale auto-injected `.mcp.json` entry got cleaned up. */
+export interface McpServerToggleResult extends McpServerListResult {
+  staleRemoved?: boolean
 }
 
 // ---------- Hub (总控台) ----------

@@ -2,12 +2,26 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-function claudeDir(): string {
-  return join(homedir(), ".claude");
-}
+/**
+ * Scope selector — global = `~/.claude/settings.json` (user-level), project =
+ * `<projectPath>/.claude/settings.json` (per-project shared, in repo).
+ *
+ * Claude Code's official settings hierarchy is:
+ *   Managed > Local (`.local.json`) > Project > User
+ * `enabledPlugins` / `skillOverrides` can override per-key from project to user.
+ * That's exactly the override scope this module exposes.
+ */
+export type SettingsScope =
+  | { kind: "global" }
+  | { kind: "project"; projectPath: string };
 
-function settingsPath(): string {
-  return join(claudeDir(), "settings.json");
+const DEFAULT_SCOPE: SettingsScope = { kind: "global" };
+
+function resolveSettingsPath(scope: SettingsScope): string {
+  if (scope.kind === "global") {
+    return join(homedir(), ".claude", "settings.json");
+  }
+  return join(scope.projectPath, ".claude", "settings.json");
 }
 
 export interface ClaudeSettingsRead {
@@ -24,16 +38,21 @@ export interface ClaudeSettingsPatch {
    * line of defense).
    */
   skillOverrides?: Record<string, "off" | null>;
-  /** Boolean toggles. Plugin entries are deleted only via Claude Code's own uninstall flow, not by this patch. */
-  enabledPlugins?: Record<string, boolean>;
+  /**
+   * `true` / `false` writes the toggle; `null` deletes the key (used by
+   * "follow global" state in project-scoped settings). Anything else throws.
+   * Plugin entries are deleted only via Claude Code's own uninstall flow,
+   * never by this patch other than via the explicit `null`.
+   */
+  enabledPlugins?: Record<string, boolean | null>;
 }
 
-export function getClaudeSettingsPath(): string {
-  return settingsPath();
+export function getClaudeSettingsPath(scope: SettingsScope = DEFAULT_SCOPE): string {
+  return resolveSettingsPath(scope);
 }
 
-export function readClaudeSettings(): ClaudeSettingsRead {
-  const path = settingsPath();
+export function readClaudeSettings(scope: SettingsScope = DEFAULT_SCOPE): ClaudeSettingsRead {
+  const path = resolveSettingsPath(scope);
   if (!existsSync(path)) {
     return { settings: {}, exists: false };
   }
@@ -66,13 +85,17 @@ export function readClaudeSettings(): ClaudeSettingsRead {
  *  5. fs.renameSync onto the real path
  *
  * Throws on JSON parse error from disk (don't silently overwrite a corrupted file).
+ * Works identically for global and project scope — only the resolved path differs.
  */
-export function patchClaudeSettings(patch: ClaudeSettingsPatch): ClaudeSettingsRead {
-  const path = settingsPath();
+export function patchClaudeSettings(
+  patch: ClaudeSettingsPatch,
+  scope: SettingsScope = DEFAULT_SCOPE,
+): ClaudeSettingsRead {
+  const path = resolveSettingsPath(scope);
   const dir = dirname(path);
   mkdirSync(dir, { recursive: true });
 
-  const fresh = readClaudeSettings();
+  const fresh = readClaudeSettings(scope);
   if (fresh.parseError) {
     throw new Error(`无法解析现有 settings.json：${fresh.parseError}（拒绝覆盖损坏的配置文件）`);
   }
@@ -103,12 +126,19 @@ export function patchClaudeSettings(patch: ClaudeSettingsPatch): ClaudeSettingsR
       ? { ...(next.enabledPlugins as Record<string, unknown>) }
       : {}) as Record<string, unknown>;
     for (const [k, v] of Object.entries(patch.enabledPlugins)) {
-      if (typeof v !== "boolean") {
-        throw new Error(`enabledPlugins[${k}] 取值非法：必须是 boolean`);
+      if (v === null) {
+        delete cur[k];
+      } else if (typeof v === "boolean") {
+        cur[k] = v;
+      } else {
+        throw new Error(`enabledPlugins[${k}] 取值非法：必须是 boolean 或 null`);
       }
-      cur[k] = v;
     }
-    next.enabledPlugins = cur;
+    if (Object.keys(cur).length === 0) {
+      delete next.enabledPlugins;
+    } else {
+      next.enabledPlugins = cur;
+    }
   }
 
   const tmp = join(dir, "settings.json.tmp");

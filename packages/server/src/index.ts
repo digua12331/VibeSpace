@@ -45,6 +45,8 @@ import { registerOpenspecRoutes } from "./routes/openspec.js";
 import { registerExternalToolsRoutes } from "./routes/external-tools.js";
 import { registerAppSettingsRoutes } from "./routes/app-settings.js";
 import { registerClaudeSettingsRoutes } from "./routes/claude-settings.js";
+import { registerProjectClaudeSettingsRoutes } from "./routes/project-claude-settings.js";
+import { registerMcpServersRoutes } from "./routes/mcp-servers.js";
 import { registerHubRoutes } from "./routes/hub.js";
 import { getHubToken } from "./hub-token.js";
 import { ensureHubWorkspace } from "./hub-workspace.js";
@@ -230,6 +232,8 @@ async function main(): Promise<void> {
   await registerExternalToolsRoutes(app);
   await registerAppSettingsRoutes(app);
   await registerClaudeSettingsRoutes(app);
+  await registerProjectClaudeSettingsRoutes(app);
+  await registerMcpServersRoutes(app);
   await registerHubRoutes(app);
   registerWsHub(app);
 

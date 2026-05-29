@@ -25,6 +25,7 @@ import { serverLog } from "./log-bus.js";
 import { HUB_PROJECT_ID } from "./hub-project.js";
 import { getHubToken } from "./hub-token.js";
 import { getHubWorkspaceDir } from "./hub-workspace.js";
+import { isMcpDisabledForProject } from "./claude-json-service.js";
 
 const MCP_KEY = "browser-use";
 const HUB_MCP_KEY = "aimon-hub";
@@ -107,6 +108,59 @@ async function injectClaude(
   sessionId: string,
   projectId?: string,
 ): Promise<void> {
+  // Per-project disable: skip injection AND reverse-remove any stale entry from
+  // `<projectPath>/.mcp.json`. Without the reverse-remove, toggling off in the
+  // UI wouldn't actually shut down the MCP server on next session (`.mcp.json`
+  // is what Claude Code reads).
+  if (isMcpDisabledForProject(projectPath, MCP_KEY)) {
+    const target = join(projectPath, ".mcp.json");
+    const targetForLog = target.replace(/\\/g, "/");
+    const t0 = Date.now();
+    serverLog("info", "installer", "skip-mcp-browseruse 开始", {
+      projectId,
+      sessionId,
+      meta: {
+        agent: "claude",
+        configPath: targetForLog,
+        reason: `disabledMcpServers contains '${MCP_KEY}'`,
+      },
+    });
+    try {
+      const r = await removeFromMcpJson(projectPath, MCP_KEY);
+      serverLog(
+        "info",
+        "installer",
+        `skip-mcp-browseruse 成功 (${Date.now() - t0}ms)`,
+        {
+          projectId,
+          sessionId,
+          meta: {
+            agent: "claude",
+            configPath: targetForLog,
+            staleEntryRemoved: r.changed,
+          },
+        },
+      );
+    } catch (err) {
+      const e = err as Error;
+      serverLog(
+        "error",
+        "installer",
+        `skip-mcp-browseruse 失败: ${e.message}`,
+        {
+          projectId,
+          sessionId,
+          meta: {
+            agent: "claude",
+            configPath: targetForLog,
+            error: { name: e.name, message: e.message, stack: e.stack },
+          },
+        },
+      );
+    }
+    return;
+  }
+
   const target = join(projectPath, ".mcp.json");
   const targetForLog = target.replace(/\\/g, "/");
   const t0 = Date.now();
@@ -176,6 +230,55 @@ async function injectClaude(
       meta: { agent: "claude", configPath: targetForLog, changed: true },
     },
   );
+}
+
+/**
+ * Reverse-cleanup: remove a single MCP entry from `<projectPath>/.mcp.json`
+ * if present, preserve every other entry intact. Idempotent — returns
+ * `{changed:false}` when there's nothing to do (file absent / entry not
+ * present / parse error).
+ *
+ * Called by `injectClaude` when project-level disabledMcpServers contains the
+ * key, AND by `PUT /api/mcp-servers/toggle` when the UI flips the toggle
+ * off — both share the same teardown.
+ */
+export async function removeFromMcpJson(
+  projectPath: string,
+  mcpName: string,
+): Promise<{ changed: boolean }> {
+  const target = join(projectPath, ".mcp.json");
+
+  let existing: Record<string, unknown> = {};
+  try {
+    const raw = await readFile(target, "utf8");
+    if (raw.trim()) existing = JSON.parse(raw) as Record<string, unknown>;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { changed: false };
+    }
+    // Parse error / other read failure: don't touch the file; let caller decide.
+    throw err;
+  }
+
+  const servers = (existing.mcpServers ?? {}) as Record<string, ClaudeMcpEntry>;
+  if (!(mcpName in servers)) {
+    return { changed: false };
+  }
+
+  const nextServers: Record<string, ClaudeMcpEntry> = { ...servers };
+  delete nextServers[mcpName];
+  const next =
+    Object.keys(nextServers).length === 0
+      ? (() => {
+          const { mcpServers: _, ...rest } = existing;
+          return rest;
+        })()
+      : { ...existing, mcpServers: nextServers };
+
+  const tmp = target + ".aimon-tmp";
+  await writeFile(tmp, JSON.stringify(next, null, 2) + "\n", "utf8");
+  await rename(tmp, target);
+  return { changed: true };
 }
 
 function deepEqualEntry(a: ClaudeMcpEntry, b: ClaudeMcpEntry): boolean {
