@@ -14,6 +14,7 @@ import type { AgentKind, DocTaskSummary } from '../../types'
 // StartSessionMenu / TerminalHost 不动：前者首屏就要拉 catalog（点击下拉立刻
 // 弹出），后者负责终端 keep-alive。
 const FilePreview = lazy(() => import('../FilePreview'))
+const CommitDetailView = lazy(() => import('../CommitDetailView'))
 
 function FileTabFallback() {
   return (
@@ -199,10 +200,13 @@ export default function EditorArea() {
         <div className="flex items-stretch flex-1 min-w-0 overflow-x-auto">
         {openFiles.map((f) => {
           const active = activeTabKind === 'file' && f.key === activeFileKey
-          const basename = f.path.split('/').pop() ?? f.path
-          const title = f.commitSha
-            ? `${f.path} @ ${f.commitSha.slice(0, 7)}`
-            : f.path
+          const isCommit = f.kind === 'commit'
+          const basename = isCommit ? '提交' : f.path.split('/').pop() ?? f.path
+          const title = isCommit
+            ? `提交 @ ${f.commitSha?.slice(0, 7) ?? ''}`
+            : f.commitSha
+              ? `${f.path} @ ${f.commitSha.slice(0, 7)}`
+              : f.path
           return (
             <div
               key={`f:${f.key}`}
@@ -217,7 +221,7 @@ export default function EditorArea() {
                   : 'bg-transparent text-muted hover:text-fg hover:bg-white/[0.04]'
               }`}
             >
-              <span className="text-[12px] opacity-70">📄</span>
+              <span className="text-[12px] opacity-70">{isCommit ? '🔵' : '📄'}</span>
               <span className="font-mono truncate max-w-[220px]">{basename}</span>
               {f.commitSha && (
                 <span className="text-[10px] font-mono text-subtle">
@@ -344,14 +348,22 @@ export default function EditorArea() {
         {activeFile ? (
           <div className="absolute inset-0 flex flex-col bg-bg">
             <Suspense fallback={<FileTabFallback />}>
-              <FilePreview
-                key={activeFile.key}
-                projectId={activeFile.projectId}
-                path={activeFile.path}
-                ref={activeFile.ref}
-                from={activeFile.from}
-                to={activeFile.to}
-              />
+              {activeFile.kind === 'commit' && activeFile.commitSha ? (
+                <CommitDetailView
+                  key={activeFile.key}
+                  projectId={activeFile.projectId}
+                  sha={activeFile.commitSha}
+                />
+              ) : (
+                <FilePreview
+                  key={activeFile.key}
+                  projectId={activeFile.projectId}
+                  path={activeFile.path}
+                  ref={activeFile.ref}
+                  from={activeFile.from}
+                  to={activeFile.to}
+                />
+              )}
             </Suspense>
           </div>
         ) : null}

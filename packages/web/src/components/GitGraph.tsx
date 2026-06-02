@@ -200,23 +200,13 @@ export default function GitGraph({ projectId }: Props) {
   const graphWidth = GRAPH_LEFT_PADDING * 2 + (maxLane + 1) * LANE_WIDTH
 
   function onCommitClick(c: GraphCommit) {
-    // Open a synthetic file entry to show the commit's root README-ish. Better:
-    // we just set selectedChange to the commit and the user can then click files
-    // from the ChangesList's expanded commit section. For now, toggle preview by
-    // opening the commit itself as a virtual file is not ideal. Minimal behavior:
-    // just signal the selection so users see the sha. Keep it a no-op otherwise.
-    const sel: SelectedChange = {
-      path: c.subject || c.shortSha,
-      status: 'M',
-      ref: c.sha,
-      commitSha: c.sha,
-      ...(c.parents[0] ? { from: c.parents[0], to: c.sha } : {}),
-    }
+    // 点提交：在编辑区开一个「提交详情」标签（kind:'commit'），由 CommitDetailView
+    // 拉 getProjectCommit 列出本次改动文件、点文件就地看 diff。selectChange 只用于
+    // 让本行高亮（按 commitSha 比对），不再把 path 塞成 subject。
+    const sel: SelectedChange = { path: c.sha, ref: c.sha, commitSha: c.sha }
     selectChange(sel)
+    openFile({ projectId, path: c.sha, kind: 'commit', commitSha: c.sha })
   }
-  // Keep openFile referenced so eslint-unused-vars doesn't trigger — reserved
-  // for a future "open commit as file list" flow.
-  void openFile
 
   if (loading && commits.length === 0) {
     return <div className="p-4 text-xs text-muted">加载图表…</div>

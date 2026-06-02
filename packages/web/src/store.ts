@@ -4,6 +4,7 @@ import { aimonWS } from './ws'
 import { isPageFocused, notifyWaitingInput, type NotificationPermissionState } from './notify'
 import type {
   ChangesResponse,
+  CommitDetail,
   DocTaskSummary,
   ErrorPatternAlert,
   GitRef,
@@ -64,7 +65,7 @@ export type Activity = (typeof ACTIVITIES)[number]
 /** Special system project id for 总控台 (D1 翻转, 总控台体验对齐 plan). */
 export const HUB_PROJECT_ID = '__hub__'
 
-export type EditorTabKind = 'file'
+export type EditorTabKind = 'file' | 'commit'
 
 export interface EditorTab {
   /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}:${kind}` */
@@ -301,6 +302,9 @@ interface State {
   /** GitGraph 按 projectId 缓存的快照。 */
   projectGraphCache: Record<string, GraphCommit[]>
   setProjectGraphCache: (projectId: string, data: GraphCommit[]) => void
+  /** 提交详情按 "projectId → sha" 分桶缓存（点提交看改了哪些文件用，SWR）。 */
+  commitDetailCache: Record<string, Record<string, CommitDetail>>
+  setCommitDetailCache: (projectId: string, sha: string, data: CommitDetail) => void
   /** Slash 命令按 "<projectId>|<agent>" 缓存；ensureSlashCommands 负责拉取 + dedupe。
    * 多个 SessionView 同时 mount 时不会并发拉同一份；命中缓存直接返回，省掉重复请求。 */
   slashCommandsCache: Record<string, readonly string[]>
@@ -448,6 +452,14 @@ export const useStore = create<State>((set, get) => ({
   setProjectGraphCache: (projectId, data) =>
     set((st) => ({
       projectGraphCache: { ...st.projectGraphCache, [projectId]: data },
+    })),
+  commitDetailCache: {},
+  setCommitDetailCache: (projectId, sha, data) =>
+    set((st) => ({
+      commitDetailCache: {
+        ...st.commitDetailCache,
+        [projectId]: { ...(st.commitDetailCache[projectId] ?? {}), [sha]: data },
+      },
     })),
   slashCommandsCache: {},
   ensureSlashCommands: async (projectId, agent) => {
