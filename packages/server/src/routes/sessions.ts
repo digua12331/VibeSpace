@@ -206,7 +206,7 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
       const s = getSession(id);
       if (!s) return reply.code(404).send({ error: "not_found" });
       if (ptyManager.has(id)) {
-        ptyManager.kill(id);
+        ptyManager.kill(id, "user-stop");
       }
       endSession(id, "stopped", null);
 
@@ -275,7 +275,7 @@ export async function registerSessionRoutes(app: FastifyInstance): Promise<void>
         });
       }
       if (ptyManager.has(id)) {
-        ptyManager.kill(id);
+        ptyManager.kill(id, "user-restart");
         endSession(id, "stopped", null);
       }
       return startSession(old.projectId, old.agent, reply);

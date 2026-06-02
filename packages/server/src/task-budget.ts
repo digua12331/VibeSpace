@@ -126,7 +126,7 @@ export class BudgetManager extends EventEmitter {
     // 1. Kill all attached PTY sessions — the actual "stop hand" action.
     for (const sid of [...st.sessionIds]) {
       try {
-        ptyManager.kill(sid);
+        ptyManager.kill(sid, "budget-cutoff");
       } catch (err) {
         serverLog(
           "warn",

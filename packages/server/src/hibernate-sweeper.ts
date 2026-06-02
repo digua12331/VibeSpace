@@ -91,7 +91,7 @@ function hibernateOne(id: string, projectId: string, idleMs: number): void {
     // Drop activity maps — the new process post-wake gets a clean slate.
     lastInputAt.delete(id);
     lastOutputAt.delete(id);
-    ptyManager.kill(id);
+    ptyManager.kill(id, "hibernate-auto");
     serverLog(
       "info",
       "session",

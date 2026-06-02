@@ -79,6 +79,15 @@ async function main(): Promise<void> {
     for (const s of listSessions()) {
       if (s.endedAt == null && s.status !== "hibernated") {
         endSession(s.id, "stopped", null);
+        serverLog("warn", "session", "close (orphan-reap)", {
+          projectId: s.projectId,
+          sessionId: s.id,
+          meta: {
+            agent: s.agent,
+            previousStatus: s.status,
+            reason: "orphan-reap",
+          },
+        });
         reaped += 1;
       }
     }
@@ -173,13 +182,21 @@ async function main(): Promise<void> {
   });
   ptyManager.on(
     "exit",
-    (sessionId: string, code: number | null, signal: number | null, wasKilled: boolean) => {
+    (
+      sessionId: string,
+      code: number | null,
+      signal: number | null,
+      wasKilled: boolean,
+      killReason: string | null,
+    ) => {
       codexDetector.onExit(sessionId);
       agentCache.delete(sessionId);
       // If the sweeper marked this row hibernated before killing the PTY,
       // hibernate-sweeper has already written status='hibernated' and pid=NULL.
       // Skip the normal endSession / status-machine bookkeeping so ended_at
       // stays NULL (the tab must keep showing in the UI for wake to work).
+      // The sweeper also already logged hibernate-auto start/success — don't
+      // emit a duplicate close entry here.
       const row = getSession(sessionId);
       if (row?.hibernatedAt != null) return;
       statusManager.onExit(sessionId, code, signal, wasKilled);
@@ -189,6 +206,38 @@ async function main(): Promise<void> {
       } catch (err) {
         app.log.error({ err, sessionId }, "failed to mark session ended");
       }
+      // ---- Unified close-reason log ----
+      // Decide a single reason tag for LogsView and the daily JSONL file so
+      // the user can tell whether a tab disappeared because the CLI quit, it
+      // crashed, they pressed stop, the OS killed it, etc.
+      let closeReason: string;
+      let level: "info" | "warn" | "error";
+      if (wasKilled) {
+        closeReason = killReason ?? "killed-unknown";
+        level = closeReason === "killed-unknown" || closeReason === "budget-cutoff"
+          ? "warn"
+          : "info";
+      } else if (signal != null) {
+        closeReason = `os-signal-${signal}`;
+        level = "error";
+      } else if (code === 0) {
+        closeReason = "cli-exit";
+        level = "info";
+      } else {
+        closeReason = "crashed";
+        level = "error";
+      }
+      serverLog(level, "session", `close (${closeReason})`, {
+        projectId: row?.projectId,
+        sessionId,
+        meta: {
+          agent: row?.agent,
+          exitCode: code,
+          signal,
+          wasKilled,
+          reason: closeReason,
+        },
+      });
     },
   );
 
@@ -270,12 +319,13 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     app.log.info({ sig }, "shutting down");
+    serverLog("info", "server", "shutdown 开始", { meta: { sig } });
     try {
       stopProcessMemTicker();
       for (const s of listSessions()) {
         if (ptyManager.has(s.id)) {
           try { endSession(s.id, "stopped", null); } catch { /* ignore */ }
-          ptyManager.kill(s.id);
+          ptyManager.kill(s.id, "server-shutdown");
         }
       }
       await app.close();

@@ -65,6 +65,14 @@ interface SessionEntry {
   buffer: string;
   bufferBytes: number;
   killed: boolean;
+  /**
+   * Reason tag set by whichever subsystem called `kill()`. Read by the exit
+   * handler in index.ts to attribute the close event in LogsView. Known values:
+   * "user-stop" / "user-restart" / "project-delete" / "server-shutdown" /
+   * "hibernate-auto" / "budget-cutoff" / "kill-all". If null when wasKilled is
+   * true, treat as "killed-unknown" (a missing-reason bug to chase down).
+   */
+  killReason: string | null;
 }
 
 export function findExecutable(name: string): string | null {
@@ -192,6 +200,7 @@ export class PtyManager extends EventEmitter {
       buffer: "",
       bufferBytes: 0,
       killed: false,
+      killReason: null,
     };
     this.sessions.set(sessionId, entry);
 
@@ -216,10 +225,11 @@ export class PtyManager extends EventEmitter {
 
     proc.onExit(({ exitCode, signal }) => {
       const wasKilled = entry.killed;
+      const killReason = entry.killReason;
       this.sessions.delete(sessionId);
       lastOutputAt.delete(sessionId);
       lastInputAt.delete(sessionId);
-      this.emit("exit", sessionId, exitCode, signal ?? null, wasKilled);
+      this.emit("exit", sessionId, exitCode, signal ?? null, wasKilled, killReason);
     });
 
     return { pid: proc.pid };
@@ -247,12 +257,20 @@ export class PtyManager extends EventEmitter {
     }
   }
 
-  /** Optimistically kill: SIGTERM, then SIGKILL after 3s if still alive. */
-  kill(sessionId: string, signal?: string): boolean {
+  /**
+   * Optimistically kill: SIGTERM, then SIGKILL after 3s if still alive.
+   *
+   * `reason` is stamped onto the entry so the exit handler can attribute the
+   * close in LogsView (see SessionEntry.killReason for the candidate values).
+   * Calling kill() twice keeps the first reason — the first caller wins, since
+   * the second is racing the SIGKILL timer already in flight.
+   */
+  kill(sessionId: string, reason: string, signal?: string): boolean {
     const e = this.sessions.get(sessionId);
     if (!e) return false;
     if (e.killed) return true;
     e.killed = true;
+    e.killReason = reason;
     try {
       e.proc.kill(signal);
     } catch {
@@ -294,7 +312,7 @@ export class PtyManager extends EventEmitter {
 
   killAll(): void {
     for (const id of [...this.sessions.keys()]) {
-      this.kill(id);
+      this.kill(id, "kill-all");
     }
   }
 }

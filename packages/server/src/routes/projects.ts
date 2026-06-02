@@ -449,7 +449,7 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
       const sessions = listSessionsByProject(id);
       for (const s of sessions) {
         if (ptyManager.isAlive(s.id)) {
-          ptyManager.kill(s.id);
+          ptyManager.kill(s.id, "project-delete");
           endSession(s.id, "stopped", null);
         }
         if (s.isolation === "worktree" && s.worktreePath) {
