@@ -29,7 +29,7 @@ import {
   getGlobalMcpServers,
   setDisabledMcpServersForProject,
 } from "../claude-json-service.js";
-import { removeFromMcpJson } from "../mcp-bridge.js";
+import { removeFromMcpJson, writeBrowserUseToMcpJson } from "../mcp-bridge.js";
 import { getProject } from "../db.js";
 import { serverLog } from "../log-bus.js";
 
@@ -104,6 +104,20 @@ function buildList(
       enabled: !disabledSet.has(name),
       command: def.command,
       args: def.args,
+    });
+  }
+  // browser-use is a known optional project-scope MCP. Sessions no longer
+  // auto-inject it, so when it's absent from disk we still surface an OFF row
+  // (from the catalog) — otherwise the user couldn't turn it on from the panel.
+  // Skip when already present in either source to avoid a duplicate row; a
+  // present-but-disabled entry is already rendered OFF by the loops above.
+  if (!("browser-use" in globalMcp) && !("browser-use" in projectMcp)) {
+    out.push({
+      name: "browser-use",
+      scope: "project",
+      enabled: false,
+      command: "uvx",
+      args: ["--from", "browser-use[cli]", "browser-use", "--mcp"],
     });
   }
   out.sort((a, b) => {
@@ -183,9 +197,18 @@ export async function registerMcpServersRoutes(
       setDisabledMcpServersForProject(proj.path, [...set]);
 
       let staleRemoved = false;
-      if (!enabled) {
-        // Toggling OFF: also clean any auto-injected entry from <proj>/.mcp.json
-        // so the next Claude session won't see a stale config.
+      let injected = false;
+      if (enabled) {
+        // Toggling ON: sessions no longer auto-inject browser-use, so enabling
+        // a project-scope server must actively write it into <proj>/.mcp.json.
+        // (Global servers like codegraph just need the disable marker cleared.)
+        if (name === "browser-use") {
+          const r = await writeBrowserUseToMcpJson(proj.path);
+          injected = r.changed;
+        }
+      } else {
+        // Toggling OFF: also clean any entry from <proj>/.mcp.json so the next
+        // Claude session won't see a stale config.
         const r = await removeFromMcpJson(proj.path, name);
         staleRemoved = r.changed;
       }
@@ -201,6 +224,7 @@ export async function registerMcpServersRoutes(
             nextEnabled: enabled,
             disabledCount: set.size,
             staleRemoved,
+            injected,
             ms: Date.now() - startedAt,
           },
         },

@@ -7,11 +7,7 @@ import { z } from "zod";
 
 import { getProject } from "../db.js";
 import { issueJobs, type IssueJobState } from "../issue-jobs.js";
-import {
-  buildIssuePrompt,
-  ISSUE_DONE_MARKER,
-  ISSUE_STUCK_MARKER,
-} from "../issue-prompt.js";
+import { buildIssuePrompt } from "../issue-prompt.js";
 import { runVerify } from "../issue-verify.js";
 import { readIssues } from "../issues-service.js";
 import { serverLog } from "../log-bus.js";
@@ -154,9 +150,9 @@ async function dispatchOne(
   // (1500ms) plus the synchronous register() below make this very unlikely
   // in practice, but the guard keeps us correct under load.
   let registeredJobId: string | null = null;
-  const onMarkerDone = (info: WorktreeJobSpawnInfo): void => {
+  const onSignalDone = (info: WorktreeJobSpawnInfo): void => {
     if (!registeredJobId) {
-      serverLog("warn", "issues", "DONE marker fired before register", {
+      serverLog("warn", "issues", "DONE signal fired before register", {
         projectId,
         sessionId: info.sessionId,
       });
@@ -164,7 +160,7 @@ async function dispatchOne(
     }
     void runVerifyPipeline(registeredJobId, projectPath, info.worktreePath);
   };
-  const onMarkerStuck = (
+  const onSignalStuck = (
     _info: WorktreeJobSpawnInfo,
     reason: string,
   ): void => {
@@ -185,11 +181,9 @@ async function dispatchOne(
     projectId,
     agent: "claude",
     prompt,
-    markerDone: ISSUE_DONE_MARKER,
-    markerStuck: ISSUE_STUCK_MARKER,
     jobLabel: `issue-job:${issueHash.slice(0, 8)}`,
-    onMarkerDone,
-    onMarkerStuck,
+    onSignalDone,
+    onSignalStuck,
     onSessionExitBeforeMarker: onSessionExit,
   });
 

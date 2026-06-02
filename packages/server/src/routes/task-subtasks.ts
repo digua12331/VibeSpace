@@ -22,6 +22,7 @@ import {
   type SubtaskRunState,
 } from "../task-subtasks-store.js";
 import {
+  JOB_SIGNAL_REL_PATH,
   spawnWorktreeJob,
   type WorktreeJobAgent,
   type WorktreeJobSpawnInfo,
@@ -30,8 +31,6 @@ import { appendStatusEntry } from "../task-status.js";
 import { broadcast } from "../ws-hub.js";
 import { existsSync } from "node:fs";
 
-const SUBTASK_DONE_MARKER = "===SUBTASK-DONE===";
-const SUBTASK_STUCK_MARKER = "===SUBTASK-STUCK===";
 const MAX_CONCURRENCY = 5;
 const DEFAULT_CONCURRENCY = 3;
 
@@ -91,11 +90,11 @@ ${fileLines}
 ${opts.planExcerpt}
 
 ## 完成约定
-- 完成后**单独打印一行**：
-  ${SUBTASK_DONE_MARKER}
-- 无法完成（连续 2-3 次失败、范围超出 write_files）打印：
-  ${SUBTASK_STUCK_MARKER} <一句话原因>
-- 打印 marker 后等待 verify pipeline 接管，不要主动退出 session。`;
+- 完成后把完成信号写入 worktree 内文件 \`${JOB_SIGNAL_REL_PATH}\`（目录不存在就创建），内容只写一行：
+  DONE
+- 无法完成（连续 2-3 次失败、范围超出 write_files）把信号文件 \`${JOB_SIGNAL_REL_PATH}\` 写成一行：
+  STUCK: <一句话原因>
+- 写完信号文件后等待 verify pipeline 接管，不要主动退出 session。`;
 }
 
 function getMergedSubtaskIds(
@@ -191,11 +190,11 @@ async function dispatchOneSubtask(
 
   let registeredRunId: string | null = null;
 
-  const onMarkerDone = (info: WorktreeJobSpawnInfo): void => {
+  const onSignalDone = (info: WorktreeJobSpawnInfo): void => {
     if (!registeredRunId) return;
     void runVerifyPipeline(registeredRunId, projectPath, info.worktreePath);
   };
-  const onMarkerStuck = (
+  const onSignalStuck = (
     info: WorktreeJobSpawnInfo,
     reason: string,
   ): void => {
@@ -224,11 +223,9 @@ async function dispatchOneSubtask(
     task: `${taskName}::${spec.id}`,
     agent,
     prompt,
-    markerDone: SUBTASK_DONE_MARKER,
-    markerStuck: SUBTASK_STUCK_MARKER,
     jobLabel: `subtask:${spec.id}::${taskName}`,
-    onMarkerDone,
-    onMarkerStuck,
+    onSignalDone,
+    onSignalStuck,
     onSessionExitBeforeMarker: onSessionExit,
   });
 

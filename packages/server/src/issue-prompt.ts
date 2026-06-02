@@ -1,11 +1,10 @@
+import { JOB_SIGNAL_REL_PATH } from "./worktree-session-runner.js";
+
 export interface IssuePromptInput {
   issueText: string;
   issueLine: number;
   issueHash: string;
 }
-
-export const ISSUE_DONE_MARKER = "===ISSUE-DONE===";
-export const ISSUE_STUCK_MARKER = "===ISSUE-STUCK===";
 
 /**
  * Build the prompt that gets injected into a freshly-spawned claude PTY for
@@ -23,11 +22,11 @@ export function buildIssuePrompt(input: IssuePromptInput): string {
 2. 严守"外科式改动"原则 —— 只碰必须碰的，看到无关的死代码就提一嘴不要删
 3. 改动如果触发"破坏性变更协议"（删源码 / 改导出符号 / 改路由 / 改 SQLite schema），必须先用 grep 列受影响清单并停手等指示
 4. 改完后把 dev/issues.md 里这一行的 \`[ ]\` 改成 \`[x]\`
-5. 验证完成后，在终端最后单独打印一行：
-   ${ISSUE_DONE_MARKER}
-6. 如果连续 2-3 次失败（无法修复 / verify 不通过 / 范围超出 issue 描述的预期），停手并打印一行：
-   ${ISSUE_STUCK_MARKER} <一句话原因>
+5. 验证完成后，把完成信号写入 worktree 内文件 \`${JOB_SIGNAL_REL_PATH}\`（目录不存在就创建），内容只写一行：
+   DONE
+6. 如果连续 2-3 次失败（无法修复 / verify 不通过 / 范围超出 issue 描述的预期），停手并把信号文件 \`${JOB_SIGNAL_REL_PATH}\` 写成一行：
+   STUCK: <一句话原因>
    不要继续改、不要扩大范围、不要修测试用例来凑绿灯
 
-完成或停手后等待 verify pipeline 接管，不要主动退出 session 也不要等待进一步指令。`;
+写完信号文件后等待 verify pipeline 接管，不要主动退出 session 也不要等待进一步指令。`;
 }

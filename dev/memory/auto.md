@@ -75,3 +75,7 @@
 - [2026-05-02 / 技能市场二期] 全机器级能力优先挂独立 `/api/<feature>/*` 路由，不要硬塞进 `/api/projects/:id/*`（上下文：后续类似市场、全局配置、本地库这类功能都不属于单个项目） [category=约定; severity=info; files=packages/server/src/routes/skill-market.ts,packages/server/src/index.ts]
 - [2026-05-02 / 技能市场二期] 人工浏览器验收和失败分支验收没跑完时，tasks 里必须保持未完成并写清“待主理人触发”，不要把 typecheck 通过冒充完整验收（上下文：后续 UI 或联网功能都会有自动测试覆盖不到的人工路径） [category=测试; severity=warn; files=dev/active/技能市场二期/技能市场二期-tasks.md]
 - [2026-05-02 / 技能市场二期] 面向用户的技能列表适合按短横线前缀自动分组，并在组级提供批量安装或卸载，项目技能、全局技能、本地库三栏应复用同一分组逻辑（上下文：后续技能管理 UI 继续扩展时应保持三栏行为一致） [category=约定; severity=info; files=packages/web/src/components/sidebar/SkillsView.tsx]
+- [2026-06-02 / browser-use按需注入] 把默认自动能力改成按需开启时，必须同时补上“面板仍可见”和“开启按钮会真正写入配置”两条路径，否则用户会看不见也开不了（上下文：以后任何默认关闭的工具或集成都容易出现“省资源成功但入口消失”的问题） [category=约定; severity=error; files=packages/server/src/mcp-bridge.ts,packages/server/src/routes/mcp-servers.ts]
+- [2026-06-02 / browser-use按需注入] 用配置文件存在性表达开关状态时，要明确冲突优先级、幂等开关、保留无关配置和损坏配置兜底（上下文：项目级开关常会同时遇到历史残留、禁用列表和手改坏的配置文件） [category=踩坑; severity=warn; files=packages/server/src/mcp-bridge.ts,packages/server/src/routes/mcp-servers.ts]
+- [2026-06-02 / browser-use按需注入] 改动会影响自动验收工具可用性时，交付里必须说明“已临时开启”或“因未开启而跳过”，不能静默跳过浏览器验收（上下文：未来关闭或移动任何测试辅助工具时，都可能让验收表面完成但实际没跑） [category=测试; severity=warn; files=dev/memory/manual.md]
+- [2026-06-02 / browser-use按需注入] 需要重启后端才生效、但重启会杀当前终端时，可以把代码级验证先跑完，并把 live 验收清单明确留给用户重启后验证（上下文：服务端配置注入、后台进程和插件变更经常有“当前会话无法自杀式重启验证”的限制） [category=操作流程; severity=info]

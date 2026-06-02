@@ -1,1 +1,8 @@
-# Codex CLI project config — managed by aimon UI
+[mcp_servers.browser-use]
+command = "uvx"
+args = [
+    "--from",
+    "browser-use[cli]",
+    "browser-use",
+    "--mcp",
+]

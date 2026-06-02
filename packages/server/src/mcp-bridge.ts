@@ -1,11 +1,15 @@
 /**
- * Inject browser-use MCP server config into the right place per agent so that
- * a freshly-spawned claude / codex session sees `mcp__browser-use__*` tools
- * out of the box.
+ * Inject browser-use MCP server config into the right place per agent.
  *
- * Dispatch (Phase 1, hard-coded):
- *   - `claude`  → `<projectPath>/.mcp.json` (project-scoped MCP entrypoint)
- *   - `codex`   → `~/.codex/config.toml`     `[mcp_servers.browser-use]`
+ * Dispatch:
+ *   - `claude`  → **no auto-inject** (default OFF / opt-in). browser-use is only
+ *     written to `<projectPath>/.mcp.json` when the user flips it ON in the MCP
+ *     panel (via `writeBrowserUseToMcpJson`, called from the toggle route).
+ *     Claude Code reads `.mcp.json` itself, so presence there IS the per-project
+ *     "enabled" source of truth.
+ *   - `codex`   → `~/.codex/config.toml` `[mcp_servers.browser-use]` (unchanged —
+ *     codex config is global, per-project opt-in has no clean home there).
+ *   - hub       → `injectHubMcps` (browser-use + aimon-hub, always on).
  *   - other     → no-op
  *
  * Behaviour contract:
@@ -25,7 +29,6 @@ import { serverLog } from "./log-bus.js";
 import { HUB_PROJECT_ID } from "./hub-project.js";
 import { getHubToken } from "./hub-token.js";
 import { getHubWorkspaceDir } from "./hub-workspace.js";
-import { isMcpDisabledForProject } from "./claude-json-service.js";
 
 const MCP_KEY = "browser-use";
 const HUB_MCP_KEY = "aimon-hub";
@@ -79,12 +82,12 @@ export async function injectMcpForAgent(
       await injectHubMcps(sessionId);
       return;
     }
-    if (agent === "claude") {
-      await injectClaude(projectPath, sessionId, projectId);
-    } else if (agent === "codex") {
+    if (agent === "codex") {
       await injectCodex(sessionId, projectId);
     }
-    // other agents: no-op (Phase 1 supports only claude / codex)
+    // claude: browser-use 默认不再自动注入（按需开启）—— 由 MCP 面板 toggle ON
+    // 经 writeBrowserUseToMcpJson 写入 <project>/.mcp.json，Claude Code 自行读盘。
+    // other agents: no-op.
   } catch (err) {
     const e = err as Error;
     serverLog(
@@ -103,133 +106,43 @@ export async function injectMcpForAgent(
   }
 }
 
-async function injectClaude(
+/**
+ * Idempotent write: ensure `<projectPath>/.mcp.json` contains the browser-use
+ * MCP entry, preserving every other entry. Returns `{changed:false}` when the
+ * entry is already present and identical. Pure (no logging) — mirrors
+ * `removeFromMcpJson`; the caller (MCP toggle ON) owns start/success logging.
+ *
+ * This is the ONLY writer of browser-use into a normal project's `.mcp.json`.
+ * Sessions no longer auto-inject — Claude Code reads `.mcp.json` on its own, so
+ * presence here is the per-project "enabled" source of truth.
+ */
+export async function writeBrowserUseToMcpJson(
   projectPath: string,
-  sessionId: string,
-  projectId?: string,
-): Promise<void> {
-  // Per-project disable: skip injection AND reverse-remove any stale entry from
-  // `<projectPath>/.mcp.json`. Without the reverse-remove, toggling off in the
-  // UI wouldn't actually shut down the MCP server on next session (`.mcp.json`
-  // is what Claude Code reads).
-  if (isMcpDisabledForProject(projectPath, MCP_KEY)) {
-    const target = join(projectPath, ".mcp.json");
-    const targetForLog = target.replace(/\\/g, "/");
-    const t0 = Date.now();
-    serverLog("info", "installer", "skip-mcp-browseruse 开始", {
-      projectId,
-      sessionId,
-      meta: {
-        agent: "claude",
-        configPath: targetForLog,
-        reason: `disabledMcpServers contains '${MCP_KEY}'`,
-      },
-    });
-    try {
-      const r = await removeFromMcpJson(projectPath, MCP_KEY);
-      serverLog(
-        "info",
-        "installer",
-        `skip-mcp-browseruse 成功 (${Date.now() - t0}ms)`,
-        {
-          projectId,
-          sessionId,
-          meta: {
-            agent: "claude",
-            configPath: targetForLog,
-            staleEntryRemoved: r.changed,
-          },
-        },
-      );
-    } catch (err) {
-      const e = err as Error;
-      serverLog(
-        "error",
-        "installer",
-        `skip-mcp-browseruse 失败: ${e.message}`,
-        {
-          projectId,
-          sessionId,
-          meta: {
-            agent: "claude",
-            configPath: targetForLog,
-            error: { name: e.name, message: e.message, stack: e.stack },
-          },
-        },
-      );
-    }
-    return;
-  }
-
+): Promise<{ changed: boolean }> {
   const target = join(projectPath, ".mcp.json");
-  const targetForLog = target.replace(/\\/g, "/");
-  const t0 = Date.now();
-  serverLog("info", "installer", "inject-mcp-browseruse 开始", {
-    projectId,
-    sessionId,
-    meta: { agent: "claude", configPath: targetForLog },
-  });
 
   let existing: Record<string, unknown> = {};
   try {
     const raw = await readFile(target, "utf8");
     if (raw.trim()) existing = JSON.parse(raw) as Record<string, unknown>;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      const e = err as Error;
-      serverLog(
-        "error",
-        "installer",
-        `inject-mcp-browseruse 失败: ${e.message}`,
-        {
-          projectId,
-          sessionId,
-          meta: {
-            agent: "claude",
-            configPath: targetForLog,
-            error: { name: e.name, message: e.message, stack: e.stack },
-          },
-        },
-      );
-      return;
-    }
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 
   const servers = (existing.mcpServers ?? {}) as Record<string, ClaudeMcpEntry>;
   const cur = servers[MCP_KEY];
   if (cur && deepEqualEntry(cur, DESIRED_ENTRY)) {
-    serverLog(
-      "info",
-      "installer",
-      `inject-mcp-browseruse 成功 (${Date.now() - t0}ms, 无变化)`,
-      {
-        projectId,
-        sessionId,
-        meta: { agent: "claude", configPath: targetForLog, changed: false },
-      },
-    );
-    return;
+    return { changed: false };
   }
 
   const next = {
     ...existing,
     mcpServers: { ...servers, [MCP_KEY]: DESIRED_ENTRY },
   };
-
   const tmp = target + ".aimon-tmp";
   await writeFile(tmp, JSON.stringify(next, null, 2) + "\n", "utf8");
   await rename(tmp, target);
-
-  serverLog(
-    "info",
-    "installer",
-    `inject-mcp-browseruse 成功 (${Date.now() - t0}ms)`,
-    {
-      projectId,
-      sessionId,
-      meta: { agent: "claude", configPath: targetForLog, changed: true },
-    },
-  );
+  return { changed: true };
 }
 
 /**
@@ -238,9 +151,8 @@ async function injectClaude(
  * `{changed:false}` when there's nothing to do (file absent / entry not
  * present / parse error).
  *
- * Called by `injectClaude` when project-level disabledMcpServers contains the
- * key, AND by `PUT /api/mcp-servers/toggle` when the UI flips the toggle
- * off — both share the same teardown.
+ * Called by `PUT /api/mcp-servers/toggle` when the UI flips a project-scope
+ * MCP off — the teardown that pairs with `writeBrowserUseToMcpJson`.
  */
 export async function removeFromMcpJson(
   projectPath: string,
