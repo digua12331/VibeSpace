@@ -3,7 +3,12 @@ import { getAppSettings, updateAppSettings } from '../api'
 import { logAction } from '../logs'
 import { currentPermission, requestPermission } from '../notify'
 import { useStore } from '../store'
-import type { AppSettings, HibernationSettings } from '../types'
+import type {
+  AppSettings,
+  HibernationSettings,
+  KeyCombo,
+  TerminalKeybindings,
+} from '../types'
 
 /**
  * Imperative open API — keeps the dialog mounted once at the workbench root
@@ -37,6 +42,74 @@ const DEFAULT_HIBERNATION: HibernationSettings = {
   includeShells: false,
 }
 
+const DEFAULT_KEYBINDINGS: TerminalKeybindings = {
+  abortAltKey: null,
+  interruptAltKey: null,
+}
+
+// --- Keybinding helpers (frontend mirror of the backend rules in
+// app-settings.ts::keyComboError — kept as a small local copy on purpose). ---
+
+const MODIFIER_KEY_NAMES = new Set([
+  'Control', 'Shift', 'Alt', 'Meta', 'OS', 'AltGraph',
+  'CapsLock', 'ContextMenu', 'Dead', 'Process', 'Unidentified',
+])
+const TUI_RESERVED_KEYS = new Set([
+  'Enter', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'Backspace', 'Home', 'End', 'PageUp', 'PageDown',
+])
+
+function eventToCombo(e: KeyboardEvent): KeyCombo {
+  const combo: KeyCombo = { key: e.key }
+  if (e.ctrlKey) combo.ctrl = true
+  if (e.altKey) combo.alt = true
+  if (e.shiftKey) combo.shift = true
+  if (e.metaKey) combo.meta = true
+  return combo
+}
+
+/** Returns a reason string if the combo is not allowed, else null. */
+function comboError(c: KeyCombo): string | null {
+  const key = c.key
+  if (!key) return '按键为空'
+  if (MODIFIER_KEY_NAMES.has(key)) return '不能只用修饰键'
+  if (key === 'Escape') return '不能用 Esc（已是默认中止键）'
+  if (TUI_RESERVED_KEYS.has(key)) return `不能用 ${key}（终端导航保留键）`
+  const ctrl = c.ctrl === true, alt = c.alt === true, meta = c.meta === true
+  if (ctrl && !alt && !meta && (key === 'c' || key === 'C'))
+    return '不能用 Ctrl+C（已是默认强制中断键）'
+  if ((ctrl || meta) && (key === 'v' || key === 'V'))
+    return '不能用粘贴快捷键'
+  if (key.length === 1 && !ctrl && !alt && !meta)
+    return '单个字符键太容易误触，请加 Ctrl/Alt 修饰或用 F1–F12'
+  return null
+}
+
+function combosEqual(a: KeyCombo | null, b: KeyCombo | null): boolean {
+  if (!a || !b) return false
+  return (
+    a.key === b.key &&
+    !!a.ctrl === !!b.ctrl &&
+    !!a.alt === !!b.alt &&
+    !!a.shift === !!b.shift &&
+    !!a.meta === !!b.meta
+  )
+}
+
+/** Human-readable label, e.g. "Ctrl+Alt+F8". */
+function formatCombo(c: KeyCombo | null): string {
+  if (!c) return '未设置'
+  const parts: string[] = []
+  if (c.ctrl) parts.push('Ctrl')
+  if (c.alt) parts.push('Alt')
+  if (c.shift) parts.push('Shift')
+  if (c.meta) parts.push('Meta')
+  parts.push(c.key === ' ' ? 'Space' : c.key)
+  return parts.join('+')
+}
+
+type RecordTarget = 'abortAltKey' | 'interruptAltKey'
+
 export default function SettingsDialog() {
   const [open, setOpen] = useState(_open)
   const [loading, setLoading] = useState(false)
@@ -46,8 +119,13 @@ export default function SettingsDialog() {
   const [hibernation, setHibernation] =
     useState<HibernationSettings>(DEFAULT_HIBERNATION)
   const [requestingNotify, setRequestingNotify] = useState(false)
+  const [keybindings, setKeybindings] =
+    useState<TerminalKeybindings>(DEFAULT_KEYBINDINGS)
+  const [recording, setRecording] = useState<RecordTarget | null>(null)
+  const [keyError, setKeyError] = useState<string | null>(null)
   const notifyPerm = useStore((s) => s.notifyPerm)
   const setNotifyPerm = useStore((s) => s.setNotifyPerm)
+  const setTerminalKeybindings = useStore((s) => s.setTerminalKeybindings)
 
   useEffect(() => {
     const l = (next: boolean) => setOpen(next)
@@ -67,6 +145,7 @@ export default function SettingsDialog() {
       .then((s: AppSettings) => {
         setRetention(s.pasteImageRetentionDays)
         setHibernation(s.hibernation ?? DEFAULT_HIBERNATION)
+        setKeybindings(s.terminalKeybindings ?? DEFAULT_KEYBINDINGS)
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e))
@@ -86,25 +165,78 @@ export default function SettingsDialog() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
+  // Capture-phase key recorder. Runs only while a slot is being recorded.
+  // Capture + stopPropagation means the dialog's own Escape-to-close listener
+  // (bubble phase) never fires here — Esc during recording just cancels.
+  useEffect(() => {
+    if (!recording) return
+    const target: RecordTarget = recording
+    function onRecord(e: KeyboardEvent) {
+      // Wait for a real (non-modifier) key so "hold Ctrl then press F8" works.
+      if (MODIFIER_KEY_NAMES.has(e.key)) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape') {
+        setRecording(null)
+        return
+      }
+      const combo = eventToCombo(e)
+      const err = comboError(combo)
+      if (err) {
+        setKeyError(err)
+        setRecording(null)
+        return
+      }
+      const other =
+        target === 'abortAltKey'
+          ? keybindings.interruptAltKey
+          : keybindings.abortAltKey
+      if (combosEqual(combo, other)) {
+        setKeyError('两个备用键不能设成同一个组合')
+        setRecording(null)
+        return
+      }
+      setKeybindings((kb) => ({ ...kb, [target]: combo }))
+      setKeyError(null)
+      setRecording(null)
+    }
+    window.addEventListener('keydown', onRecord, true)
+    return () => window.removeEventListener('keydown', onRecord, true)
+  }, [recording, keybindings])
+
+  // Closing the dialog (overlay click / cancel) must abort any in-flight
+  // recording so the capture listener doesn't linger.
+  useEffect(() => {
+    if (!open) {
+      setRecording(null)
+      setKeyError(null)
+    }
+  }, [open])
+
   async function onSave() {
     setSaving(true)
     setError(null)
     try {
-      await logAction(
+      const next = await logAction(
         'settings',
         'update-app-settings',
         () =>
           updateAppSettings({
             pasteImageRetentionDays: retention,
             hibernation,
+            terminalKeybindings: keybindings,
           }),
         {
           meta: {
             retentionDays: retention,
             hibernation,
+            terminalKeybindings: keybindings,
           },
         },
       )
+      // Push the saved bindings into the store so live terminals pick them up
+      // immediately without a page reload.
+      setTerminalKeybindings(next.terminalKeybindings ?? keybindings)
       setOpenState(false)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -225,6 +357,73 @@ export default function SettingsDialog() {
             />
             <span>同时冬眠纯 shell（cmd / pwsh / bash），不推荐 — 会丢 cd 历史</span>
           </label>
+        </section>
+
+        <section className="mb-4 border-t border-border/40 pt-4">
+          <div className="text-sm text-fg/90 mb-1">终端快捷键</div>
+          <div className="text-xs text-muted mb-3 leading-relaxed">
+            给"中止"动作录一个你设备上好按的备用键。默认 Esc / Ctrl+C
+            始终有效，备用键只是多一条路（解决某些设备 Esc 被系统占用按不出的情况）。
+            建议用 F1–F12 或带 Ctrl/Alt 的组合键。
+          </div>
+          {(
+            [
+              {
+                target: 'abortAltKey' as RecordTarget,
+                title: '打断 AI 输出',
+                defaultLabel: 'Esc',
+              },
+              {
+                target: 'interruptAltKey' as RecordTarget,
+                title: '强制中断命令',
+                defaultLabel: 'Ctrl+C',
+              },
+            ]
+          ).map((row) => (
+            <div
+              key={row.target}
+              className="flex items-center justify-between gap-2 mb-2"
+            >
+              <div className="min-w-0">
+                <div className="text-sm">{row.title}</div>
+                <div className="text-xs text-muted">
+                  默认 {row.defaultLabel}（始终有效） · 备用键{' '}
+                  <span className="text-fg/80">
+                    {recording === row.target
+                      ? '按下想用的键…（Esc 取消）'
+                      : formatCombo(keybindings[row.target])}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  disabled={loading || saving}
+                  onClick={() => {
+                    setKeyError(null)
+                    setRecording(row.target)
+                  }}
+                  className="fluent-btn px-2.5 py-1 text-xs rounded-md border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+                >
+                  {recording === row.target ? '录制中…' : '录制'}
+                </button>
+                <button
+                  type="button"
+                  disabled={loading || saving || !keybindings[row.target]}
+                  onClick={() => {
+                    setKeyError(null)
+                    setKeybindings((kb) => ({ ...kb, [row.target]: null }))
+                  }}
+                  className="fluent-btn px-2.5 py-1 text-xs rounded-md border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-40"
+                >
+                  清除
+                </button>
+              </div>
+            </div>
+          ))}
+          {keyError && (
+            <div className="mt-1 text-xs text-amber-300/90">{keyError}</div>
+          )}
         </section>
 
         <section className="mb-4 border-t border-border/40 pt-4">

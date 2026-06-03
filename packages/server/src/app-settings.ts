@@ -18,6 +18,29 @@ export interface HibernationSettings {
   includeShells: boolean;
 }
 
+/**
+ * A single physical key combination, mirrored from the browser's
+ * `KeyboardEvent` shape. `key` is the raw `KeyboardEvent.key` value
+ * (e.g. "F8", "k"). Modifier flags default to false when absent.
+ */
+export interface KeyCombo {
+  key: string;
+  ctrl?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+  meta?: boolean;
+}
+
+/**
+ * User-recorded *alternate* keys for the two terminal abort actions. These
+ * are ADDITIVE — the built-in Esc (`\x1b`) and Ctrl+C (`\x03`) always stay
+ * live; an alt key, when set, fires the same byte. `null` means "no alt key".
+ */
+export interface TerminalKeybindings {
+  abortAltKey: KeyCombo | null;
+  interruptAltKey: KeyCombo | null;
+}
+
 export interface AppSettings {
   /**
    * Days to keep pasted images under each project's `.vibespace/pasted-images/`.
@@ -26,6 +49,7 @@ export interface AppSettings {
    */
   pasteImageRetentionDays: number;
   hibernation: HibernationSettings;
+  terminalKeybindings: TerminalKeybindings;
 }
 
 const DEFAULTS: AppSettings = {
@@ -36,6 +60,10 @@ const DEFAULTS: AppSettings = {
     enabled: false,
     idleMinutes: 15,
     includeShells: false,
+  },
+  terminalKeybindings: {
+    abortAltKey: null,
+    interruptAltKey: null,
   },
 };
 
@@ -66,19 +94,90 @@ function readHibernation(raw: unknown): HibernationSettings {
   };
 }
 
+/** Sanitize one persisted key combo; any malformed shape collapses to null. */
+function readKeyCombo(raw: unknown): KeyCombo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.key !== "string" || o.key.length === 0) return null;
+  const combo: KeyCombo = { key: o.key };
+  if (o.ctrl === true) combo.ctrl = true;
+  if (o.alt === true) combo.alt = true;
+  if (o.shift === true) combo.shift = true;
+  if (o.meta === true) combo.meta = true;
+  return combo;
+}
+
+function readTerminalKeybindings(raw: unknown): TerminalKeybindings {
+  if (!raw || typeof raw !== "object") return { abortAltKey: null, interruptAltKey: null };
+  const o = raw as Record<string, unknown>;
+  return {
+    abortAltKey: readKeyCombo(o.abortAltKey),
+    interruptAltKey: readKeyCombo(o.interruptAltKey),
+  };
+}
+
+function freshDefaults(): AppSettings {
+  return {
+    ...DEFAULTS,
+    hibernation: { ...DEFAULTS.hibernation },
+    terminalKeybindings: { ...DEFAULTS.terminalKeybindings },
+  };
+}
+
+// ---- Keybinding validation (backend backstop; frontend mirrors these rules
+// for instant feedback — kept as two small copies rather than a shared package). ----
+
+const MODIFIER_KEY_NAMES = new Set([
+  "Control", "Shift", "Alt", "Meta", "OS", "AltGraph",
+  "CapsLock", "ContextMenu", "Dead", "Process", "Unidentified",
+]);
+const TUI_RESERVED_KEYS = new Set([
+  "Enter", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Backspace", "Home", "End", "PageUp", "PageDown",
+]);
+
+/** Returns a human-readable reason string if the combo is not allowed, else null. */
+export function keyComboError(c: KeyCombo): string | null {
+  const key = c.key;
+  if (!key) return "按键为空";
+  if (MODIFIER_KEY_NAMES.has(key)) return "不能只用修饰键";
+  if (key === "Escape") return "不能用 Esc（已是默认中止键）";
+  if (TUI_RESERVED_KEYS.has(key)) return `不能用 ${key}（终端导航保留键）`;
+  const ctrl = c.ctrl === true, alt = c.alt === true, meta = c.meta === true;
+  if (ctrl && !alt && !meta && (key === "c" || key === "C"))
+    return "不能用 Ctrl+C（已是默认强制中断键）";
+  if ((ctrl || meta) && (key === "v" || key === "V"))
+    return "不能用粘贴快捷键";
+  if (key.length === 1 && !ctrl && !alt && !meta)
+    return "单个字符键太容易误触，请加 Ctrl/Alt 修饰或用 F1–F12";
+  return null;
+}
+
+export function keyCombosEqual(a: KeyCombo | null, b: KeyCombo | null): boolean {
+  if (!a || !b) return false;
+  return (
+    a.key === b.key &&
+    !!a.ctrl === !!b.ctrl &&
+    !!a.alt === !!b.alt &&
+    !!a.shift === !!b.shift &&
+    !!a.meta === !!b.meta
+  );
+}
+
 function readFromDisk(): AppSettings {
-  if (!existsSync(SETTINGS_PATH)) return { ...DEFAULTS, hibernation: { ...DEFAULTS.hibernation } };
+  if (!existsSync(SETTINGS_PATH)) return freshDefaults();
   try {
     const raw = readFileSync(SETTINGS_PATH, "utf8");
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return { ...DEFAULTS, hibernation: { ...DEFAULTS.hibernation } };
+    if (!parsed || typeof parsed !== "object") return freshDefaults();
     const obj = parsed as Record<string, unknown>;
     return {
       pasteImageRetentionDays: clampRetentionDays(obj.pasteImageRetentionDays),
       hibernation: readHibernation(obj.hibernation),
+      terminalKeybindings: readTerminalKeybindings(obj.terminalKeybindings),
     };
   } catch {
-    return { ...DEFAULTS, hibernation: { ...DEFAULTS.hibernation } };
+    return freshDefaults();
   }
 }
 
@@ -98,6 +197,7 @@ export function getAppSettingsPath(): string {
 export interface AppSettingsPatch {
   pasteImageRetentionDays?: number;
   hibernation?: Partial<HibernationSettings>;
+  terminalKeybindings?: Partial<TerminalKeybindings>;
 }
 
 export function setAppSettings(patch: AppSettingsPatch): AppSettings {
@@ -118,11 +218,24 @@ export function setAppSettings(patch: AppSettingsPatch): AppSettings {
             : current.hibernation.includeShells,
       }
     : current.hibernation;
+  const mergedKeybindings: TerminalKeybindings = patch.terminalKeybindings
+    ? {
+        abortAltKey:
+          patch.terminalKeybindings.abortAltKey !== undefined
+            ? readKeyCombo(patch.terminalKeybindings.abortAltKey)
+            : current.terminalKeybindings.abortAltKey,
+        interruptAltKey:
+          patch.terminalKeybindings.interruptAltKey !== undefined
+            ? readKeyCombo(patch.terminalKeybindings.interruptAltKey)
+            : current.terminalKeybindings.interruptAltKey,
+      }
+    : current.terminalKeybindings;
   const next: AppSettings = {
     pasteImageRetentionDays: clampRetentionDays(
       patch.pasteImageRetentionDays ?? current.pasteImageRetentionDays,
     ),
     hibernation: mergedHibernation,
+    terminalKeybindings: mergedKeybindings,
   };
   const tmp = `${SETTINGS_PATH}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2), "utf8");

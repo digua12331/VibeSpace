@@ -26,7 +26,7 @@ import {
   resolveCommand,
   type CustomButton,
 } from '../../customButtons'
-import { BUILTIN_SHELL_AGENTS, type AgentKind, type Session } from '../../types'
+import { BUILTIN_SHELL_AGENTS, type AgentKind, type KeyCombo, type Session } from '../../types'
 import InputMenu from './InputMenu'
 import { getSlashCommands } from './slashCommands'
 
@@ -96,6 +96,18 @@ const TUI_PASSTHROUGH_KEYMAP: Readonly<Record<string, string>> = {
   End: '\x1b[F',
   PageUp: '\x1b[5~',
   PageDown: '\x1b[6~',
+}
+
+// 用户在「设置 → 终端快捷键」录的备用键与当前按键事件是否完全一致（key + 四个修饰位）。
+function matchCombo(ev: KeyboardEvent, combo: KeyCombo | null): boolean {
+  if (!combo) return false
+  return (
+    ev.key === combo.key &&
+    ev.ctrlKey === !!combo.ctrl &&
+    ev.altKey === !!combo.alt &&
+    ev.shiftKey === !!combo.shift &&
+    ev.metaKey === !!combo.meta
+  )
 }
 
 async function findImageInClipboard(
@@ -250,6 +262,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const setInputDraft = useStore((s) => s.setInputDraft)
   const subagentRuns = useStore((s) => s.subagentRunsBySession[session.id]) ?? []
   const refreshSubagentRuns = useStore((s) => s.refreshSubagentRuns)
+  const terminalKeybindings = useStore((s) => s.terminalKeybindings)
   const project = projects.find((p) => p.id === session.projectId)
   const status = liveStatus ?? session.status
 
@@ -283,6 +296,12 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   // 单实例幂等：第一次走 TUI 透传分支时打一条 INFO 进 LogsView，之后翻 true 不再打。
   // 见 attachCustomKeyEventHandler 的 TUI passthrough 分支。
   const passthroughLoggedRef = useRef(false)
+  // 终端备用快捷键：attachCustomKeyEventHandler 是挂载时一次性注册的长生命周期
+  // 闭包，通过 ref 读最新值，用户在「设置」里改完即时生效，无需重挂 handler。
+  const keybindingsRef = useRef(terminalKeybindings)
+  useEffect(() => {
+    keybindingsRef.current = terminalKeybindings
+  }, [terminalKeybindings])
   // perf 探针配套：第一条 replay 抵达时 markSessionSpawnEnd，之后翻 true 不再打。
   // 不只用 onMessage 路径，因为 server 在订阅成功后会主动 push 一次 replay；这里
   // 等于把"用户能看到首帧"作为 spawn 完成的体感锚点。
@@ -416,6 +435,14 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         }
         return false
       }
+      // 用户自定义的"强制中断"备用键 → 等同无选区 Ctrl+C，发 \x03。不受输入框
+      // 焦点/空状态守卫（与默认 Ctrl+C 一致，跑飞时随时能中断）。
+      if (matchCombo(ev, keybindingsRef.current.interruptAltKey)) {
+        ev.preventDefault()
+        ev.stopPropagation()
+        aimonWS.sendInput(session.id, '\x03')
+        return false
+      }
       // TUI passthrough：xterm 区跑的 TUI 菜单（Claude Code AskUserQuestion、
       // codex/inquirer 系 prompt、npm init 之类）需要 ↑/↓/Enter/Tab/Esc 直达 PTY。
       // 守卫顺序：IME → 焦点 → textarea 为空 → 命中白名单。任一不满足 fallthrough
@@ -426,6 +453,13 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       const inputEmpty = inputEl?.value === ''
       const inputUnfocused = document.activeElement !== inputEl
       if (!inIme && inputEmpty && inputUnfocused) {
+        // 用户自定义的"打断 AI"备用键 → 等同 Esc，发 \x1b。沿用与 Esc 相同的
+        // IME / 焦点 / 空输入守卫，避免打字途中误打断。
+        if (matchCombo(ev, keybindingsRef.current.abortAltKey)) {
+          ev.preventDefault()
+          aimonWS.sendInput(session.id, '\x1b')
+          return false
+        }
         const seq = TUI_PASSTHROUGH_KEYMAP[ev.key]
         if (seq !== undefined) {
           ev.preventDefault()

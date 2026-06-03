@@ -970,9 +970,32 @@ export interface HibernationSettings {
   includeShells: boolean
 }
 
+/**
+ * A physical key combination, mirrored from `KeyboardEvent`. `key` is the raw
+ * `KeyboardEvent.key` value (e.g. "F8"). Modifier flags default to false.
+ */
+export interface KeyCombo {
+  key: string
+  ctrl?: boolean
+  alt?: boolean
+  shift?: boolean
+  meta?: boolean
+}
+
+/**
+ * User-recorded *alternate* keys for the two terminal abort actions. Additive
+ * on top of the built-in Esc (`\x1b`) / Ctrl+C (`\x03`), which always stay
+ * live. `null` means no alternate key is set.
+ */
+export interface TerminalKeybindings {
+  abortAltKey: KeyCombo | null
+  interruptAltKey: KeyCombo | null
+}
+
 export interface AppSettings {
   pasteImageRetentionDays: number
   hibernation: HibernationSettings
+  terminalKeybindings: TerminalKeybindings
 }
 
 /**

@@ -1,11 +1,26 @@
 import { useEffect } from 'react'
 import { useStore } from './store'
+import { getAppSettings } from './api'
 import { migrateGlobalToPerProject } from './customButtons'
 import { pushLog } from './logs'
 import Workbench from './components/layout/Workbench'
 
 export default function App() {
   const projects = useStore((s) => s.projects)
+  const setTerminalKeybindings = useStore((s) => s.setTerminalKeybindings)
+
+  // Load app settings once on startup so the terminal can honor the user's
+  // custom abort/interrupt alt keys without waiting for the Settings dialog
+  // to be opened. Failure is non-fatal — defaults (Esc / Ctrl+C only) hold.
+  useEffect(() => {
+    getAppSettings()
+      .then((s) => {
+        if (s.terminalKeybindings) setTerminalKeybindings(s.terminalKeybindings)
+      })
+      .catch(() => {
+        /* settings unreachable — keep built-in defaults */
+      })
+  }, [setTerminalKeybindings])
 
   // One-shot migration of legacy global custom-buttons into per-project
   // buckets. Idempotent inside migrateGlobalToPerProject (marker flag), so

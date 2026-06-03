@@ -21,6 +21,7 @@ import type {
   Session,
   SessionStatus,
   SubagentRun,
+  TerminalKeybindings,
   WorkflowMode,
   WSConnState,
 } from './types'
@@ -76,6 +77,8 @@ export interface EditorTab {
   from?: GitRef
   to?: GitRef
   commitSha?: string
+  /** Commit subject, carried in at open time so the tab label shows it without waiting for the async detail fetch. */
+  commitSubject?: string
   status?: string
   /** Discriminator for EditorArea; default 'file'. */
   kind?: EditorTabKind
@@ -193,6 +196,10 @@ interface State {
   notifyPerm: NotificationPermissionState
   /** Sessions currently nagging the user (waiting_input + page not focused). */
   notifyingSessions: Set<string>
+
+  /** Terminal alt-key bindings (additive over built-in Esc / Ctrl+C). Loaded
+   *  once at app startup; SessionView reads it via a synced ref. */
+  terminalKeybindings: TerminalKeybindings
 
   /** Ring-buffered project log entries, newest last. */
   logs: LogEntry[]
@@ -313,6 +320,7 @@ interface State {
   setWsState: (s: WSConnState) => void
   setServerVersion: (v: string) => void
   setNotifyPerm: (p: NotificationPermissionState) => void
+  setTerminalKeybindings: (kb: TerminalKeybindings) => void
   selectProject: (id: string | null) => void
 
   refreshProjects: () => Promise<void>
@@ -398,6 +406,7 @@ export const useStore = create<State>((set, get) => ({
   serverVersion: null,
   notifyPerm: initialPerm(),
   notifyingSessions: new Set<string>(),
+  terminalKeybindings: { abortAltKey: null, interruptAltKey: null },
   logs: [],
   alerts: [],
   selectedChange: null,
@@ -595,6 +604,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setServerVersion: (v) => set({ serverVersion: v }),
   setNotifyPerm: (p) => set({ notifyPerm: p }),
+  setTerminalKeybindings: (kb) => set({ terminalKeybindings: kb }),
   selectProject: (id) => {
     const before = get()
     const fromId = before.selectedProjectId
