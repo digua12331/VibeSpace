@@ -45,6 +45,14 @@ const RETENTION_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: '不清理' },
 ]
 
+type SettingsTab = 'general' | 'terminal' | 'feishu'
+
+const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'general', label: '通用' },
+  { id: 'terminal', label: '终端' },
+  { id: 'feishu', label: '飞书机器人' },
+]
+
 const DEFAULT_HIBERNATION: HibernationSettings = {
   enabled: false,
   idleMinutes: 15,
@@ -121,6 +129,7 @@ type RecordTarget = 'abortAltKey' | 'interruptAltKey'
 
 export default function SettingsDialog() {
   const [open, setOpen] = useState(_open)
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -403,10 +412,31 @@ export default function SettingsDialog() {
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-[460px] max-w-[90vw] max-h-[88vh] overflow-y-auto fluent-acrylic rounded-win p-5 shadow-dialog"
+        className="flex w-[720px] max-w-[90vw] h-[600px] max-h-[88vh] overflow-hidden fluent-acrylic rounded-win shadow-dialog"
       >
-        <div className="text-[15px] font-display font-semibold mb-3">设置</div>
+        {/* 左侧页签列 */}
+        <div className="w-[150px] shrink-0 border-r border-border/40 p-3 flex flex-col gap-1">
+          <div className="text-[15px] font-display font-semibold mb-2 px-1">设置</div>
+          {SETTINGS_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={`text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                activeTab === t.id
+                  ? 'bg-accent/15 text-fg border border-accent/40'
+                  : 'text-muted hover:text-fg hover:bg-white/[0.04] border border-transparent'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
+        {/* 右侧内容区 */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 overflow-y-auto p-5">
+        {activeTab === 'general' && (
         <section className="mb-4">
           <div className="text-sm text-fg/90 mb-1">粘贴图片保留天数</div>
           <div className="text-xs text-muted mb-2">
@@ -426,8 +456,10 @@ export default function SettingsDialog() {
             ))}
           </select>
         </section>
+        )}
 
-        <section className="mb-4 border-t border-border/40 pt-4">
+        {activeTab === 'terminal' && (
+        <section className="mb-4">
           <div className="text-sm text-fg/90 mb-1">会话冬眠</div>
           <div className="text-xs text-muted mb-2 leading-relaxed">
             空闲超过阈值的 AI 终端会被自动杀掉后端 CLI 进程释放内存，tab 在前端变成 💤 紫色；点 tab
@@ -476,7 +508,9 @@ export default function SettingsDialog() {
             <span>同时冬眠纯 shell（cmd / pwsh / bash），不推荐 — 会丢 cd 历史</span>
           </label>
         </section>
+        )}
 
+        {activeTab === 'terminal' && (
         <section className="mb-4 border-t border-border/40 pt-4">
           <div className="text-sm text-fg/90 mb-1">终端快捷键</div>
           <div className="text-xs text-muted mb-3 leading-relaxed">
@@ -543,7 +577,9 @@ export default function SettingsDialog() {
             <div className="mt-1 text-xs text-amber-300/90">{keyError}</div>
           )}
         </section>
+        )}
 
+        {activeTab === 'general' && (
         <section className="mb-4 border-t border-border/40 pt-4">
           <div className="text-sm text-fg/90 mb-1">桌面通知</div>
           <div className="text-xs text-muted mb-2 leading-relaxed">
@@ -573,8 +609,10 @@ export default function SettingsDialog() {
             </button>
           </div>
         </section>
+        )}
 
-        <section className="mb-4 border-t border-border/40 pt-4">
+        {activeTab === 'feishu' && (
+        <section className="mb-4">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm text-fg/90">飞书机器人</div>
             {feishuStatus && (
@@ -743,30 +781,35 @@ export default function SettingsDialog() {
             </button>
           </div>
         </section>
-
-        {error && (
-          <div className="mb-3 px-3 py-1.5 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
-            {error}
-          </div>
         )}
+          </div>
 
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => setOpenState(false)}
-            className="fluent-btn px-4 py-1.5 text-sm rounded-md border border-border bg-white/[0.03] hover:bg-white/[0.08] disabled:opacity-60"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            disabled={loading || saving}
-            onClick={() => void onSave()}
-            className="fluent-btn px-4 py-1.5 text-sm rounded-md border border-accent/60 bg-accent text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] font-medium hover:bg-accent-2 disabled:opacity-60"
-          >
-            {saving ? '保存中…' : '保存'}
-          </button>
+          {/* 底部：取消 / 保存（跨页签共用，存的是通用 + 终端两个页签的设置） */}
+          <div className="border-t border-border/40 px-5 py-4">
+            {error && (
+              <div className="mb-3 px-3 py-1.5 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
+                {error}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setOpenState(false)}
+                className="fluent-btn px-4 py-1.5 text-sm rounded-md border border-border bg-white/[0.03] hover:bg-white/[0.08] disabled:opacity-60"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={loading || saving}
+                onClick={() => void onSave()}
+                className="fluent-btn px-4 py-1.5 text-sm rounded-md border border-accent/60 bg-accent text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] font-medium hover:bg-accent-2 disabled:opacity-60"
+              >
+                {saving ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
