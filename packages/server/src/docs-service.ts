@@ -152,7 +152,7 @@ function countCheckboxes(md: string): { checked: number; total: number } {
 }
 
 function deriveStatus(checked: number, total: number): DocTaskSummary["status"] {
-  if (total === 0) return "todo";
+  if (total === 0 || checked === 0) return "todo";
   if (checked === total) return "done";
   return "doing";
 }
@@ -251,29 +251,38 @@ async function summarizeTask(
     }
   }
 
-  // Prefer tasks.json: it's the only source that can express "blocked". If
-  // it's missing / malformed / empty, fall back to parsing md checkboxes.
-  // Take max(mdMtime, jsonMtime) so an out-of-order write doesn't make the
-  // task sink in the recency-sorted list.
+  // tasks.md checkboxes are the source of truth for progress (single source —
+  // the AI maintains md only, no per-step json status sync). tasks.json is
+  // consulted just for the "blocked" state md can't express, and as a fallback
+  // when md has no checkboxes yet (freshly scaffolded task). Take
+  // max(mdMtime, jsonMtime) so an out-of-order write doesn't make the task sink
+  // in the recency-sorted list.
   const jsonRead = await readTasksJson(projectPath, name);
-  if (jsonRead) {
-    const { checked, total, status } = summarizeFromJson(jsonRead.json);
+  const { checked, total } = countCheckboxes(md);
+
+  if (total === 0 && jsonRead) {
+    const fromJson = summarizeFromJson(jsonRead.json);
     return {
       name,
-      status,
-      checked,
-      total,
+      status: fromJson.status,
+      checked: fromJson.checked,
+      total: fromJson.total,
       updatedAt: Math.round(Math.max(mdMtime, jsonRead.mtimeMs)),
     };
   }
 
-  const { checked, total } = countCheckboxes(md);
+  let status = deriveStatus(checked, total);
+  if (jsonRead && jsonRead.json.steps.some((s) => s.status === "blocked")) {
+    status = "blocked";
+  }
   return {
     name,
-    status: deriveStatus(checked, total),
+    status,
     checked,
     total,
-    updatedAt: Math.round(mdMtime),
+    updatedAt: Math.round(
+      jsonRead ? Math.max(mdMtime, jsonRead.mtimeMs) : mdMtime,
+    ),
   };
 }
 
