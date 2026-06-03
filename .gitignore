@@ -21,3 +21,4 @@ dev/
 .aimon/runtime/
 docs/*
 !docs/claude-config-tiers.md
+!docs/local-ai-commit-message.md
