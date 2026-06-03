@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as api from '../api'
 import { useStore } from '../store'
-import type { ChangeStatus, CommitFile, DiffResult } from '../types'
+import type { ChangeStatus, CommitDetail, CommitFile, DiffResult } from '../types'
 import DiffView from './DiffView'
 
 /**
@@ -61,6 +61,7 @@ export default function CommitDetailView({ projectId, sha }: Props) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [infoOpen, setInfoOpen] = useState(false)
 
   // ---- 拉取提交详情（SWR：有缓存先用，无缓存才转圈）----
   useEffect(() => {
@@ -115,35 +116,17 @@ export default function CommitDetailView({ projectId, sha }: Props) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* 提交头 */}
-      <div className="px-3 py-2 border-b border-border/60 bg-black/20 shrink-0">
-        <div className="text-[13px] text-fg font-medium break-words">
-          {detail.subject || '(无提交说明)'}
-        </div>
-        <div className="mt-1 flex items-center gap-2 text-[11px] text-muted flex-wrap">
-          <span>{detail.author}</span>
-          <span>·</span>
-          <span>{shortDate(detail.date)}</span>
-          <span>·</span>
-          <span className="font-mono text-subtle">{detail.shortSha}</span>
-          {detail.parents.length > 1 && (
-            <span className="text-[10px] px-1 py-0.5 rounded border border-border text-subtle">
-              合并提交 · 与第一父提交比较
-            </span>
-          )}
-        </div>
-        {detail.body && (
-          <div className="mt-1.5 text-[11.5px] text-fg/70 whitespace-pre-wrap break-words max-h-24 overflow-auto">
-            {detail.body}
-          </div>
-        )}
-      </div>
-
-      {/* 文件清单 + diff */}
+      {/* 文件清单 + diff（提交头已收进左上角的 ❗ 弹窗）*/}
       <div className="flex-1 min-h-0 flex">
         <div className="w-72 shrink-0 border-r border-border/60 overflow-auto">
-          <div className="px-3 py-1.5 text-[11px] text-muted sticky top-0 bg-bg/90 backdrop-blur">
-            {detail.files.length} 个文件
+          <div className="relative px-3 py-1.5 text-[11px] text-muted sticky top-0 bg-bg/90 backdrop-blur flex items-center gap-2">
+            <CommitInfoToggle
+              detail={detail}
+              open={infoOpen}
+              onToggle={() => setInfoOpen((v) => !v)}
+              onClose={() => setInfoOpen(false)}
+            />
+            <span>{detail.files.length} 个文件</span>
           </div>
           {detail.files.length === 0 ? (
             <div className="px-3 py-4 text-[11px] text-muted">
@@ -175,6 +158,77 @@ export default function CommitDetailView({ projectId, sha }: Props) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// 叹号按钮 + 就地弹出的提交信息面板（原顶部提交头的内容）。按钮和面板同在本
+// 组件内，直接用相对/绝对定位，不走 portal；点面板外或按 Esc 收起。
+function CommitInfoToggle({
+  detail,
+  open,
+  onToggle,
+  onClose,
+}: {
+  detail: CommitDetail
+  open: boolean
+  onToggle: () => void
+  onClose: () => void
+}) {
+  const [el, setEl] = useState<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (el && !el.contains(e.target as Node)) onClose()
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, el, onClose])
+
+  return (
+    <div className="relative" ref={setEl}>
+      <button
+        onClick={onToggle}
+        title="提交信息"
+        className={`w-[18px] h-[18px] inline-flex items-center justify-center rounded-full border text-[11px] leading-none shrink-0 ${
+          open
+            ? 'bg-accent/20 border-accent/60 text-accent'
+            : 'bg-white/[0.04] border-border text-muted hover:text-fg hover:bg-white/[0.08]'
+        }`}
+      >
+        !
+      </button>
+      {open && (
+        <div className="absolute left-0 top-[22px] z-20 w-80 max-w-[80vw] rounded-md border border-border bg-bg shadow-lg px-3 py-2.5">
+          <div className="text-[13px] text-fg font-medium break-words">
+            {detail.subject || '(无提交说明)'}
+          </div>
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-muted flex-wrap">
+            <span>{detail.author}</span>
+            <span>·</span>
+            <span>{shortDate(detail.date)}</span>
+            <span>·</span>
+            <span className="font-mono text-subtle">{detail.shortSha}</span>
+            {detail.parents.length > 1 && (
+              <span className="text-[10px] px-1 py-0.5 rounded border border-border text-subtle">
+                合并提交 · 与第一父提交比较
+              </span>
+            )}
+          </div>
+          {detail.body && (
+            <div className="mt-1.5 text-[11.5px] text-fg/70 whitespace-pre-wrap break-words max-h-40 overflow-auto">
+              {detail.body}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -201,9 +201,10 @@ export default function EditorArea() {
         {openFiles.map((f) => {
           const active = activeTabKind === 'file' && f.key === activeFileKey
           const isCommit = f.kind === 'commit'
-          const basename = isCommit ? '提交' : f.path.split('/').pop() ?? f.path
+          const commitSubject = f.commitSubject || '(无提交说明)'
+          const basename = isCommit ? commitSubject : f.path.split('/').pop() ?? f.path
           const title = isCommit
-            ? `提交 @ ${f.commitSha?.slice(0, 7) ?? ''}`
+            ? `${commitSubject} @ ${f.commitSha?.slice(0, 7) ?? ''}`
             : f.commitSha
               ? `${f.path} @ ${f.commitSha.slice(0, 7)}`
               : f.path

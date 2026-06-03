@@ -205,7 +205,7 @@ export default function GitGraph({ projectId }: Props) {
     // 让本行高亮（按 commitSha 比对），不再把 path 塞成 subject。
     const sel: SelectedChange = { path: c.sha, ref: c.sha, commitSha: c.sha }
     selectChange(sel)
-    openFile({ projectId, path: c.sha, kind: 'commit', commitSha: c.sha })
+    openFile({ projectId, path: c.sha, kind: 'commit', commitSha: c.sha, commitSubject: c.subject })
   }
 
   if (loading && commits.length === 0) {
