@@ -346,7 +346,7 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   }, [session.projectId, session.agent, ensureSlashCommands])
 
   // Poll subagent runs while this session view is active. 5s cadence matches
-  // MemoryView/JobsView; subagent Task calls last 30s+ so faster polling is
+  // MemoryView; subagent Task calls last 30s+ so faster polling is
   // wasted. Stops polling when the tab is not the active one.
   useEffect(() => {
     if (!active) return

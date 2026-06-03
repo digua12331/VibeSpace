@@ -25,6 +25,7 @@ import {
   listSessions,
   type SessionStatus,
 } from "../db.js";
+import { HUB_PROJECT_ID } from "../hub-project.js";
 import { ptyManager, lastInputAt } from "../pty-manager.js";
 import { statusManager } from "../status.js";
 import { getCliEntry } from "../cli-catalog.js";
@@ -33,6 +34,7 @@ import { listDocs } from "../docs-service.js";
 import { getMemByProject } from "../process-mem-service.js";
 import { serverLog } from "../log-bus.js";
 import { resolveWithinProject, readGuarded } from "../hub-path-guard.js";
+import { sendToOwner } from "../feishu/outbound.js";
 
 const SHELL_SET = new Set<string>(BUILTIN_SHELL_AGENTS);
 const BUILTIN = new Set<string>(BUILTIN_SHELL_AGENTS);
@@ -112,6 +114,20 @@ const DispatchToIdleSchema = z.object({
   targetSessionId: z.string().min(1),
   text: z.string().min(1).max(20_000),
 });
+
+// 飞书桥：总控台主动给大哥发消息（send_feishu_message 工具的后端端点）。
+const SendFeishuSchema = z.object({
+  text: z.string().min(1).max(8000),
+});
+
+// 飞书桥：总控台替大哥回某个 worker 的输入（send_input_to_session 工具）。
+const SendInputSchema = z.object({
+  sessionId: z.string().min(1),
+  text: z.string().min(1).max(20_000),
+});
+
+// send_input_to_session 的并发短锁：防总控台被诱导对同一 worker 连发抢人类输入。
+const sendInputLocks = new Set<string>();
 
 // Idle session 派工常量 (Codex 评审 D2-D3)
 const HUB_IDLE_MIN_AGE_MS = 800;        // status===idle 必须持续至少 800ms
@@ -447,6 +463,94 @@ export async function registerHubRoutes(app: FastifyInstance): Promise<void> {
       status: "working",
       idleAge: claim.idleAge,
     });
+  });
+
+  // 飞书桥：总控台 AI 调 send_feishu_message → 这里 → 发给大哥的飞书。
+  app.post("/api/hub/send-feishu-message", async (req, reply) => {
+    const parsed = SendFeishuSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+    }
+    const cleanText = sanitizeDispatchText(parsed.data.text).trim();
+    if (cleanText.length === 0) {
+      return reply.code(400).send({ error: "invalid_body", detail: "text empty after sanitize" });
+    }
+    try {
+      await sendToOwner(cleanText);
+      return reply.send({ ok: true });
+    } catch (err) {
+      const e = err as Error;
+      // outbound 失败已在 sendToOwner 内打 ERROR；这里回结构化错误给 MCP 工具。
+      return reply.code(502).send({ error: "feishu_send_failed", message: e.message });
+    }
+  });
+
+  // 飞书桥：总控台替大哥把一句话写进某个 worker（仅当它正 waiting_input）。
+  // 严格门禁——这是高风险工具：总控台可能被提示词诱导往任意终端乱写。
+  app.post("/api/hub/send-input-to-session", async (req, reply) => {
+    const parsed = SendInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+    }
+    const { sessionId } = parsed.data;
+    const cleanText = sanitizeDispatchText(parsed.data.text).trim();
+    if (cleanText.length === 0) {
+      return reply.code(400).send({ error: "invalid_body", detail: "text empty after sanitize" });
+    }
+
+    const row = getSession(sessionId);
+    if (!row) return reply.code(404).send({ error: "session_not_found" });
+    // 决不允许写总控台自己（这是 worker 控制工具，不是给 hub 自言自语）。
+    if (row.projectId === HUB_PROJECT_ID) {
+      return reply.code(400).send({ error: "cannot_target_hub" });
+    }
+    // 仅 AI 终端（claude/codex 有 waiting_input 语义），纯 shell 拒绝。
+    if (SHELL_SET.has(row.agent)) {
+      return reply.code(400).send({ error: "not_ai_session", currentAgent: row.agent });
+    }
+    if (!ptyManager.has(sessionId)) {
+      return reply.code(400).send({ error: "no_live_pty" });
+    }
+    // 核心门禁：必须正在 waiting_input（worker 显式在等人回答）。
+    const liveStatus = statusManager.get(sessionId);
+    if (liveStatus !== "waiting_input") {
+      return reply.code(400).send({ error: "not_waiting_input", currentStatus: liveStatus });
+    }
+    // 最近 1s 有人类网页输入 → 拒绝，防抢大哥正在敲的字。
+    const lastIn = lastInputAt.get(sessionId);
+    if (lastIn != null && Date.now() - lastIn < HUB_RECENT_INPUT_WINDOW_MS) {
+      return reply.code(400).send({ error: "recently_typed", sinceMs: Date.now() - lastIn });
+    }
+    // 短锁：同一 worker 同时只允许一次 send-input 在飞行。
+    if (sendInputLocks.has(sessionId)) {
+      return reply.code(409).send({ error: "locked" });
+    }
+    sendInputLocks.add(sessionId);
+
+    const t0 = Date.now();
+    serverLog("info", "hub", "send-input 开始", {
+      sessionId,
+      meta: { textPreview: cleanText.slice(0, 80), textLen: cleanText.length },
+    });
+    try {
+      const ok = ptyManager.write(sessionId, cleanText + "\r");
+      if (!ok) {
+        serverLog("error", "hub", "send-input PTY 写入失败", {
+          sessionId,
+          meta: { textPreview: cleanText.slice(0, 80) },
+        });
+        return reply.code(500).send({ error: "pty_write_failed" });
+      }
+      // hub 自己这次写也算"最近输入"，防紧接着再被诱导连发。
+      lastInputAt.set(sessionId, Date.now());
+      serverLog("info", "hub", `send-input 成功 (${Date.now() - t0}ms)`, {
+        sessionId,
+        meta: { textPreview: cleanText.slice(0, 80), textLen: cleanText.length },
+      });
+      return reply.send({ sessionId, written: true });
+    } finally {
+      sendInputLocks.delete(sessionId);
+    }
   });
 
   // Recent PTY output for any session — used by MCP read_session_output so

@@ -343,6 +343,55 @@ server.registerTool(
   },
 );
 
+// -------- 9. send_feishu_message ---------------------------------------
+
+server.registerTool(
+  "send_feishu_message",
+  {
+    title: "Send a message to the owner on Feishu",
+    description:
+      "Proactively send a plain-text message to the owner (大哥) on Feishu. Use this whenever you need to talk to the owner, ask them a question, request a decision, or report that work is done — do NOT rely on them watching your terminal. The message goes to the open_id configured in the Feishu settings. Fails if the bridge isn't configured or the owner open_id is unset.",
+    inputSchema: {
+      text: z
+        .string()
+        .min(1)
+        .max(8000)
+        .describe("Plain text to send to the owner on Feishu (control chars stripped server-side)"),
+    },
+  },
+  async ({ text }) => {
+    const r = await hubFetch("/api/hub/send-feishu-message", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) return errorResult(failureToStructured(r.failure));
+    return okResult(r.data);
+  },
+);
+
+// -------- 10. send_input_to_session ------------------------------------
+
+server.registerTool(
+  "send_input_to_session",
+  {
+    title: "Answer a worker that is waiting for input",
+    description:
+      "On the owner's behalf, write one line of input into a worker session that is currently WAITING for input (e.g. claude/codex asking a yes/no or a choice). Strict preconditions enforced server-side: target must be an AI session (not shell), not the hub itself, PTY must be alive, status MUST be 'waiting_input', no human web input within the last 1000ms, and not already locked. Use ONLY when the owner told you to reply to a specific task (e.g.「回复任务X：继续」). On rejection you get a structured error (session_not_found / cannot_target_hub / not_ai_session / no_live_pty / not_waiting_input / recently_typed / locked).",
+    inputSchema: {
+      sessionId: z.string().min(1).describe("Target worker session id (from get_project_sessions; must be in 'waiting_input')"),
+      text: z.string().min(1).max(20_000).describe("The line to send as the worker's answer (control chars stripped; trailing \\r appended automatically)"),
+    },
+  },
+  async ({ sessionId, text }) => {
+    const r = await hubFetch("/api/hub/send-input-to-session", {
+      method: "POST",
+      body: JSON.stringify({ sessionId, text }),
+    });
+    if (!r.ok) return errorResult(failureToStructured(r.failure));
+    return okResult(r.data);
+  },
+);
+
 // -------- main ---------------------------------------------------------
 
 async function main(): Promise<void> {

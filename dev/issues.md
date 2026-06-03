@@ -18,7 +18,7 @@
 - [x] .codex/config.toml 看起来是每台机器各自的 codex CLI 本地配置（注释managed by aimon UI），不建议入库，建议加到 .gitignore（文件 .codex/config.toml；上下文：2026-04-23 打 tag 时顺手发现，当前未在 .gitignore 中）
 - [x] DocsView.tsx:372 存在预先的类型错误 TS2322：pushLog 调用里 projectId 是 string | null，与期望的 string | undefined 不兼容（文件 packages/web/src/components/sidebar/DocsView.tsx:372；上下文：2026-04-24 跑 pnpm -C packages/web exec tsc -b 时发现，与终端输入抖动 v3 改动无关，是独立的类型定义问题，建议在 pushLog 调用处将 null 归一成 undefined 或在 pushLog 签名里允许 null）
 - [x] 给「删除项目」加操作日志（文件 packages/web/src/store.ts / ProjectsColumn.tsx；上下文：2026-04-24 操作日志规则落地，删项目是用户可感知的 mutation 必须 logAction('project','delete',...)）
-- [ ] 给「重命名项目」加操作日志（文件 packages/web/src/store.ts / ProjectsColumn.tsx；上下文：同上，需 logAction('project','rename', fn, { projectId, meta: { newName } })）
+- [ ] 给「重命名项目」加操作日志（文件 packages/web/src/store.ts / ProjectsColumn.tsx；上下文：同上，需 logAction('project','rename', fn, { projectId, meta: { newName } })）—— 2026-06-03 核实：当前代码里**没有重命名项目这个功能**（store / projects 路由 / ProjectsColumn 均无 rename，ProjectsColumn 右键菜单只有「代码更改」和「删除」），无操作可埋；待该功能真正实现时再补 logAction
 - [x] 给「停止/结束会话」加操作日志（文件 packages/web/src/store.ts 的 endSession / 前端关标签按钮；上下文：同上，logAction('session','stop', fn, { sessionId })）
 - [x] 给「Dev Docs 右键派 Claude」加操作日志（文件 packages/web/src/components/sidebar/DocsView.tsx 右键菜单 onSelect；上下文：logAction('docs','dispatch', fn, { meta: { task, target: 'claude' } })）
 - [x] 给「fs-ops 写文件」加操作日志（文件 packages/server/src/routes/fs-ops.ts；上下文：写盘类 mutation 必须 serverLog('info','fs',...)，失败路径配 error）
@@ -27,14 +27,14 @@
 - [x] 改造 ChangesList 里的 git 相关 pushLog 为 logAction 配对（文件 packages/web/src/components/ChangesList.tsx；上下文：同上，起止配对 + 耗时）
 - [x] 考虑日志保留策略（文件 packages/server/src/log-bus.ts；上下文：当前按天切 JSONL 无限增长、无清理、无单文件大小限制。建议加一个启动时扫描 data/logs/ 删除 30 天前文件的小任务，或改用 pino-roll 之类的滚动库）
 - [ ] codex 斜杠命令表只有 /help /clear /model 三条占位，待用户在 codex session 里跑 /help 截图后补齐（文件 packages/web/src/components/terminal/slashCommands.ts；上下文：2026-04-24 浮动输入框命令增强任务落地时用户仅提供了 claude/gemini 的 /help 输出，codex 占位待补）
-- [ ] README.md "Highlights" 段还在写"Karpathy 守则安装器"+"NewProjectDialog 两个复选框"，但代码里 Karpathy 路径已删（grep 全 packages 0 命中），当前只有 1 个 Dev Docs 复选框（文件 README.md 第 33-65 行；上下文：2026-04-29 harness-一键装配与团队面板 任务里发现，README 描述过时；本次任务又加了第 2 个 🤝 复选框，README 这段需要按当前实际重写，跟 Karpathy 完全无关）
+- [x] README.md "Highlights" 段还在写"Karpathy 守则安装器"+"NewProjectDialog 两个复选框"，但代码里 Karpathy 路径已删（grep 全 packages 0 命中），当前只有 1 个 Dev Docs 复选框（文件 README.md 第 33-65 行；上下文：2026-04-29 harness-一键装配与团队面板 任务里发现，README 描述过时；本次任务又加了第 2 个 🤝 复选框，README 这段需要按当前实际重写，跟 Karpathy 完全无关）
 - [x] vibespace-browser-tester subagent 没有 browser-use MCP 工具可用（文件 .claude/agents/vibespace-browser-tester.md；上下文：frontmatter 用 mcp__browser-use__* 通配符，claude code 不展开；导致浏览器侧自动验收全部 SKIP，需展开成具体工具名清单）
 - [ ] 为 removeDevDocs anchor 切片逻辑加 1–2 个单测（文件 packages/server/src/routes/projects.ts；上下文：DELETE /api/projects/:id/dev-docs 用 indexOf+slice，目前无测试覆盖）
-- [ ] 清理后端死路由 GET /api/projects/:id/harness-status + service 函数 getHarnessStatus（文件 packages/server/src/routes/projects.ts、harness-template-service.ts；上下文：前端 HarnessTeamDrawer 已删除，该路由无消费方）
+- [x] 清理后端死路由 GET /api/projects/:id/harness-status + service 函数 getHarnessStatus（文件 packages/server/src/routes/projects.ts、harness-template-service.ts；上下文：前端 HarnessTeamDrawer 已删除，该路由无消费方）—— 2026-06-03 核实：路由已不在代码中（全仓 grep harness-status 0 命中），getHarnessStatus 仍被 workflow-service.ts:451 getWorkflowStatus 消费，非死代码，无需删除
 - [x] web 包 build 失败：'skills' 不在 Activity 联合类型里（文件 packages/web/src/components/layout/ActivityBar.tsx:31 + PrimarySidebar.tsx:63；上下文：2026-05-02 在做"记忆结构化"任务时发现，session 起始就存在的 pre-existing 错误，应该是新加 SkillsView.tsx 的 work-in-progress 缺了 Activity 类型扩展，需要在 Activity union 里加 'skills'）
-- [ ] AGENTS.md "Codex 配置分层" 段 Claude→Codex 替换不彻底，引用了不存在的 docs/Codex-config-tiers.md（文件 AGENTS.md:316-322；上下文：本仓 AGENTS.md 是 CLAUDE.md 的 Codex 副本，但配置分层段把 "Claude Code" 机械替换成 "Codex"，含混了 Claude Code 与 Codex CLI 两个不同工具；文档路径也被替换成不存在的文件名。建议这一段恢复成"Claude Code"原文，并加一句"AGENTS.md 中其它 Claude→Codex 替换照旧；本节例外"）
-- [ ] SessionView 轮询间隔注释提到已删除的 JobsView（文件 packages/web/src/components/terminal/SessionView.tsx:323；上下文：2026-05-22 侧栏面板瘦身任务删了 JobsView，该注释举例仍引用它，失准但不影响功能，建议改注释）
-- [ ] subagent-runs 注释提到已删除的 jobs-service（文件 packages/server/src/subagent-runs.ts:33；上下文：2026-05-22 侧栏面板瘦身任务删了 jobs-service.ts，注释 "matches jobs-service" 已失准，建议改注释）
-- [ ] web 的 tsconfig.app.tsbuildinfo 被 git 跟踪、server 的 tsconfig.tsbuildinfo 没有（文件 packages/web/tsconfig.app.tsbuildinfo；上下文：2026-05-22 跑 tsc -b 发现 web tsbuildinfo 进 diff、server 的被 gitignore，构建缓存不应入库，建议把 web 的也加进 .gitignore）
+- [x] AGENTS.md "Codex 配置分层" 段 Claude→Codex 替换不彻底，引用了不存在的 docs/Codex-config-tiers.md（文件 AGENTS.md:316-322；上下文：本仓 AGENTS.md 是 CLAUDE.md 的 Codex 副本，但配置分层段把 "Claude Code" 机械替换成 "Codex"，含混了 Claude Code 与 Codex CLI 两个不同工具；文档路径也被替换成不存在的文件名。建议这一段恢复成"Claude Code"原文，并加一句"AGENTS.md 中其它 Claude→Codex 替换照旧；本节例外"）
+- [x] SessionView 轮询间隔注释提到已删除的 JobsView（文件 packages/web/src/components/terminal/SessionView.tsx:323；上下文：2026-05-22 侧栏面板瘦身任务删了 JobsView，该注释举例仍引用它，失准但不影响功能，建议改注释）
+- [x] subagent-runs 注释提到已删除的 jobs-service（文件 packages/server/src/subagent-runs.ts:33；上下文：2026-05-22 侧栏面板瘦身任务删了 jobs-service.ts，注释 "matches jobs-service" 已失准，建议改注释）
+- [x] web 的 tsconfig.app.tsbuildinfo 被 git 跟踪、server 的 tsconfig.tsbuildinfo 没有（文件 packages/web/tsconfig.app.tsbuildinfo；上下文：2026-05-22 跑 tsc -b 发现 web tsbuildinfo 进 diff、server 的被 gitignore，构建缓存不应入库，建议把 web 的也加进 .gitignore）
 - [ ] WebSocket 输出缺少 backpressure，输出洪峰会拖垮浏览器或后端（文件 packages/server/src/ws-hub.ts:68,292；上下文：2026-05-22 终端卡顿排查时 Codex 指出，ws-hub 只做 16ms 合并、队列无字节上限，safeSend 不看 bufferedAmount、无慢客户端保护，AI/命令疯狂刷屏时会卡；建议每 client 设 bufferedAmount 上限 + 每 session 队列设最大字节数）
 - [ ] refreshSessions 默认 subscribe 全部 alive 会话，与 TerminalHost 保活预算不一致（文件 packages/web/src/store.ts:668-669；上下文：2026-05-22 终端保活预算上线后，被预算剔除、未挂 SessionView 的会话仍被 refreshSessions 重新订阅 WS，订阅与渲染不同步；收益小未在本轮处理，建议让订阅跟随保活集合或做引用计数）

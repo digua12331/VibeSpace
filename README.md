@@ -51,9 +51,11 @@ navigate their plan documents.
   button writes the workflow rules into the project's `CLAUDE.md` so the
   next Claude session enforces *plan → confirm → context → confirm → tasks
   → execute* instead of YOLO coding.
-- **Karpathy guidelines installer.** Same mechanism, different content:
-  the new-project dialog can seed a `CLAUDE.md` with the widely-used
-  Karpathy behavioral guidelines.
+- **New-project workflow chooser.** The new-project dialog (➕) seeds a
+  fresh project's `CLAUDE.md` with a chosen workflow preset — Dev Docs,
+  OpenSpec, or the OpenSpec + Superpowers + gstack trio — plus an optional
+  Superpowers 7-step toggle, so the project starts with the methodology
+  already wired in.
 - **Per-project performance panel.** 📊 sidebar shows CPU and RSS of each
   live session, polled every 2 s with a 1 s server-side cache. Lets you
   spot the agent eating your RAM before it OOMs the machine.

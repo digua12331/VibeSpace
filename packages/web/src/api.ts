@@ -22,6 +22,10 @@ import type {
   StashEntry,
   StashOpResult,
   AppSettings,
+  FeishuConfigMasked,
+  FeishuConfigPatch,
+  FeishuStatus,
+  FeishuTestResult,
   DocFileContent,
   DocFileKind,
   DocTaskSummary,
@@ -1083,6 +1087,30 @@ export function updateAppSettings(
   patch: Partial<AppSettings>,
 ): Promise<AppSettings> {
   return request<AppSettings>('/api/app-settings', jsonInit('PUT', patch))
+}
+
+// ---------- 飞书双向任务桥 ----------
+
+export function getFeishuConfig(): Promise<FeishuConfigMasked> {
+  return request<FeishuConfigMasked>('/api/feishu/config')
+}
+
+export function updateFeishuConfig(
+  patch: FeishuConfigPatch,
+): Promise<FeishuConfigMasked> {
+  return request<FeishuConfigMasked>('/api/feishu/config', jsonInit('PUT', patch))
+}
+
+export function getFeishuStatus(): Promise<FeishuStatus> {
+  return request<FeishuStatus>('/api/feishu/status')
+}
+
+export function testFeishu(body: {
+  appId?: string
+  appSecret?: string
+  domain?: 'feishu' | 'lark'
+}): Promise<FeishuTestResult> {
+  return request<FeishuTestResult>('/api/feishu/test', jsonInit('POST', body))
 }
 
 export function getClaudeSettings(): Promise<ClaudeGlobalSettings> {

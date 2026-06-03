@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getAppSettings, updateAppSettings } from '../api'
+import {
+  getAppSettings,
+  updateAppSettings,
+  getFeishuConfig,
+  updateFeishuConfig,
+  getFeishuStatus,
+  testFeishu,
+} from '../api'
 import { logAction } from '../logs'
 import { currentPermission, requestPermission } from '../notify'
 import { useStore } from '../store'
@@ -8,6 +15,8 @@ import type {
   HibernationSettings,
   KeyCombo,
   TerminalKeybindings,
+  FeishuStatus,
+  FeishuTestResult,
 } from '../types'
 
 /**
@@ -123,6 +132,22 @@ export default function SettingsDialog() {
     useState<TerminalKeybindings>(DEFAULT_KEYBINDINGS)
   const [recording, setRecording] = useState<RecordTarget | null>(null)
   const [keyError, setKeyError] = useState<string | null>(null)
+  // 飞书桥配置（独立加载 / 独立保存，走 /api/feishu/*，不跟上面的「保存」按钮共用）
+  const [feishuEnabled, setFeishuEnabled] = useState(false)
+  const [feishuAppId, setFeishuAppId] = useState('')
+  const [feishuDomain, setFeishuDomain] = useState<'feishu' | 'lark'>('feishu')
+  const [feishuOwnerOpenId, setFeishuOwnerOpenId] = useState('')
+  const [feishuAllowOpenIds, setFeishuAllowOpenIds] = useState('')
+  const [feishuAllowChatIds, setFeishuAllowChatIds] = useState('')
+  const [feishuSecretInput, setFeishuSecretInput] = useState('')
+  const [feishuSecretMask, setFeishuSecretMask] = useState('')
+  const [feishuHasSecret, setFeishuHasSecret] = useState(false)
+  const [feishuStatus, setFeishuStatus] = useState<FeishuStatus | null>(null)
+  const [feishuSaving, setFeishuSaving] = useState(false)
+  const [feishuTesting, setFeishuTesting] = useState(false)
+  const [feishuTestResult, setFeishuTestResult] =
+    useState<FeishuTestResult | null>(null)
+  const [feishuError, setFeishuError] = useState<string | null>(null)
   const notifyPerm = useStore((s) => s.notifyPerm)
   const setNotifyPerm = useStore((s) => s.setNotifyPerm)
   const setTerminalKeybindings = useStore((s) => s.setTerminalKeybindings)
@@ -151,6 +176,27 @@ export default function SettingsDialog() {
         setError(e instanceof Error ? e.message : String(e))
       })
       .finally(() => setLoading(false))
+    // 飞书配置独立加载（失败不挡上面的应用设置）
+    setFeishuError(null)
+    setFeishuTestResult(null)
+    setFeishuSecretInput('')
+    getFeishuConfig()
+      .then((c) => {
+        setFeishuEnabled(c.enabled)
+        setFeishuAppId(c.appId)
+        setFeishuDomain(c.domain)
+        setFeishuOwnerOpenId(c.ownerOpenId)
+        setFeishuAllowOpenIds(c.allowOpenIds.join('\n'))
+        setFeishuAllowChatIds(c.allowChatIds.join('\n'))
+        setFeishuHasSecret(c.hasSecret)
+        setFeishuSecretMask(c.appSecretMask)
+      })
+      .catch((e: unknown) =>
+        setFeishuError(e instanceof Error ? e.message : String(e)),
+      )
+    getFeishuStatus()
+      .then(setFeishuStatus)
+      .catch(() => setFeishuStatus(null))
   }, [open, setNotifyPerm])
 
   useEffect(() => {
@@ -258,6 +304,78 @@ export default function SettingsDialog() {
     }
   }
 
+  function parseIdLines(text: string): string[] {
+    return text
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+  }
+
+  async function onSaveFeishu() {
+    setFeishuSaving(true)
+    setFeishuError(null)
+    setFeishuTestResult(null)
+    try {
+      const next = await logAction(
+        'feishu',
+        'save-config',
+        () =>
+          updateFeishuConfig({
+            enabled: feishuEnabled,
+            appId: feishuAppId.trim(),
+            domain: feishuDomain,
+            ownerOpenId: feishuOwnerOpenId.trim(),
+            allowOpenIds: parseIdLines(feishuAllowOpenIds),
+            allowChatIds: parseIdLines(feishuAllowChatIds),
+            // 留空 = 不改已存的密钥；填了才提交
+            ...(feishuSecretInput.trim() ? { appSecret: feishuSecretInput.trim() } : {}),
+          }),
+        {
+          meta: {
+            enabled: feishuEnabled,
+            domain: feishuDomain,
+            secretChanged: !!feishuSecretInput.trim(),
+          },
+        },
+      )
+      setFeishuEnabled(next.enabled)
+      setFeishuAppId(next.appId)
+      setFeishuDomain(next.domain)
+      setFeishuOwnerOpenId(next.ownerOpenId)
+      setFeishuAllowOpenIds(next.allowOpenIds.join('\n'))
+      setFeishuAllowChatIds(next.allowChatIds.join('\n'))
+      setFeishuHasSecret(next.hasSecret)
+      setFeishuSecretMask(next.appSecretMask)
+      setFeishuSecretInput('')
+      // 保存后刷新在线状态（后端会按新配置重连）
+      getFeishuStatus().then(setFeishuStatus).catch(() => undefined)
+    } catch (e: unknown) {
+      setFeishuError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setFeishuSaving(false)
+    }
+  }
+
+  async function onTestFeishu() {
+    setFeishuTesting(true)
+    setFeishuTestResult(null)
+    setFeishuError(null)
+    try {
+      const result = await logAction('feishu', 'test-connection', () =>
+        testFeishu({
+          appId: feishuAppId.trim(),
+          domain: feishuDomain,
+          ...(feishuSecretInput.trim() ? { appSecret: feishuSecretInput.trim() } : {}),
+        }),
+      )
+      setFeishuTestResult(result)
+    } catch (e: unknown) {
+      setFeishuError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setFeishuTesting(false)
+    }
+  }
+
   if (!open) return null
 
   const notifyTone =
@@ -285,7 +403,7 @@ export default function SettingsDialog() {
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-[460px] max-w-[90vw] fluent-acrylic rounded-win p-5 shadow-dialog"
+        className="w-[460px] max-w-[90vw] max-h-[88vh] overflow-y-auto fluent-acrylic rounded-win p-5 shadow-dialog"
       >
         <div className="text-[15px] font-display font-semibold mb-3">设置</div>
 
@@ -452,6 +570,176 @@ export default function SettingsDialog() {
                 : notifyPerm === 'granted'
                   ? '已授权'
                   : '请求授权'}
+            </button>
+          </div>
+        </section>
+
+        <section className="mb-4 border-t border-border/40 pt-4">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm text-fg/90">飞书机器人</div>
+            {feishuStatus && (
+              <span
+                className={`text-xs px-2 py-0.5 rounded border ${
+                  feishuStatus.state === 'connected'
+                    ? 'text-emerald-300 border-emerald-600/40 bg-emerald-500/10'
+                    : feishuStatus.state === 'failed'
+                      ? 'text-rose-300 border-rose-600/40 bg-rose-500/10'
+                      : feishuStatus.running
+                        ? 'text-amber-300 border-amber-600/40 bg-amber-500/10'
+                        : 'text-muted border-border'
+                }`}
+              >
+                {feishuStatus.state === 'connected'
+                  ? '● 在线'
+                  : feishuStatus.state === 'failed'
+                    ? '● 连接失败'
+                    : feishuStatus.state === 'connecting'
+                      ? '● 连接中'
+                      : feishuStatus.state === 'reconnecting'
+                        ? '● 重连中'
+                        : '○ 未连接'}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-muted mb-3 leading-relaxed">
+            在飞书里跟「总控台 AI」对话，由它替你调度其它 AI 终端干活。
+            <span className="text-amber-300/80">
+              {' '}
+              安全提示：能在飞书指挥 = 能在你电脑上跑命令，所以只有下面白名单里的
+              飞书账号 / 群能用，名单为空 = 谁都不行。
+            </span>
+          </div>
+
+          <label className="inline-flex items-center gap-2 text-sm mb-3 cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={feishuSaving}
+              checked={feishuEnabled}
+              onChange={(e) => setFeishuEnabled(e.target.checked)}
+            />
+            <span>启用飞书桥</span>
+          </label>
+
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs text-muted">App ID</label>
+              <input
+                type="text"
+                disabled={feishuSaving}
+                value={feishuAppId}
+                onChange={(e) => setFeishuAppId(e.target.value)}
+                placeholder="cli_xxxxxxxxxxxx"
+                className="w-full px-3 py-1.5 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted">
+                App Secret
+                {feishuHasSecret && (
+                  <span className="text-emerald-300/80">
+                    {' '}
+                    · 已保存（{feishuSecretMask}），留空不修改
+                  </span>
+                )}
+              </label>
+              <input
+                type="password"
+                disabled={feishuSaving}
+                value={feishuSecretInput}
+                onChange={(e) => setFeishuSecretInput(e.target.value)}
+                placeholder={feishuHasSecret ? '留空保留已存密钥' : '输入 App Secret'}
+                className="w-full px-3 py-1.5 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted">服务区</label>
+              <select
+                disabled={feishuSaving}
+                value={feishuDomain}
+                onChange={(e) =>
+                  setFeishuDomain(e.target.value === 'lark' ? 'lark' : 'feishu')
+                }
+                className="w-full px-3 py-1.5 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors disabled:opacity-60"
+              >
+                <option value="feishu">飞书（中国大陆）</option>
+                <option value="lark">Lark（海外）</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted">
+                你的 open_id（总控台主动发消息 / 任务提醒发给谁）
+              </label>
+              <input
+                type="text"
+                disabled={feishuSaving}
+                value={feishuOwnerOpenId}
+                onChange={(e) => setFeishuOwnerOpenId(e.target.value)}
+                placeholder="ou_xxxxxxxx"
+                className="w-full px-3 py-1.5 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted">
+                私聊白名单 open_id（每行一个，空 = 全拒）
+              </label>
+              <textarea
+                disabled={feishuSaving}
+                value={feishuAllowOpenIds}
+                onChange={(e) => setFeishuAllowOpenIds(e.target.value)}
+                rows={2}
+                placeholder={'ou_aaa\nou_bbb'}
+                className="w-full px-3 py-1.5 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors disabled:opacity-60 font-mono text-xs"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted">
+                群白名单 chat_id（每行一个）
+              </label>
+              <textarea
+                disabled={feishuSaving}
+                value={feishuAllowChatIds}
+                onChange={(e) => setFeishuAllowChatIds(e.target.value)}
+                rows={2}
+                placeholder={'oc_xxxx'}
+                className="w-full px-3 py-1.5 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors disabled:opacity-60 font-mono text-xs"
+              />
+            </div>
+          </div>
+
+          {feishuTestResult && (
+            <div
+              className={`mt-2 px-3 py-1.5 text-xs rounded-md border ${
+                feishuTestResult.ok
+                  ? 'text-emerald-200 bg-emerald-500/15 border-emerald-500/40'
+                  : 'text-rose-200 bg-rose-500/15 border-rose-500/40'
+              }`}
+            >
+              {feishuTestResult.ok ? '✓ ' : '✗ '}
+              {feishuTestResult.message}
+            </div>
+          )}
+          {feishuError && (
+            <div className="mt-2 px-3 py-1.5 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
+              {feishuError}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              type="button"
+              disabled={feishuTesting || feishuSaving}
+              onClick={() => void onTestFeishu()}
+              className="fluent-btn px-3 py-1.5 text-xs rounded-md border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+            >
+              {feishuTesting ? '测试中…' : '测试连接'}
+            </button>
+            <button
+              type="button"
+              disabled={feishuSaving}
+              onClick={() => void onSaveFeishu()}
+              className="fluent-btn px-3 py-1.5 text-xs rounded-md border border-accent/60 bg-accent text-on-accent font-medium hover:bg-accent-2 disabled:opacity-60"
+            >
+              {feishuSaving ? '保存中…' : '保存飞书配置'}
             </button>
           </div>
         </section>

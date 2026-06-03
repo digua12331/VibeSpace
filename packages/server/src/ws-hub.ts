@@ -3,7 +3,7 @@ import type { WebSocket } from "ws";
 import { ptyManager, lastInputAt } from "./pty-manager.js";
 import { statusManager } from "./status.js";
 import type { SessionStatus } from "./db.js";
-import { persistClientLog, handleClientLogRoundtrip } from "./log-bus.js";
+import { persistClientLog, handleClientLogRoundtrip, serverLog } from "./log-bus.js";
 import type { ClientLogPayload, LogLevel } from "./types/log.js";
 
 export const SERVER_VERSION = "0.1.0";
@@ -11,6 +11,10 @@ export const SERVER_VERSION = "0.1.0";
 interface ClientCtx {
   socket: WebSocket;
   subs: Set<string>;
+  // 背压:bufferedAmount 超 CLIENT_BUFFER_HARD_CAP_BYTES 时该 client 被主动断开。
+  // 置位后所有 fan-out 路径跳过它,直到 'close' 事件把它从 clients 移除——防止
+  // close() 与 close 事件之间继续堆数据,也防同一慢 client 记多条 warn。
+  closing?: boolean;
 }
 
 // Module-level client set so non-WS modules (e.g. log-bus) can broadcast.
@@ -19,7 +23,7 @@ const clients = new Set<ClientCtx>();
 
 export function broadcast(msg: Record<string, unknown>): void {
   const data = JSON.stringify(msg);
-  for (const c of clients) safeSend(c.socket, data);
+  for (const c of clients) sendFanout(c, data);
 }
 
 // ---- Per-session output coalescing ----
@@ -36,8 +40,20 @@ export function broadcast(msg: Record<string, unknown>): void {
 //     按帧拼接的 chunk 等价于"一次大 write"，不破坏颜色/光标控制。
 const OUTPUT_FLUSH_MS = 16;
 
+// 背压两道上限:
+//  - CLIENT_BUFFER_HARD_CAP_BYTES:单个 WS 连接的 socket.bufferedAmount(已塞进
+//    发送缓冲但还没真正发出去的字节)超过这个值,说明该 client 慢到追不上输出,
+//    主动断开它(前端会自动重连 + replay 重画,见 ws.ts / SessionView.tsx)。偏
+//    保守,避开普通网络抖动误杀,主要挡后台标签页 throttle / 远程弱网持续堆积。
+//  - SESSION_QUEUE_FLUSH_BYTES:单 session 的 16ms 合并队列攒到这么多字节就立即
+//    flush(而非等满 16ms),bound 住 server 端队列内存。略高于 pty-manager 的
+//    200KB ring buffer——队列堆到这量级还等 16ms 已无收益。
+const CLIENT_BUFFER_HARD_CAP_BYTES = 8 * 1024 * 1024;
+const SESSION_QUEUE_FLUSH_BYTES = 256 * 1024;
+
 interface OutputQueue {
   chunks: string[];
+  bytes: number;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -53,19 +69,28 @@ function flushSessionOutput(sessionId: string): void {
   if (q.chunks.length === 0) return;
   const data = q.chunks.length === 1 ? q.chunks[0] : q.chunks.join("");
   q.chunks.length = 0;
+  q.bytes = 0;
   const msg = JSON.stringify({ type: "output", sessionId, data });
   for (const c of clients) {
-    if (c.subs.has(sessionId)) safeSend(c.socket, msg);
+    if (c.subs.has(sessionId)) sendFanout(c, msg);
   }
 }
 
 function enqueueOutput(sessionId: string, data: string): void {
   let q = outputQueues.get(sessionId);
   if (!q) {
-    q = { chunks: [], timer: null };
+    q = { chunks: [], bytes: 0, timer: null };
     outputQueues.set(sessionId, q);
   }
   q.chunks.push(data);
+  q.bytes += Buffer.byteLength(data, "utf8");
+  // 队列攒到上限就立即吐出,不等满 16ms,bound 住 server 端合并队列内存。
+  // flushSessionOutput 会清 chunks/bytes 并清 timer,所以这里 flush 后下面
+  // 那个"没 timer 才建 timer"的分支会重新按需建,不会二次 flush 空队列。
+  if (q.bytes >= SESSION_QUEUE_FLUSH_BYTES) {
+    flushSessionOutput(sessionId);
+    return;
+  }
   if (q.timer == null) {
     q.timer = setTimeout(() => {
       if (q) q.timer = null;
@@ -118,7 +143,7 @@ export function registerWsHub(app: FastifyInstance): void {
       flushSessionOutput(sessionId);
       const msg = JSON.stringify({ type: "exit", sessionId, code, signal });
       for (const c of clients) {
-        if (c.subs.has(sessionId)) safeSend(c.socket, msg);
+        if (c.subs.has(sessionId)) sendFanout(c, msg);
       }
       // session 已退出，清理合并队列，防止 sessionId 复用时残留。
       disposeSessionQueue(sessionId);
@@ -134,7 +159,7 @@ export function registerWsHub(app: FastifyInstance): void {
       flushSessionOutput(sessionId);
       const msg = JSON.stringify({ type: "status", sessionId, status, detail });
       for (const c of clients) {
-        if (c.subs.has(sessionId)) safeSend(c.socket, msg);
+        if (c.subs.has(sessionId)) sendFanout(c, msg);
       }
     },
   );
@@ -295,6 +320,43 @@ function safeSend(sock: WebSocket, data: string): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * 一对多广播(output/exit/status/log broadcast)专用的发送:发送前做背压检查。
+ * 若该 client 的 socket.bufferedAmount 已超 CLIENT_BUFFER_HARD_CAP_BYTES,说明它
+ * 慢到追不上输出,主动断开它(前端自动重连 + replay 重画恢复),而不是无上限往它
+ * 的发送缓冲里继续堆——后者会拖垮 server 内存、且一个慢 client 不该影响其它人。
+ *
+ * 顺序固定:先置 closing(让后续所有 fan-out 跳过它)→ 记一条 warn → close()。
+ * closing 已置位的直接跳过:防重复 close、防同一慢 client 刷 warn(日志风暴)。
+ *
+ * 注意:只给 fan-out 用。给单个请求方的一次性回复(error/hello/replay 响应)仍走
+ * safeSend——它们不是洪峰源,且 replay 一次约 200KB 远低于 8MB 上限。
+ * 关服(onClose)主动 close 也不走这里,正常 shutdown 不该打 warn。
+ */
+function sendFanout(ctx: ClientCtx, data: string): void {
+  if (ctx.closing) return;
+  // ws@8 的运行时 WebSocket 有 bufferedAmount getter,但本仓库解析到的 ws 类型
+  // 未声明它,故用一个收窄的访问器读,避免 any。读不到当 0 处理(不误杀)。
+  const buffered =
+    (ctx.socket as unknown as { bufferedAmount?: number }).bufferedAmount ?? 0;
+  if (buffered > CLIENT_BUFFER_HARD_CAP_BYTES) {
+    ctx.closing = true;
+    serverLog("warn", "ws", "slow client disconnected: send buffer over cap", {
+      meta: {
+        bufferedAmount: buffered,
+        cap: CLIENT_BUFFER_HARD_CAP_BYTES,
+      },
+    });
+    try {
+      ctx.socket.close();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  safeSend(ctx.socket, data);
 }
 
 function isObj(x: unknown): x is Record<string, unknown> {

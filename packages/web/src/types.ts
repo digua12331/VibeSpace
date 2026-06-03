@@ -1168,3 +1168,51 @@ export interface DispatchToIdleSessionResponse {
   status: SessionStatus
   idleAge?: number
 }
+
+// ---------- 飞书双向任务桥 ----------
+
+/** Masked feishu config the browser sees — secret never leaves the server. */
+export interface FeishuConfigMasked {
+  enabled: boolean
+  appId: string
+  domain: 'feishu' | 'lark'
+  allowOpenIds: string[]
+  allowChatIds: string[]
+  ownerOpenId: string
+  hubAgent: string
+  hasSecret: boolean
+  appSecretMask: string
+}
+
+export interface FeishuConfigPatch {
+  enabled?: boolean
+  appId?: string
+  /** Omit / empty / unchanged mask keeps the stored secret. */
+  appSecret?: string
+  domain?: 'feishu' | 'lark'
+  allowOpenIds?: string[]
+  allowChatIds?: string[]
+  ownerOpenId?: string
+  hubAgent?: string
+}
+
+export type FeishuConnState =
+  | 'off'
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'failed'
+
+export interface FeishuStatus {
+  running: boolean
+  state: FeishuConnState
+  configured: boolean
+  appId: string
+  lastError: string | null
+}
+
+export interface FeishuTestResult {
+  ok: boolean
+  message: string
+}

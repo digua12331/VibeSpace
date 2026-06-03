@@ -48,6 +48,8 @@ import { registerClaudeSettingsRoutes } from "./routes/claude-settings.js";
 import { registerProjectClaudeSettingsRoutes } from "./routes/project-claude-settings.js";
 import { registerMcpServersRoutes } from "./routes/mcp-servers.js";
 import { registerHubRoutes } from "./routes/hub.js";
+import { registerFeishuRoutes } from "./routes/feishu.js";
+import { startFeishuBridge } from "./feishu/index.js";
 import { getHubToken } from "./hub-token.js";
 import { ensureHubWorkspace } from "./hub-workspace.js";
 import { ensureHubProject } from "./hub-project.js";
@@ -284,6 +286,7 @@ async function main(): Promise<void> {
   await registerProjectClaudeSettingsRoutes(app);
   await registerMcpServersRoutes(app);
   await registerHubRoutes(app);
+  await registerFeishuRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });
@@ -309,6 +312,9 @@ async function main(): Promise<void> {
   // 诊断埋点：每 30s 打印 PTY 吞吐 + 进程内存，定位 "多终端长跑 OOM" 是不是
   // native 侧 external/rss 持续上涨。LogsView 看 scope=pty-stats。
   startPtyStatsLogger();
+  // 飞书双向桥：fire-and-forget 拉起长连接（未配置时内部直接 no-op）。失败只落
+  // LogsView，绝不阻塞服务启动——桥是可选能力。
+  void startFeishuBridge();
   // Keep these two as plain console.log — they're startup-only path hints
   // for the operator, not operation events that need to reach LogsView.
   console.log(`VibeSpace db: ${getDbPath()}`);

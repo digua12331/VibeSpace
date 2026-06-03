@@ -333,12 +333,14 @@
 
 ---
 
-## Codex 配置分层
+## Claude Code 配置分层
 
-Codex 的权限/钩子/插件配置分**系统级**（`~/.Codex/`）与**项目级**（`<repo>/.Codex/`）两层；本仓库再把项目级拆成"共享"（`settings.json`，进 git）和"本机"（`settings.local.json`，gitignore）两份。
+> 本节例外：以下内容描述的是 **Claude Code**（CLI 工具）自身的配置分层，与 Codex CLI 无关，故保留 "Claude Code" / `.claude/` 原文，不做 Claude→Codex 替换。AGENTS.md 中其它 Claude→Codex 替换照旧。
 
-- **写 settings 前的归位三问**、**deny 红线清单**、**新项目复用流程**：见 `docs/Codex-config-tiers.md`。
-- **新项目复用模板**：`.Codex/templates/`（system / project 两份示例）。
+Claude Code 的权限/钩子/插件配置分**系统级**（`~/.claude/`）与**项目级**（`<repo>/.claude/`）两层；本仓库再把项目级拆成"共享"（`settings.json`，进 git）和"本机"（`settings.local.json`，gitignore）两份。
+
+- **写 settings 前的归位三问**、**deny 红线清单**、**新项目复用流程**：见 `docs/claude-config-tiers.md`。
+- **新项目复用模板**：`.claude/templates/`（system / project 两份示例）。
 - **每个 settings.json 顶部都有 `_doc` 字段**自描述层级和职责，打开文件秒看懂归我管啥。
 
-任何改 `~/.Codex/settings.json` / `<repo>/.Codex/settings.json` / `<repo>/.Codex/settings.local.json` 的需求，先翻一眼那份文档，按归位规则放，不要随手堆。
+任何改 `~/.claude/settings.json` / `<repo>/.claude/settings.json` / `<repo>/.claude/settings.local.json` 的需求，先翻一眼那份文档，按归位规则放，不要随手堆。

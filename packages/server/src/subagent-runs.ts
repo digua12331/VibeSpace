@@ -30,7 +30,7 @@ const RUN_RETENTION_MS = 30 * 60 * 1000;
  * The runs are NOT real PTY children — claude executes subagents inside its
  * own process. We only display them as cards on the parent session's view.
  *
- * Pure in-memory; cleared on server restart (matches jobs-service).
+ * Pure in-memory; cleared on server restart.
  */
 export class SubagentRunsService extends EventEmitter {
   private runs = new Map<string, InternalRun>();
