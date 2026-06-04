@@ -1,0 +1,45 @@
+{
+  "task": "记忆按相关性召回",
+  "steps": [
+    {
+      "id": 1,
+      "title": "docs-service.ts 加 readTaskFileHints",
+      "verify": "tsx 调用真实任务返回非空、不存在任务返回 []",
+      "status": "todo",
+      "read_files": ["packages/server/src/docs-service.ts"],
+      "write_files": ["packages/server/src/docs-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "hooks.ts 加纯函数 selectAutoLessons + 打分助手",
+      "verify": "smoke 断言文件重叠排前、无信号退回 slice(-N)",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/hooks.ts", "packages/server/src/memory-service.ts"],
+      "write_files": ["packages/server/src/routes/hooks.ts", "packages/server/scripts/memory-relevance-test.ts"]
+    },
+    {
+      "id": 3,
+      "title": "buildMemoryHeader 改用 selectAutoLessons",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/hooks.ts"],
+      "write_files": ["packages/server/src/routes/hooks.ts"]
+    },
+    {
+      "id": 4,
+      "title": "buildSessionStartAdditionalContext 取 fileHints + serverLog",
+      "verify": "build 通过；LogsView 应见 scope=memory 一条",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/hooks.ts", "packages/server/src/docs-service.ts"],
+      "write_files": ["packages/server/src/routes/hooks.ts"]
+    },
+    {
+      "id": 5,
+      "title": "全量构建 + smoke + 白名单比对",
+      "verify": "build 绿、smoke 绿、git diff 仅含白名单文件",
+      "status": "todo",
+      "read_files": ["packages/server"],
+      "write_files": []
+    }
+  ]
+}

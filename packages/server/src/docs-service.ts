@@ -83,6 +83,42 @@ function tasksJsonPath(projectPath: string, task: string): string {
 }
 
 /**
+ * Collect every `read_files` + `write_files` path declared across the steps of
+ * `<task>-tasks.json`, de-duplicated. Used by SessionStart memory injection to
+ * score lessons by file overlap with the task at hand. Returns `[]` on any
+ * failure (missing / unreadable / bad JSON / fields absent) — callers treat an
+ * empty list as "no file signal" and fall back to recency. Glob entries (e.g.
+ * `packages/server/src/routes/*.ts`) are returned verbatim; matching is the
+ * consumer's job. This does NOT reuse readTasksJson because that helper's
+ * TasksJson type only models step `status`.
+ */
+export async function readTaskFileHints(
+  projectPath: string,
+  task: string,
+): Promise<string[]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(tasksJsonPath(projectPath, task), "utf8"));
+  } catch {
+    return [];
+  }
+  const stepsRaw = (parsed as { steps?: unknown } | null)?.steps;
+  if (!Array.isArray(stepsRaw)) return [];
+  const out = new Set<string>();
+  for (const s of stepsRaw) {
+    if (!s || typeof s !== "object") continue;
+    for (const key of ["read_files", "write_files"] as const) {
+      const arr = (s as Record<string, unknown>)[key];
+      if (!Array.isArray(arr)) continue;
+      for (const f of arr) {
+        if (typeof f === "string" && f.trim().length > 0) out.add(f.trim());
+      }
+    }
+  }
+  return [...out];
+}
+
+/**
  * Guard against path traversal. Returns the resolved absolute path iff it is
  * contained under <projectPath>/dev. Throws otherwise.
  */

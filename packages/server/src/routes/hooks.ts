@@ -11,22 +11,128 @@ import {
   loadProjectBudgetLimits,
 } from "../task-budget.js";
 import { readStatusSummary } from "../task-status.js";
+import { readTaskFileHints } from "../docs-service.js";
 
 /** Cap the injected memory header at ~10KB so it never drowns the system prompt. */
 const MEMORY_HEADER_MAX_BYTES = 10_000;
 /** Cap auto.md lessons to the most recent N. */
 const AUTO_TAIL_COUNT = 30;
 
-function buildMemoryHeader(auto: MemoryEntry[], manual: MemoryEntry[]): string {
-  const autoLessons = auto.filter((e) => e.kind === "lesson").slice(-AUTO_TAIL_COUNT);
+type MemoryMode = "relevance" | "recency";
+
+interface SelectOpts {
+  taskName?: string;
+  fileHints?: string[];
+}
+
+/** Static prefix of a (possibly glob) hint, normalised for prefix matching. */
+function staticPrefix(hint: string): string {
+  const star = hint.indexOf("*");
+  return (star >= 0 ? hint.slice(0, star) : hint).replace(/\\/g, "/").toLowerCase();
+}
+
+function basename(p: string): string {
+  const norm = p.replace(/\\/g, "/").toLowerCase();
+  const i = norm.lastIndexOf("/");
+  return i >= 0 ? norm.slice(i + 1) : norm;
+}
+
+/** Is a concrete lesson file path plausibly covered by a task file hint? */
+function fileMatchesHint(lessonFile: string, hint: string): boolean {
+  const lf = lessonFile.replace(/\\/g, "/").toLowerCase();
+  if (!lf) return false;
+  if (hint.includes("*")) {
+    const pre = staticPrefix(hint);
+    return pre.length > 0 && lf.startsWith(pre);
+  }
+  const h = hint.replace(/\\/g, "/").toLowerCase();
+  if (lf === h) return true;
+  if (lf.startsWith(h.endsWith("/") ? h : h + "/")) return true;
+  if (h.startsWith(lf.endsWith("/") ? lf : lf + "/")) return true;
+  return basename(lf) === basename(h);
+}
+
+/** 2-char sliding windows over the CJK/alnum runs of a string, for cheap fuzzy
+ *  name overlap without pulling in a tokenizer. */
+function bigrams(s: string): Set<string> {
+  const cleaned = (s || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const out = new Set<string>();
+  for (let i = 0; i + 2 <= cleaned.length; i += 1) out.add(cleaned.slice(i, i + 2));
+  return out;
+}
+
+function intersectionSize(a: Set<string>, b: Set<string>): number {
+  let n = 0;
+  for (const x of a) if (b.has(x)) n += 1;
+  return n;
+}
+
+/**
+ * Pick which auto.md lessons to inject. When the session is bound to a task we
+ * score each lesson by file overlap (dominant, ×10) + task-name bigram overlap
+ * (tiebreak) and keep the top `limit`, restored to chronological order for
+ * readable output. With no task signal (no hints + no name, or all-zero scores)
+ * we fall back to the most recent `limit` — never worse than the old behaviour.
+ */
+export function selectAutoLessons(
+  autoLessons: MemoryEntry[],
+  limit: number,
+  opts: SelectOpts,
+): { selected: MemoryEntry[]; mode: MemoryMode } {
+  const recency = (): MemoryEntry[] => autoLessons.slice(-limit);
+  const hints = (opts.fileHints ?? []).filter((h) => h.trim().length > 0);
+  const nameGrams = bigrams(opts.taskName ?? "");
+  if (hints.length === 0 && nameGrams.size === 0) {
+    return { selected: recency(), mode: "recency" };
+  }
+
+  let maxScore = 0;
+  const scored = autoLessons.map((e, idx) => {
+    let fileScore = 0;
+    for (const f of e.files ?? []) {
+      if (hints.some((h) => fileMatchesHint(f, h))) fileScore += 1;
+    }
+    const nameScore =
+      intersectionSize(nameGrams, bigrams(e.task ?? "")) * 2 +
+      Math.min(3, intersectionSize(nameGrams, bigrams(e.body ?? "")));
+    const score = fileScore * 10 + nameScore;
+    if (score > maxScore) maxScore = score;
+    return { e, idx, score };
+  });
+
+  if (maxScore === 0) return { selected: recency(), mode: "recency" };
+
+  const top = scored
+    .slice()
+    .sort((a, b) => b.score - a.score || b.idx - a.idx)
+    .slice(0, limit)
+    .sort((a, b) => a.idx - b.idx)
+    .map((x) => x.e);
+  return { selected: top, mode: "relevance" };
+}
+
+function buildMemoryHeader(
+  auto: MemoryEntry[],
+  manual: MemoryEntry[],
+  opts: SelectOpts = {},
+): { header: string; mode: MemoryMode; autoCount: number } {
+  const allAuto = auto.filter((e) => e.kind === "lesson");
+  const { selected, mode } = selectAutoLessons(allAuto, AUTO_TAIL_COUNT, opts);
   const manualLines = manual.filter((e) => e.text.trim().length > 0);
 
-  if (autoLessons.length === 0 && manualLines.length === 0) return "";
+  if (selected.length === 0 && manualLines.length === 0) {
+    return { header: "", mode, autoCount: 0 };
+  }
 
   const parts: string[] = ["# 项目记忆（自动沉淀 + 手动追记）"];
-  if (autoLessons.length > 0) {
-    parts.push("", `## 最近自动沉淀的经验（auto.md, 最多 ${AUTO_TAIL_COUNT} 条）`);
-    for (const e of autoLessons) parts.push(e.text);
+  if (selected.length > 0) {
+    parts.push(
+      "",
+      mode === "relevance"
+        ? `## 与当前任务相关的经验（auto.md, 按相关性挑选 ${selected.length} 条）`
+        : `## 最近自动沉淀的经验（auto.md, 最多 ${AUTO_TAIL_COUNT} 条）`,
+    );
+    for (const e of selected) parts.push(e.text);
   }
   if (manualLines.length > 0) {
     parts.push("", "## 手动沉淀（manual.md）");
@@ -42,7 +148,7 @@ function buildMemoryHeader(auto: MemoryEntry[], manual: MemoryEntry[]): string {
     }
     out = out.slice(0, Math.max(0, limit)) + "\n... (truncated at 10KB)";
   }
-  return out;
+  return { header: out, mode, autoCount: selected.length };
 }
 
 /** Per-task STATUS.md tail injection budget. Independent from MEMORY_HEADER_MAX_BYTES
@@ -55,7 +161,35 @@ async function buildSessionStartAdditionalContext(sessionId: string): Promise<st
   const project = getProject(session.projectId);
   if (!project) return "";
   const payload = await readMemory(project.path);
-  const memoryHeader = buildMemoryHeader(payload.auto, payload.manual);
+  let fileHints: string[] = [];
+  if (session.task) {
+    try {
+      fileHints = await readTaskFileHints(project.path, session.task);
+    } catch {
+      fileHints = [];
+    }
+  }
+  const { header: memoryHeader, mode, autoCount } = buildMemoryHeader(
+    payload.auto,
+    payload.manual,
+    { taskName: session.task ?? undefined, fileHints },
+  );
+  if (memoryHeader) {
+    try {
+      serverLog(
+        "info",
+        "memory",
+        `记忆注入（${mode === "relevance" ? "按相关性" : "按最近"} ${autoCount} 条）`,
+        {
+          sessionId,
+          projectId: session.projectId,
+          meta: { mode, autoCount, task: session.task ?? null, fileHints: fileHints.length },
+        },
+      );
+    } catch {
+      /* logging is best-effort — never block SessionStart */
+    }
+  }
 
   // When the session is bound to a task with prior STATUS.md activity, append
   // the tail so the new session sees its predecessor's progress / cutoff
