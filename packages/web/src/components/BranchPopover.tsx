@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import * as api from '../api'
 import { logAction } from '../logs'
 import type { BranchRef } from '../types'
@@ -156,10 +157,14 @@ export default function BranchPopover({
   const left = Math.max(4, Math.min(anchor.left, (typeof window !== 'undefined' ? window.innerWidth : 1024) - PANEL_W - 4))
   const top = anchor.bottom + 4
 
-  return (
+  // Render through a portal to <body> so the fixed-position panel escapes the
+  // SCM panel's backdrop-filter ancestor (which would otherwise trap it inside
+  // that stacking context and let the editor area cover it). z-[70] matches the
+  // app's floating-menu layer.
+  return createPortal(
     <div
       ref={rootRef}
-      style={{ position: 'fixed', left, top, width: PANEL_W, zIndex: 50 }}
+      style={{ position: 'fixed', left, top, width: PANEL_W, zIndex: 70 }}
       className="bg-bg border border-border/70 rounded-md shadow-xl text-sm flex flex-col max-h-[60vh] min-h-0"
     >
       {/* New branch input */}
@@ -230,7 +235,8 @@ export default function BranchPopover({
           <div className="px-3 py-4 text-xs text-muted text-center">尚无分支</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
