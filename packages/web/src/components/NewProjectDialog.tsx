@@ -11,6 +11,7 @@ const DEFAULT_WORKFLOW: WorkflowChoice = 'dev-docs'
 export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const refreshProjects = useStore((s) => s.refreshProjects)
   const [name, setName] = useState('')
+  const [cloneUrl, setCloneUrl] = useState('')
   const [path, setPath] = useState('')
   const [workflow, setWorkflow] = useState<WorkflowChoice>(DEFAULT_WORKFLOW)
   const [superpowers, setSuperpowers] = useState(false)
@@ -38,6 +39,17 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
     }
     const trimmedPath = path.trim()
     const pathMode: 'auto' | 'custom' = trimmedPath ? 'custom' : 'auto'
+    const trimmedCloneUrl = cloneUrl.trim()
+    // Only the hostname goes into logs — the raw URL may carry a token/password
+    // (e.g. https://token@host/repo.git) we must not leak into LogsView.
+    let cloneHost: string | undefined
+    if (trimmedCloneUrl) {
+      try {
+        cloneHost = new URL(trimmedCloneUrl).host
+      } catch {
+        cloneHost = 'invalid'
+      }
+    }
     setSubmitting(true)
     try {
       await logAction(
@@ -47,6 +59,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           const proj = await api.createProject({
             name: name.trim(),
             ...(trimmedPath ? { path: trimmedPath } : {}),
+            ...(trimmedCloneUrl ? { cloneUrl: trimmedCloneUrl } : {}),
           })
           // 工作流装配：dev-docs / openspec / spec-trio / 无 四选一；Superpowers 与前两个
           // 正交，spec-trio 是预设套餐（强制带 Superpowers + gstack 标记）。
@@ -68,6 +81,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             name: name.trim(),
             path: trimmedPath || undefined,
             pathMode,
+            cloneHost,
             workflow,
             superpowers: effectiveSuperpowers,
           },
@@ -103,6 +117,19 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           />
           <span className="block text-[11px] text-muted mt-1.5">
             留空路径则在 <code className="font-mono">F:\VibeSpace\&lt;名称&gt;</code> 自动创建。
+          </span>
+        </label>
+
+        <label className="block mb-3">
+          <span className="block text-xs text-muted mb-1.5">Git 仓库地址（可选）</span>
+          <input
+            value={cloneUrl}
+            onChange={(e) => setCloneUrl(e.target.value)}
+            className="w-full px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm font-mono transition-colors"
+            placeholder="https://github.com/用户名/仓库名.git"
+          />
+          <span className="block text-[11px] text-muted mt-1.5">
+            填了会把这个 GitHub 项目下载（克隆）到目标目录；只支持 http/https 链接。项目名只是显示名，可与仓库名不同。
           </span>
         </label>
 
@@ -182,7 +209,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             disabled={submitting}
             className="fluent-btn px-4 py-1.5 text-sm rounded-md bg-accent text-on-accent font-medium hover:bg-accent-2 border border-accent/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
           >
-            {submitting ? '创建中...' : '创建'}
+            {submitting ? (cloneUrl.trim() ? '克隆中...' : '创建中...') : '创建'}
           </button>
         </div>
       </form>

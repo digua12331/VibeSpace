@@ -1209,6 +1209,52 @@ async function currentBranch(projectPath: string): Promise<string | null> {
 
 // ---- Remote ops ----
 
+/** Clone is slower than ordinary remote ops (full history download), so it
+ *  gets a longer ceiling than REMOTE_TIMEOUT_MS. */
+const CLONE_TIMEOUT_MS = 180_000;
+
+/** Strip any embedded URL so we never leak `https://token@host/...` into logs
+ *  or error messages surfaced to the client. */
+function scrubGitUrls(s: string): string {
+  return s.replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, "<url>");
+}
+
+/**
+ * `git clone <url> <targetPath>` into a fresh directory.
+ *
+ * Uses a non-cached SimpleGit instance because (a) cwd must be the *parent*
+ * directory (targetPath does not exist yet, so it is not a repo gitFor() could
+ * key on) and (b) we need GIT_TERMINAL_PROMPT=0 on top of sanitizedGitEnv() so
+ * a credential-requiring (private) repo fails fast instead of hanging on a
+ * prompt. Caller is responsible for url validation and target-dir conflict
+ * checks; this just runs the clone with a hard timeout.
+ */
+export async function cloneRepo(
+  url: string,
+  targetPath: string,
+  timeoutMs: number = CLONE_TIMEOUT_MS,
+): Promise<void> {
+  const parent = dirname(resolvePath(targetPath));
+  await mkdir(parent, { recursive: true });
+  const g = simpleGit({
+    baseDir: parent,
+    binary: "git",
+    maxConcurrentProcesses: 1,
+    trimmed: false,
+  }).env({ ...sanitizedGitEnv(), GIT_TERMINAL_PROMPT: "0" });
+  try {
+    await withGitTimeout("clone", timeoutMs, () =>
+      g.raw(["clone", "--", url, targetPath]),
+    );
+  } catch (err) {
+    if (err instanceof GitServiceError) {
+      throw new GitServiceError(err.code, scrubGitUrls(err.message), err.httpStatus);
+    }
+    const msg = clipStderr(scrubGitUrls(normalizeNewlines((err as Error)?.message ?? String(err))));
+    throw new GitServiceError("git_failed", `git clone failed: ${msg}`, 400);
+  }
+}
+
 export async function pullCurrent(projectPath: string): Promise<PullResult> {
   if (!(await hasAnyRemote(projectPath))) {
     throw new GitServiceError("git_failed", "no remote configured", 400);

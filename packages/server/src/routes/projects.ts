@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { nanoid } from "nanoid";
@@ -15,7 +16,7 @@ import {
   type WorkflowMode,
 } from "../db.js";
 import { ptyManager } from "../pty-manager.js";
-import { removeWorktree } from "../git-service.js";
+import { cloneRepo, removeWorktree } from "../git-service.js";
 import { serverLog } from "../log-bus.js";
 import { HUB_PROJECT_ID } from "../hub-project.js";
 import { listSkills } from "../skills-service.js";
@@ -30,7 +31,25 @@ const DEFAULT_ROOT = "F:\\VibeSpace";
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   path: z.string().min(1).optional(),
+  cloneUrl: z.string().trim().min(1).optional(),
 });
+
+/** Validate a clone URL: only http/https are allowed. SSH/file/scp-style and
+ *  malformed strings are rejected (sanitizedGitEnv strips auth env so SSH can't
+ *  work here, and file:// could read arbitrary local paths). Returns the
+ *  hostname for redacted logging. */
+function validateCloneUrl(raw: string): { url: string; host: string } {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("invalid_clone_url");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("invalid_clone_url");
+  }
+  return { url: raw, host: parsed.host };
+}
 
 const LayoutSchema = z.object({
   cols: z.number().int().min(1).max(48),
@@ -67,9 +86,110 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
     }
-    const { name, path: rawPath } = parsed.data;
+    const { name, path: rawPath, cloneUrl } = parsed.data;
     const pathMode: "auto" | "custom" = rawPath ? "custom" : "auto";
     const path = rawPath ?? join(DEFAULT_ROOT, name);
+
+    // --- Clone branch: when a git URL is supplied, download the repo into a
+    // fresh target dir, then register it. Disk/dir semantics differ from the
+    // empty-project path (target must NOT exist), so handle it separately and
+    // leave the original flow below untouched. ---
+    if (cloneUrl) {
+      let cloneHost: string;
+      let url: string;
+      try {
+        const v = validateCloneUrl(cloneUrl);
+        url = v.url;
+        cloneHost = v.host;
+      } catch {
+        serverLog("error", "project", "project-clone 失败: invalid_clone_url", {
+          meta: { name, path, pathMode },
+        });
+        return reply.code(400).send({ error: "invalid_clone_url" });
+      }
+
+      // Fail fast before spending minutes cloning: target dir must not exist,
+      // and its path must not already be registered.
+      if (existsSync(path)) {
+        serverLog("error", "project", "project-clone 失败: path_exists", {
+          meta: { name, path, pathMode, cloneHost },
+        });
+        return reply.code(400).send({ error: "path_exists", path });
+      }
+      if (listProjects().some((p) => p.path === path)) {
+        serverLog("error", "project", "project-clone 失败: path_already_exists", {
+          meta: { name, path, pathMode, cloneHost },
+        });
+        return reply.code(409).send({ error: "path_already_exists", path });
+      }
+
+      const tClone = Date.now();
+      serverLog("info", "project", "project-clone 开始", {
+        meta: { name, path, pathMode, cloneHost },
+      });
+
+      try {
+        await cloneRepo(url, path);
+      } catch (err) {
+        const msg = (err as Error).message || "clone failed";
+        // Clean up only the dir this request created — it did not exist before
+        // the pre-clone existsSync check above, so removing exactly `path` can
+        // never touch a pre-existing user directory.
+        if (existsSync(path)) {
+          try {
+            await rm(path, { recursive: true, force: true });
+          } catch {
+            /* best-effort cleanup */
+          }
+        }
+        serverLog("error", "project", `project-clone 失败: ${msg}`, {
+          meta: {
+            name,
+            path,
+            pathMode,
+            cloneHost,
+            error: { name: (err as Error).name, message: msg },
+          },
+        });
+        return reply.code(400).send({ error: "clone_failed", detail: msg });
+      }
+
+      try {
+        const proj = createProject({ id: nanoid(12), name, path });
+        serverLog("info", "project", `project-clone 成功 (${Date.now() - tClone}ms)`, {
+          projectId: proj.id,
+          meta: { name, path, pathMode, cloneHost },
+        });
+        return reply.code(201).send(proj);
+      } catch (err) {
+        const msg = (err as Error).message || "";
+        // DB write failed after a successful clone: drop the cloned dir so we
+        // don't leave an orphan folder with no project record.
+        if (existsSync(path)) {
+          try {
+            await rm(path, { recursive: true, force: true });
+          } catch {
+            /* best-effort cleanup */
+          }
+        }
+        if (msg.includes("UNIQUE") || msg.includes("constraint")) {
+          serverLog("error", "project", "project-clone 失败: path_already_exists", {
+            meta: { name, path, pathMode, cloneHost },
+          });
+          return reply.code(409).send({ error: "path_already_exists", path });
+        }
+        serverLog("error", "project", `project-clone 失败: ${msg}`, {
+          meta: {
+            name,
+            path,
+            pathMode,
+            cloneHost,
+            error: { name: (err as Error).name, message: msg },
+          },
+        });
+        throw err;
+      }
+    }
 
     const t0 = Date.now();
     serverLog("info", "project", "project-create 开始", {

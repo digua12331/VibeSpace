@@ -1,0 +1,45 @@
+{
+  "task": "新建项目克隆git仓库",
+  "steps": [
+    {
+      "id": 1,
+      "title": "git-service.ts 新增 cloneRepo()",
+      "verify": "pnpm -F @aimon/server build 通过；新 simpleGit 实例 + GIT_TERMINAL_PROMPT=0 + withGitTimeout，抛错不含原始 url",
+      "status": "todo",
+      "read_files": ["packages/server/src/git-service.ts"],
+      "write_files": ["packages/server/src/git-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "projects.ts 加 cloneUrl 支持",
+      "verify": "pnpm -F @aimon/server build 通过；不填 cloneUrl 时原逻辑零改动；清理只删本次创建的 path；serverLog clone 起止配对脱敏",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/projects.ts", "packages/server/src/git-service.ts", "packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/routes/projects.ts"]
+    },
+    {
+      "id": 3,
+      "title": "前端 api.ts createProject 加 cloneUrl",
+      "verify": "类型通过，不填时 body 不含该字段",
+      "status": "todo",
+      "read_files": ["packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/api.ts"]
+    },
+    {
+      "id": 4,
+      "title": "NewProjectDialog.tsx 加输入框",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/NewProjectDialog.tsx"],
+      "write_files": ["packages/web/src/components/NewProjectDialog.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "端到端自测 + 边界",
+      "verify": "克隆成功/留空不变/非法/已存在/失败 各符合预期；LogsView 起止配对无原始 url；git diff 仅 4 白名单文件",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

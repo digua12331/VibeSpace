@@ -141,6 +141,7 @@ export function listProjects(): Promise<Project[]> {
 export function createProject(input: {
   name: string
   path?: string
+  cloneUrl?: string
 }): Promise<Project> {
   return request<Project>('/api/projects', jsonInit('POST', input))
 }
