@@ -1,0 +1,12 @@
+{
+  "task": "浮动输入框命令增强",
+  "steps": [
+    { "id": 1, "title": "新建 slashCommands.ts（命令表 + helper）+ issues.md 追加 codex 待补", "verify": "grep SLASH_COMMANDS 文件命中；issues.md 含 codex 斜杠命令条目", "status": "done" },
+    { "id": 2, "title": "新建 InputMenu.tsx（Portal、fixed 定位、外点关、无匹配占位、不装键盘监听）", "verify": "文件存在，Props 签名对齐 context D1；tsc -b 无新增错", "status": "done" },
+    { "id": 3, "title": "SessionView 集成：MenuState + filesRef + 4 helper + onInput + onKeyDown 菜单分支 + active reset + 惰性拉文件", "verify": "diff 含上述结构；tsc -b 无新增错", "status": "done" },
+    { "id": 4, "title": "PromptLibraryDialog.onSend + 自定义按钮 onClick 改成 fillInput", "verify": "aimonWS.sendInput 只剩 Enter 发送 + paste 图片两处", "status": "done" },
+    { "id": 5, "title": "渲染 InputMenu（menu.kind !== 'none' 时），items 按 kind 派生", "verify": "diff 含 <InputMenu ...>；浏览器打 / 或 @ 看到菜单", "status": "done" },
+    { "id": 6, "title": "跑类型检查", "verify": "pnpm -C packages/web exec tsc -b 退出码 0", "status": "done" },
+    { "id": 7, "title": "用户浏览器手测验收", "verify": "六项全过：claude /、@ 文件、提示词覆盖、按钮覆盖、shell 不触发、IME 不误触", "status": "done" }
+  ]
+}

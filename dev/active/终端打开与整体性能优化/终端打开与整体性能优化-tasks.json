@@ -1,0 +1,153 @@
+{
+  "task": "终端打开与整体性能优化",
+  "steps": [
+    {
+      "id": 1,
+      "title": "A1. 扩展 perf-marks 加 spawn start/end 打点",
+      "verify": "LogsView 看到 `session-spawn 完成 (Nms)` 单行",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/perf-marks.ts",
+        "packages/web/src/components/StartSessionMenu.tsx",
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/perf-marks.ts",
+        "packages/web/src/components/StartSessionMenu.tsx",
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "A2. routes/sessions.ts 内加 5 个子步 logSpawnSubstep",
+      "verify": "落盘 jsonl 有 step=isGitRepo|addWorktree|pickSkills|injectMcp|ptySpawn 等日志",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/sessions.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/sessions.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "A3. vite build 拿基线 chunk 大小，写 context.md",
+      "verify": "context.md 有 BASELINE: index-Xkb.js, ...",
+      "status": "done",
+      "read_files": ["packages/web/dist/**"],
+      "write_files": ["dev/active/终端打开与整体性能优化/终端打开与整体性能优化-context.md"]
+    },
+    {
+      "id": 4,
+      "title": "B1. PrimarySidebar 11 view 改 React.lazy + Suspense 单层",
+      "verify": "Network 首屏不下 JobsView*.js / UsageView*.js，点 tab 才 fetch",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/layout/PrimarySidebar.tsx",
+        "packages/web/src/components/sidebar/*.tsx"
+      ],
+      "write_files": ["packages/web/src/components/layout/PrimarySidebar.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "B2. EditorArea/SessionView 子组件改 lazy（FilePreview/ChecklistEditor/PromptLibraryDialog）",
+      "verify": "dist 有 FilePreview-*.js / ChecklistEditor-*.js 独立 chunk",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/editor/EditorArea.tsx",
+        "packages/web/src/components/terminal/SessionView.tsx",
+        "packages/web/src/components/FilePreview.tsx",
+        "packages/web/src/components/PromptLibraryDialog.tsx",
+        "packages/web/src/components/editor/ChecklistEditor.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/editor/EditorArea.tsx",
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "B3. vite.config.ts 加 manualChunks 三组",
+      "verify": "vite build dist 有 xterm-*.js / markdown-*.js / xlsx-*.js 三个 chunk",
+      "status": "done",
+      "read_files": ["packages/web/vite.config.ts"],
+      "write_files": ["packages/web/vite.config.ts"]
+    },
+    {
+      "id": 7,
+      "title": "C1. pty-manager.ts 模块顶层 loadPty 预加载 fire-and-forget",
+      "verify": "服务启动后第一次 spawn 共享模式日志 step=ptySpawn ms<30",
+      "status": "todo",
+      "read_files": ["packages/server/src/pty-manager.ts"],
+      "write_files": ["packages/server/src/pty-manager.ts"]
+    },
+    {
+      "id": 8,
+      "title": "C2. skills-service.ts 的 pickSkillsForTask 加 mtime 缓存",
+      "verify": "第二次同 task 的 spawn 日志 cache=hit, ms<2",
+      "status": "todo",
+      "read_files": [
+        "packages/server/src/skills-service.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": ["packages/server/src/skills-service.ts"]
+    },
+    {
+      "id": 9,
+      "title": "C3. git-service.ts 的 isGitRepo 改 fs.existsSync",
+      "verify": "worktree 模式 spawn 日志 step=isGitRepo ms<2",
+      "status": "todo",
+      "read_files": ["packages/server/src/git-service.ts"],
+      "write_files": ["packages/server/src/git-service.ts"]
+    },
+    {
+      "id": 10,
+      "title": "D1. 浏览器手动开 3 次 spawn 验目标值",
+      "verify": "context.md 验收数据段有 3 行实测",
+      "status": "todo",
+      "read_files": [],
+      "write_files": ["dev/active/终端打开与整体性能优化/终端打开与整体性能优化-context.md"]
+    },
+    {
+      "id": 11,
+      "title": "D2. vite build 对比基线 + 首屏 chunk 总和 ≤ 60%",
+      "verify": "context.md 有前后对比表",
+      "status": "todo",
+      "read_files": ["packages/web/dist/**"],
+      "write_files": ["dev/active/终端打开与整体性能优化/终端打开与整体性能优化-context.md"]
+    },
+    {
+      "id": 12,
+      "title": "D3. 切 sidebar 11 tab 体感测",
+      "verify": "Network 看到按需 chunk 加载",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 13,
+      "title": "D4. 派 vibespace-browser-tester 跑 D1-D3",
+      "verify": "tester 返回 PASS/FAIL 报告",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 14,
+      "title": "D5. 类型检查全过",
+      "verify": "pnpm -F @aimon/web build + pnpm -F @aimon/server build 0 错误",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 15,
+      "title": "D6. write_files 白名单核对",
+      "verify": "git diff --name-only HEAD 与白名单一致",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

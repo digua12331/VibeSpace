@@ -1,0 +1,80 @@
+{
+  "task": "browser-use按需注入",
+  "steps": [
+    {
+      "id": 1,
+      "title": "抽 writeBrowserUseToMcpJson + 移除 claude 自动注入",
+      "verify": "pnpm --filter @aimon/server build 通过；grep 确认 src 无残留 injectClaude 引用，injectHubMcps/injectCodex 未改",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/mcp-bridge.ts",
+        "packages/server/src/routes/sessions.ts"
+      ],
+      "write_files": [
+        "packages/server/src/mcp-bridge.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "toggle ON 主动写入 + 清 disabled + 补失败日志",
+      "verify": "tsc 通过；enabled=true 分支调 writeBrowserUseToMcpJson 且失败走 serverLog error",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/mcp-servers.ts",
+        "packages/server/src/mcp-bridge.ts",
+        "packages/server/src/claude-json-service.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/mcp-servers.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "buildList 合成 browser-use OFF 行",
+      "verify": "tsc 通过；干净项目 GET /api/mcp-servers 含 name=browser-use enabled=false 项目级行；.mcp.json 损坏不崩",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/mcp-servers.ts",
+        "packages/server/src/cli-catalog.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/mcp-servers.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "移除仓库根 .mcp.json 里 browser-use",
+      "verify": "cat .mcp.json 不再含 browser-use；git diff 仅此一处",
+      "status": "done",
+      "read_files": [
+        ".mcp.json"
+      ],
+      "write_files": [
+        ".mcp.json"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "manual.md 追加 browser-tester 衔接约定",
+      "verify": "grep 到新条目",
+      "status": "done",
+      "read_files": [
+        "dev/memory/manual.md"
+      ],
+      "write_files": [
+        "dev/memory/manual.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "整体验收（进程树 + UI 面板 + 日志 + 越界检查）",
+      "verify": "tsc通过+导出函数8项功能测试全过+越界检查仅4个write_files;live面板/进程树/LogsView验证需重启后端(会杀会话)留给大哥",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/mcp-bridge.ts",
+        "packages/server/src/routes/mcp-servers.ts"
+      ],
+      "write_files": []
+    }
+  ]
+}

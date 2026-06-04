@@ -1,0 +1,12 @@
+# 新建项目极简化与设置整合 · 任务清单
+
+- [x] 1. 后端 `routes/projects.ts`：加 `DEFAULT_ROOT='F:\VibeSpace'` + `CreateProjectSchema` 的 `path` 改可选并删 `applyDevDocsGuidelines` 字段 + `path` 缺省时 `join+mkdirSync` 兜底 + 失败 400/`path_unwritable` + 移除 `if (applyDevDocsGuidelines) appendDevDocsGuidelines(...)` 整块 → verify: `curl -X POST http://127.0.0.1:8787/api/projects -H 'content-type:application/json' -d '{"name":"vsTestA"}'` 返回 201 且 `F:\VibeSpace\vsTestA\` 已建（已用 8799 验通过：HTTP 201，目录已建）
+- [x] 2. 后端 `routes/projects.ts`：新增 `GET /api/projects/:id/dev-docs-status`（读 CLAUDE.md `indexOf(MAIN_GUIDELINES_ANCHOR)`），含 `serverLog` 起止 → verify: `curl GET .../dev-docs-status` 返回 `{ enabled, claudeMdExists }` 字段齐全（已验：返回 `{enabled, claudeMdExists}` 完整）
+- [x] 3. 后端 `routes/projects.ts`：新增 `DELETE /api/projects/:id/dev-docs`（`REMOVE_PREFIX = '\n\n---\n\n'+MAIN_GUIDELINES_ANCHOR`，indexOf+slice 切除，幂等返回 200），含 `serverLog` 起止 → verify: `curl DELETE` 后 `type <project>\CLAUDE.md` 看不到工作流段落（已验：CLAUDE.md 头部内容保留、工作流段被剪除；二次 DELETE 幂等 200）
+- [x] 4. 后端 `routes/projects.ts`：`POST /api/projects` 路由补 `serverLog` `project-create 开始/成功/失败` 起止配对（meta 含 `name/path/pathMode`） → verify: 浏览器 LogsView 建项目时见 `scope=server msg=project-create 开始` + 成功配对（已验：[VibeSpace:project] project-create 开始 / 成功 (3ms) 起止配对在 server stdout 输出）
+- [x] 5. 前端 `types.ts`：在 Dev Docs 段新增 `DevDocsStatus` 接口 → verify: `pnpm -F web tsc --noEmit` 0 错误（已验：EXIT=0）
+- [x] 6. 前端 `api.ts`：`createProject` 入参 `path` 改可选并删 `applyDevDocsGuidelines` + 新增 `getDevDocsStatus` / `removeDevDocs` 函数 → verify: `pnpm -F web tsc --noEmit` 0 错误（已验：EXIT=0）
+- [x] 7. 前端 `NewProjectDialog.tsx`：删 `applyDevDocs` 全部使用、加 `showAdvanced` 受控折叠区、主区只留名称、路径与 Harness toggle 迁入折叠区、submit 条件传 `path` 与 meta `pathMode` → verify: 浏览器对话框只见名称输入框 + 收起的"高级"区；展开后见路径 + Harness；不见 Dev Docs toggle（代码级 tsc 通过；浏览器实际验收并入步骤 10）
+- [x] 8. 前端 `PermissionsDrawer.tsx`：`mode` 类型扩为 `'workflow'|'permissions'|'buttons'`、初值 `'workflow'`、tab 栏前插入"工作流"、render 路径加 `mode==='workflow'` 分支、内联 `WorkflowTab` 组件（含 confirmDialog 二次确认 + logAction 包装 + loading + 失败回滚） → verify: 浏览器打开抽屉默认落"工作流"tab，开关可切，关闭时弹 danger 风格 confirmDialog，LogsView 见 `scope=project action=set-devdocs` 起止配对（代码级 tsc 通过；浏览器实际验收并入步骤 10）
+- [x] 9. 全量类型检查：`pnpm -F web tsc --noEmit` + `pnpm -F server tsc --noEmit` → verify: 两端 0 错误（已验：server EXIT=0, web EXIT=0）
+- [ ] 10. 浏览器跑 plan 验收 1–8 + 往 `dev/issues.md` 追加单测待办（anchor 切片逻辑） + 失败分支至少触发一次 ERROR 条目（如关只读项目 / 输入已存在的名字） → verify: 8 项实操通过 + LogsView 见 ERROR 条目 + `dev/issues.md` 末尾新增一行 `- [ ]`（issues.md 单测待办已 append；浏览器验收 1–8 与失败分支 ERROR 触发待大哥在 UI 验，blocked-on-user）

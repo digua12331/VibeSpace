@@ -1,0 +1,156 @@
+{
+  "task": "issues并行派工",
+  "steps": [
+    {
+      "id": 1,
+      "title": "issues-service 加 [auto] 标签 + hash 解析",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过（项目无 unit test，逻辑细节用后续步骤 6 的 issues-jobs-smoke 端到端覆盖）",
+      "status": "done",
+      "read_files": ["packages/server/src/issues-service.ts"],
+      "write_files": ["packages/server/src/issues-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "types.ts 同步 IssueItem.auto/hash + 新增 IssueJob 类型",
+      "verify": "pnpm -C packages/web exec tsc -b --force 通过",
+      "status": "done",
+      "read_files": ["packages/web/src/types.ts", "packages/server/src/issues-service.ts"],
+      "write_files": ["packages/web/src/types.ts"]
+    },
+    {
+      "id": 3,
+      "title": "后端 IssueJobManager（issue-jobs.ts）+ 单例 export",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；状态机由后续 step 6 的 issues-jobs-smoke 端到端覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/install-jobs.ts",
+        "packages/server/src/log-bus.ts",
+        "packages/server/src/worktree-paths.ts"
+      ],
+      "write_files": ["packages/server/src/issue-jobs.ts"]
+    },
+    {
+      "id": 4,
+      "title": "issue-prompt.ts + issue-verify.ts",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；issue-verify 的 pass/fail 行为由 step 6 smoke 端到端覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/install-jobs.ts",
+        "packages/server/src/issue-jobs.ts"
+      ],
+      "write_files": [
+        "packages/server/src/issue-prompt.ts",
+        "packages/server/src/issue-verify.ts"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "[SKIPPED] sessions.ts 扩可选 worktreePath 参数",
+      "verify": "skip: 调研发现可直接复用 createSession(isolation='worktree')，路由自动生成 data/worktrees/<projectId>/<sessionId> 路径并随 WireSession.worktreePath 返回；孤儿元数据改用 .aimon/issue-jobs/<jobId>.json，合并到 step 6 实现",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/sessions.ts",
+        "packages/server/src/worktree-paths.ts"
+      ],
+      "write_files": []
+    },
+    {
+      "id": 6,
+      "title": "后端 routes/issue-jobs.ts + 在 index.ts 注册",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；端到端行为（batch-dispatch / approve / reject）由 step 11 的 issues-jobs-smoke.mjs 覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/issues.ts",
+        "packages/server/src/index.ts",
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/issue-jobs.ts",
+        "packages/server/src/issue-prompt.ts",
+        "packages/server/src/issue-verify.ts",
+        "packages/server/src/issues-service.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/issue-jobs.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "ws-hub 推送 issue-job-state 消息 + 监听 pty exit 同步 cancelled",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；bus wiring 在 routes/issue-jobs.ts 内挂；pty exit→cancelled 在 wireSessionOutput.onExit 里实现（不在 ws-hub 层）；端到端由 step 11 smoke 覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/ws-hub.ts",
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/issue-jobs.ts"
+      ],
+      "write_files": ["packages/server/src/routes/issue-jobs.ts"]
+    },
+    {
+      "id": 8,
+      "title": "api.ts + store.ts 加客户端函数与 store",
+      "verify": "pnpm -C packages/web exec tsc -b --force 通过；WS 增量更新留 step 10 跟 UI 一起串",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts",
+        "packages/web/src/types.ts"
+      ],
+      "write_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "DocsView 'issues' view 加多选 checkbox + 批量派工按钮",
+      "verify": "pnpm -C packages/web exec tsc -b --force 通过；浏览器手动验收在 step 11 大哥跑完整流程时一起做",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/sidebar/DocsView.tsx",
+        "packages/web/src/logs.ts",
+        "packages/web/src/components/dialog/DialogHost.tsx"
+      ],
+      "write_files": ["packages/web/src/components/sidebar/DocsView.tsx"]
+    },
+    {
+      "id": 10,
+      "title": "DocsView 加 'queue' view 显示 IssueJob 列表 + approve/reject 操作",
+      "verify": "pnpm -C packages/web exec tsc -b --force 通过；WS 增量更新留后续 issue（polling 2s 已足够），实现含 IssueJobCard 子组件 + 状态色彩 + approve/reject confirm",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/sidebar/DocsView.tsx",
+        "packages/web/src/components/ChangesList.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": ["packages/web/src/components/sidebar/DocsView.tsx"]
+    },
+    {
+      "id": 11,
+      "title": "scripts/issues-jobs-smoke.mjs + 操作日志埋点核对",
+      "verify": "pnpm smoke:issues-jobs 全 assertion 通过；后端 serverLog 起止配对观察到；前端 logAction 已埋点；真起 claude session 的 verify+marker 链路依赖宿主 claude CLI，留给大哥手工验",
+      "status": "done",
+      "read_files": [
+        "scripts/worktree-smoke.mjs",
+        "scripts/server-smoke.mjs",
+        "packages/server/src/routes/projects.ts"
+      ],
+      "write_files": [
+        "scripts/issues-jobs-smoke.mjs",
+        "package.json"
+      ]
+    },
+    {
+      "id": 12,
+      "title": "README.zh-CN.md + dev/issues.md 顶部加 [auto] 标签使用说明",
+      "verify": "大哥按 plan '目标 - 可验证的验收标准' 整条清单跑一遍验收。README.md（英文版）同步留下个任务",
+      "status": "done",
+      "read_files": [
+        "README.zh-CN.md",
+        "dev/issues.md",
+        "dev/active/issues并行派工/issues并行派工-plan.md"
+      ],
+      "write_files": ["README.zh-CN.md", "dev/issues.md"]
+    }
+  ]
+}

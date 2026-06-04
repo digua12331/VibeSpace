@@ -1,0 +1,77 @@
+{
+  "task": "终端悬浮快捷按钮",
+  "steps": [
+    {
+      "id": 1,
+      "title": "customButtons.ts 加字段注释",
+      "verify": "showInTopbar 字段注释包含\"实际指：是否在输入框上方显示\"",
+      "status": "done",
+      "read_files": ["packages/web/src/customButtons.ts"],
+      "write_files": ["packages/web/src/customButtons.ts"]
+    },
+    {
+      "id": 2,
+      "title": "SessionView.tsx 顶栏剪掉 customButtons map",
+      "verify": "顶栏只剩 ⚙/📝/⟳/✕ + 状态徽章",
+      "status": "done",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 3,
+      "title": "SessionView.tsx 新增按钮行 div + xterm bottom 上调",
+      "verify": "按钮行 absolute bottom-[76px]；xterm style.bottom 从 72 改 112",
+      "status": "done",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 4,
+      "title": "SessionView.tsx 边界处理",
+      "verify": "isDead 隐藏 / 0 按钮不渲染 / overflow-x-auto 横向滚",
+      "status": "done",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "PermissionsDrawer ButtonsTab 文案微调",
+      "verify": "复选框 label 与说明文字改成\"输入框上方显示\"",
+      "status": "done",
+      "read_files": ["packages/web/src/components/PermissionsDrawer.tsx"],
+      "write_files": ["packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "pnpm -F @aimon/web build 类型检查",
+      "verify": "build 成功，无 TypeScript error",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 7,
+      "title": "vibespace-browser-tester 跑 10 条浏览器验收",
+      "verify": "10 条验收 PASS（或定位 FAIL）",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 8,
+      "title": "git diff --name-only HEAD 边界检查",
+      "verify": "仅 3 个目标文件 + 可能 tsbuildinfo",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 9,
+      "title": "交付 handoff",
+      "verify": "第一行是大哥验收指引",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

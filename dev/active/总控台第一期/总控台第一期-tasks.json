@@ -1,0 +1,120 @@
+{
+  "task": "总控台第一期",
+  "steps": [
+    {
+      "id": 1,
+      "title": "调研：摸清 createSession / process-mem-service / git-service / docs-service 真实签名",
+      "verify": "列出 dispatch 内部要调的函数完整签名 + /api/hub/status 各字段在后端的取值方式",
+      "status": "done",
+      "notes": "startSession 私有→dispatch 用 app.inject('POST /api/sessions') 复用；process-mem-service 无读 API→新加 export getMemByProject()（白名单扩展+1）；git getChanges→ChangesResult；docs listDocs→DocTaskSummary[]；ptyManager.write sync boolean",
+      "read_files": [
+        "packages/server/src/db.ts",
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/process-mem-service.ts",
+        "packages/server/src/git-service.ts",
+        "packages/server/src/docs-service.ts",
+        "packages/server/src/routes/sessions.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": []
+    },
+    {
+      "id": 2,
+      "title": "新增 packages/server/src/routes/hub.ts —— 3 端点 + zod + serverLog；扩展 process-mem-service 加 getMemByProject()",
+      "verify": "pnpm --filter @aimon/server build 通过",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/sessions.ts",
+        "packages/server/src/routes/projects.ts",
+        "packages/server/src/db.ts",
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/process-mem-service.ts",
+        "packages/server/src/git-service.ts",
+        "packages/server/src/docs-service.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/process-mem-service.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "packages/server/src/index.ts 注册 registerHubRoutes",
+      "verify": "server build 通过；dev 实例 (9787) 重启后 curl 三个接口返回预期结构",
+      "status": "done",
+      "notes": "curl /api/hub/status 返回 4 项目完整结构；detail 接口对 VibeSpace 返回 {gitDirty:null, devTasks:[], errorCount24h:null}（path 不是 git 仓库根，符合预期）；dispatch 缺字段→invalid_body；BAD_ID→project_not_found",
+      "read_files": [
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "前端 api.ts + types.ts + store.ts —— 客户端 + 类型 + selectedView 状态",
+      "verify": "pnpm --filter @aimon/web build 通过；浏览器 console useStore.getState().setSelectedView('hub') 能切 + 刷新后恢复",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/store.ts"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "ProjectsColumn 顶部固定 📊 总控台入口 + Workbench 分支渲染（先占位 HubView）",
+      "verify": "build 通过；浏览器看到入口在第一位、点击主区切到 HubView 占位；切项目主区恢复",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/layout/ProjectsColumn.tsx",
+        "packages/web/src/components/layout/Workbench.tsx",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/layout/ProjectsColumn.tsx",
+        "packages/web/src/components/layout/Workbench.tsx",
+        "packages/web/src/components/hub/HubView.tsx"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "HubView + HubProjectCard + HubDispatchDialog —— 看板 + 增量刷新 + 派工",
+      "verify": "build 通过；浏览器完整走一遍：打开 hub → 看板列出所有项目 → 展开 → 派任务 → 新 session tab 出现且首句已发送 → LogsView 看到 scope=hub 日志",
+      "status": "done",
+      "notes": "HubView 5s 轮询 status（store.sessions 没有 lastInputAt/lastOutputAt 字段，所以走 hub status 接口最直接）；展开项目卡 30s 慢刷 detail；派工成功立刻 refreshNow",
+      "read_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/store.ts",
+        "packages/web/src/components/dialog/DialogHost.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/hub/HubView.tsx",
+        "packages/web/src/components/hub/HubProjectCard.tsx",
+        "packages/web/src/components/hub/HubDispatchDialog.tsx"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "白名单 + grep + tester",
+      "verify": "git diff 覆盖白名单；grep 无残留旧签名；tester PASS/FAIL/SKIP",
+      "status": "done",
+      "notes": "白名单 ✓ 11 个文件全部对上（含 context 扩的 process-mem-service.ts）；grep /api/hub/ 5 个文件全是本任务新增/类型引用；tester 按大哥要求跳过未派",
+      "read_files": [
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/index.ts",
+        "packages/web/src/components/hub/HubView.tsx",
+        "packages/web/src/components/layout/ProjectsColumn.tsx",
+        "packages/web/src/components/layout/Workbench.tsx"
+      ],
+      "write_files": []
+    }
+  ]
+}

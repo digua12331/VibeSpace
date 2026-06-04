@@ -1,0 +1,54 @@
+{
+  "task": "终端输出背压防护",
+  "steps": [
+    {
+      "id": 1,
+      "title": "常量 + ClientCtx.closing + OutputQueue.bytes + import serverLog",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/ws-hub.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": [
+        "packages/server/src/ws-hub.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "新增 sendFanout 助手 + 四处 fan-out 改用它,控制回复/onClose 不动",
+      "verify": "tsc 通过;人工读 diff 确认只有 broadcast/flushSessionOutput/exit/status 四处替换,handleClientMsg 回复仍 safeSend",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/ws-hub.ts"
+      ],
+      "write_files": [
+        "packages/server/src/ws-hub.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "enqueueOutput 字节累加 + 超阈提前 flush;flushSessionOutput 清 bytes",
+      "verify": "tsc 通过;人工确认 flush 里 timer 清理 + bytes 归零、无二次空 flush",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/ws-hub.ts"
+      ],
+      "write_files": [
+        "packages/server/src/ws-hub.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "构建验收 + 边界自查",
+      "verify": "pnpm -F @aimon/server build 成功;git diff --name-only HEAD 只含 packages/server/src/ws-hub.ts",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/ws-hub.ts"
+      ],
+      "write_files": [
+        "packages/server/src/ws-hub.ts"
+      ]
+    }
+  ]
+}

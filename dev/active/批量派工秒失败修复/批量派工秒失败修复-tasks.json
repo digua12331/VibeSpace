@@ -1,0 +1,45 @@
+{
+  "task": "批量派工秒失败修复",
+  "steps": [
+    {
+      "id": 1,
+      "title": "runner 改文件信号轮询",
+      "verify": "pnpm --filter @aimon/server exec tsc --noEmit 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/worktree-session-runner.ts", "packages/server/src/pty-manager.ts"],
+      "write_files": ["packages/server/src/worktree-session-runner.ts"]
+    },
+    {
+      "id": 2,
+      "title": "issue-prompt 改写信号文件",
+      "verify": "tsc 通过 + grep 无 ISSUE_*_MARKER 残留",
+      "status": "done",
+      "read_files": ["packages/server/src/issue-prompt.ts"],
+      "write_files": ["packages/server/src/issue-prompt.ts"]
+    },
+    {
+      "id": 3,
+      "title": "task-subtasks 改写 + 回调改名",
+      "verify": "tsc 通过 + grep 无 SUBTASK_*_MARKER 残留",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/task-subtasks.ts"],
+      "write_files": ["packages/server/src/routes/task-subtasks.ts"]
+    },
+    {
+      "id": 4,
+      "title": "issue-jobs 去 marker import + 回调改名",
+      "verify": "tsc 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/issue-jobs.ts"],
+      "write_files": ["packages/server/src/routes/issue-jobs.ts"]
+    },
+    {
+      "id": 5,
+      "title": "全仓 grep 无残留 + tsc 绿 + diff 白名单核对",
+      "verify": "grep 空 + tsc 通过 + git diff --name-only 在 write_files 内",
+      "status": "done",
+      "read_files": ["packages/server/src"],
+      "write_files": []
+    }
+  ]
+}

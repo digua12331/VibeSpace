@@ -1,0 +1,17 @@
+{
+  "task": "harness-subagent卡片与按需技能",
+  "steps": [
+    { "id": "A-1", "title": "新建 subagent-runs.ts (Map + register/markDone/list + 30min 自清)", "verify": "server tsc 通过", "status": "done" },
+    { "id": "A-2", "title": "routes/hooks.ts 加 extractTaskInvocation；先 console.log 实际 payload 再 commit", "verify": "manual POST hook 触发 Pre/Post → list(parent) 返回 done", "status": "done" },
+    { "id": "A-3", "title": "新建 routes/subagent-runs.ts + index.ts 注册（prompt wire 截断 1KB）", "verify": "curl GET 拿到列表", "status": "done" },
+    { "id": "A-4", "title": "前端 types/api/store: SubagentRun + listSubagentRuns + subagentRunsBySession", "verify": "web tsc 通过", "status": "done" },
+    { "id": "A-5", "title": "EditorArea 标签 🤖×N + SessionView 顶栏下 chips bar + 5s 轮询", "verify": "A-V1/V2/V3 浏览器；ERROR 日志手动触发", "status": "done" },
+    { "id": "B-1", "title": "新建 skills-service.ts（手动 yaml frontmatter parser，不引 gray-matter）", "verify": "临时 node 自测；server tsc", "status": "done" },
+    { "id": "B-2", "title": "routes/sessions.ts startSession 集成 pickSkills + 写 runtime prompt + env 注入", "verify": "ls .aimon/runtime/；终端 echo $AIMON_SESSION_PROMPT_PATH", "status": "done" },
+    { "id": "B-3", "title": "routes/projects.ts 加 GET /api/projects/:id/skills", "verify": "curl 返回数组", "status": "done" },
+    { "id": "B-4", "title": "前端 api listProjectSkills + StartSessionMenu '将注入' 提示", "verify": "B-V1 浏览器；B-V4/V5 不报错", "status": "done" },
+    { "id": "B-5", "title": "浏览器+终端联动验证 B-V2/V3", "verify": "5 个 B-V 全过", "status": "done" },
+    { "id": "C-1", "title": "README + dev/learnings.md 收尾", "verify": "肉眼读", "status": "done" },
+    { "id": "C-2", "title": "全量验收：浏览器全套 + tsc + smoke:worktree", "verify": "手动+命令行全过", "status": "done" }
+  ]
+}

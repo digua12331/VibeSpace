@@ -1,0 +1,37 @@
+{
+  "task": "工作流文件纳入git跨设备",
+  "steps": [
+    {
+      "id": 1,
+      "title": "改 .gitignore：删 dev/ 整体忽略，换成 dev/**/*.err + dev/_run_test.py",
+      "verify": "git check-ignore 某工作流 md 返回空",
+      "status": "todo",
+      "read_files": [".gitignore"],
+      "write_files": [".gitignore"]
+    },
+    {
+      "id": 2,
+      "title": "untrack 3 个 .err 启动日志",
+      "verify": "git ls-files dev/ 无 .err，磁盘文件仍在",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 3,
+      "title": "git add dev/ .gitignore 全量补入",
+      "verify": "git ls-files dev/ ≈ 320",
+      "status": "todo",
+      "read_files": [],
+      "write_files": ["dev/**"]
+    },
+    {
+      "id": 4,
+      "title": "提交（不 push）",
+      "verify": "git show --stat 改动全在 dev/ 与 .gitignore",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "task": "HTML预览页签",
+  "steps": [
+    { "id": 1, "title": "抽离 dispatchClaude 到 utils", "verify": "tsc -b 通过；DocsView 仅 import + 删本地函数 + 两处调用签名更新", "status": "done" },
+    { "id": 2, "title": "写 picker 脚本模板字符串", "verify": "typecheck 通过；picker 逻辑在步骤 3/5 集成验证", "status": "done" },
+    { "id": 3, "title": "写 HtmlPreview.tsx（iframe + message 监听 + 对话框骨架）", "verify": "tsc -b 通过；组件能正常渲染", "status": "done" },
+    { "id": 4, "title": "FilePreview 集成 html preview 分支", "verify": "tsc -b 通过（✓）；浏览器验证与 Step 7 合并", "status": "done" },
+    { "id": 5, "title": "对话框接派单 + 操作日志埋点", "verify": "代码已在 HtmlPreview 内；tsc -b 通过（✓）；浏览器日志配对与 Step 7 合并", "status": "done" },
+    { "id": 6, "title": "人工触发派单失败验证 ERROR 分支", "verify": "LogsView 出现 dispatch-modification 失败 ERROR 条目（需用户在浏览器里跑）", "status": "blocked" },
+    { "id": 7, "title": "最终 typecheck + 浏览器端到端 + handoff 摘要", "verify": "tsc -b 0 error（✓）；两条派单分支都能把 prompt 送到终端（需用户在浏览器里跑）", "status": "blocked" }
+  ]
+}

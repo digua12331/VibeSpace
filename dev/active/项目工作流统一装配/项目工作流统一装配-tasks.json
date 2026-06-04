@@ -1,0 +1,15 @@
+{
+  "task": "项目工作流统一装配",
+  "steps": [
+    { "id": 1, "title": "物理搬迁两份 docs 到 .aimon/docs/ + 同步内文相对引用", "verify": "ls .aimon/docs/ 列出两份；ls docs/ 不再有；docs 内文 grep 无旧路径", "status": "done" },
+    { "id": 2, "title": ".gitignore 删两条 !docs/... 白名单", "verify": "git status 显示两份 docs 在新位置 tracked", "status": "done" },
+    { "id": 3, "title": "CLAUDE.md 真源表 + 全仓库引用同步到 .aimon/docs/", "verify": "grep 命中点为 0（除本任务自身 plan/context）", "status": "done" },
+    { "id": 4, "title": "harness-template-service.ts 加 .aimon/docs/*.md manifest + 卸载兜底 rmdir", "verify": "pnpm --filter @aimon/server exec tsc -b 0 错误", "status": "done" },
+    { "id": 5, "title": "新建 workflow-service.ts 聚合 service", "verify": "pnpm --filter @aimon/server exec tsc -b 0 错误", "status": "done" },
+    { "id": 6, "title": "routes/projects.ts 删 7 旧端点 + 新增 3 个 workflow 端点 + serverLog 起止", "verify": "tsc 0 错误 + curl 三个新端点正常", "status": "done" },
+    { "id": 7, "title": "前端 api.ts + types.ts 替换函数与类型", "verify": "pnpm --filter @aimon/web exec tsc -b 0 错误", "status": "done" },
+    { "id": 8, "title": "PermissionsDrawer.tsx UI 两块合一 + DocsView ⚙ 按钮删除（执行阶段补 context）", "verify": "pnpm --filter @aimon/web exec tsc -b 0 错误", "status": "done" },
+    { "id": 9, "title": "全量类型检查（前后端两端都 0 错误）", "verify": "两端 tsc 0 错误", "status": "done" },
+    { "id": 10, "title": "浏览器实操验收 ①-⑤（含失败分支 + 部分已应用展示）", "verify": "5 项实操通过 — 等大哥浏览器验收", "status": "blocked" }
+  ]
+}

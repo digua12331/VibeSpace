@@ -1,0 +1,15 @@
+{
+  "task": "右键菜单发送到输入框",
+  "steps": [
+    { "id": 1, "title": "store 加 pendingInputBySession + queuePendingInput + consumePendingInput", "verify": "pnpm --filter @aimon/web exec tsc -b 通过；useStore.getState() 能看到新字段", "status": "done" },
+    { "id": 2, "title": "SessionView 加 useEffect 消费 pending（拼 inputRef.value + pending → fillInput → consume）", "verify": "随步骤 3 一起验证；此步仅过 typecheck", "status": "done" },
+    { "id": 3, "title": "fileContextMenu 抽 sendToSession helper，替换两处 aimonWS.sendInput，用 logAction 埋起止；aimonWS import 保留（.bat 执行分支仍在用）", "verify": "pnpm --filter @aimon/web exec tsc -b 通过", "status": "done" },
+    { "id": 4, "title": "浏览器手测：右键 → 发送到 XXX 观察切 tab + 注入 input", "verify": "肉眼 ✅；LogsView 看到 scope=files action=send-to-session 起止配对", "status": "todo" },
+    { "id": 5, "title": "浏览器手测追加语义：连点两个文件", "verify": "<input> 里两个路径追加拼接，光标在末尾", "status": "todo" },
+    { "id": 6, "title": "浏览器手测多 session：右键子菜单选非激活 session", "verify": "tab 切过去；目标 session input 有路径；原 session input 不变", "status": "todo" },
+    { "id": 7, "title": "失败分支日志验证：人为让 queuePendingInput 抛异常", "verify": "LogsView 看到 scope=files action=send-to-session level=error", "status": "todo" },
+    { "id": 8, "title": "新建 sendToSession.ts（sendToSession + pickClaudeTarget），迁移 logAction 逻辑；fileContextMenu.ts 删本地 helper 改 import", "verify": "pnpm --filter @aimon/web exec tsc -b 通过", "status": "done" },
+    { "id": 9, "title": "改 DocsView.tsx runDispatch：pickClaudeTarget 有 → sendToSession(scope='docs')；无 → fallback dispatchClaude", "verify": "typecheck 通过", "status": "done" },
+    { "id": 10, "title": "浏览器手测 Dev Docs 三派发入口：有 claude 不弹对话框直填 input；无 claude 退回原行为", "verify": "肉眼 ✅；LogsView 看到 scope=docs action=send-to-session 起止配对", "status": "todo" }
+  ]
+}

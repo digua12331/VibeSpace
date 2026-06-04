@@ -1,0 +1,101 @@
+{
+  "task": "空闲会话冬眠",
+  "steps": [
+    {
+      "id": 1,
+      "title": "DB schema 扩展（db.ts 三段 + 五处 SELECT 同步）",
+      "verify": "pnpm --filter @aimon/server build 通过；启动期 addColumnIfMissing 加 3 列；SessionStatus union 含 hibernated；hibernateSession 函数存在",
+      "status": "done",
+      "read_files": ["packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/db.ts"]
+    },
+    {
+      "id": 2,
+      "title": "PTY/WS 活动时间戳钩子",
+      "verify": "开 session 打字 60s 后内存 map 非空；落盘后 SELECT last_input_at/last_output_at 非 NULL",
+      "status": "done",
+      "read_files": ["packages/server/src/pty-manager.ts", "packages/server/src/ws-hub.ts"],
+      "write_files": ["packages/server/src/pty-manager.ts", "packages/server/src/ws-hub.ts"]
+    },
+    {
+      "id": 3,
+      "title": "app-settings 扩展 + zod 校验",
+      "verify": "getAppSettings 返回 hibernation 段；PUT 非法 idleMinutes 返 400",
+      "status": "done",
+      "read_files": ["packages/server/src/app-settings.ts", "packages/server/src/routes/app-settings.ts"],
+      "write_files": ["packages/server/src/app-settings.ts", "packages/server/src/routes/app-settings.ts"]
+    },
+    {
+      "id": 4,
+      "title": "新建 hibernate-sweeper.ts + 启动期 wire（30s 顺便 flush）",
+      "verify": "阈值 1 min 等 1 min 不动 → LogsView hibernate-auto 起止；DB hibernated_at IS NOT NULL AND ended_at IS NULL AND status='hibernated'；进程已退",
+      "status": "done",
+      "read_files": ["packages/server/src/index.ts", "packages/server/src/cli-catalog.ts", "packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/hibernate-sweeper.ts", "packages/server/src/index.ts"]
+    },
+    {
+      "id": 5,
+      "title": "index.ts reap orphans 排除 hibernated + exit 监听分流",
+      "verify": "手动冬眠 → 重启 dev server → 刷新前端 tab 还是 💤 紫色",
+      "status": "done",
+      "read_files": ["packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/index.ts"]
+    },
+    {
+      "id": 6,
+      "title": "POST /api/sessions/:id/wake 路由",
+      "verify": "冬眠后 curl wake；DB hibernated_at=NULL last_*=NULL status=starting；CLI 起；LogsView 起止配对",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/sessions.ts"],
+      "write_files": ["packages/server/src/routes/sessions.ts"]
+    },
+    {
+      "id": 7,
+      "title": "前端类型 + api client",
+      "verify": "types.ts SessionStatus 含 hibernated；api.ts wakeSession 存在；web build 通过",
+      "status": "done",
+      "read_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"]
+    },
+    {
+      "id": 8,
+      "title": "StatusBadge 字典加紫色 hibernated",
+      "verify": "浏览器看 hibernated session tab 💤 紫色 label='已冬眠'",
+      "status": "done",
+      "read_files": ["packages/web/src/components/StatusBadge.tsx"],
+      "write_files": ["packages/web/src/components/StatusBadge.tsx"]
+    },
+    {
+      "id": 9,
+      "title": "SettingsDialog 加冬眠段",
+      "verify": "齿轮打开见冬眠段；改完保存刷新值还在；hint 含'强制结束 CLI 进程'",
+      "status": "done",
+      "read_files": ["packages/web/src/components/SettingsDialog.tsx"],
+      "write_files": ["packages/web/src/components/SettingsDialog.tsx"]
+    },
+    {
+      "id": 10,
+      "title": "session tab 点击：hibernated 时 = wakeSession",
+      "verify": "点 💤 tab 1-3s 后 running；CLI 是全新；logAction 起止配对",
+      "status": "done",
+      "read_files": ["packages/web/src/components/editor/EditorArea.tsx", "packages/web/src/components/terminal/SessionView.tsx"],
+      "write_files": ["packages/web/src/components/editor/EditorArea.tsx"]
+    },
+    {
+      "id": 11,
+      "title": "typecheck + diff 白名单核对",
+      "verify": "server build + web build 都 exit 0；git diff --name-only HEAD 全在 write_files 白名单",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 12,
+      "title": "浏览器验收派 vibespace-browser-tester",
+      "verify": "验收项 1-7 PASS；失败路径 ERROR + alertDialog",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

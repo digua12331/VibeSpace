@@ -1,0 +1,17 @@
+{
+  "task": "harness-worktree隔离",
+  "steps": [
+    { "id": 1,  "title": "DB schema 加 isolation/worktree_path/worktree_branch 三列 + 类型 + CRUD 同步", "verify": "SQLite 表含三列；老行迁移后 isolation='shared'；server tsc 通过", "status": "done" },
+    { "id": 2,  "title": "新建 worktree-paths.ts (getWorktreeRoot/getWorktreePath)", "verify": "返回路径符合 <server-root>/data/worktrees/<projectId>/<sessionId>；tsc 通过", "status": "done" },
+    { "id": 3,  "title": "GitService 加 addWorktree/removeWorktree/listWorktrees", "verify": "addWorktree 后 git worktree list 含新条目；removeWorktree 后消失；失败抛 GitServiceError 含 stderr", "status": "done" },
+    { "id": 4,  "title": "routes/sessions.ts isolation 参数 + spawn 前建 worktree + DELETE ?gc=true + 操作日志", "verify": "POST 隔离 session → 201 + worktreeBranch；目录创建；DELETE?gc=true 清掉；非 git 项目隔离请求 → 400；LogsView 含 worktree-add 起止", "status": "done" },
+    { "id": 5,  "title": "routes/projects.ts 删项目前 GC 该 project 的所有 worktree", "verify": "删项目后 data/worktrees/<projectId>/ 整个目录被清", "status": "done" },
+    { "id": 6,  "title": "前端 types.ts + api.ts 加字段/参数", "verify": "web tsc 通过", "status": "done" },
+    { "id": 7,  "title": "StartSessionMenu 加 🌿 工作区隔离复选框 + start 携带 isolation", "verify": "浏览器看到复选框；非 git 项目灰掉；勾上启动 Network body.isolation==='worktree'", "status": "done" },
+    { "id": 8,  "title": "session 标签前缀 🌿 <branch> (仅 isolation==='worktree')", "verify": "V1 浏览器看到隔离 session 标签含 🌿 + 短分支名", "status": "done" },
+    { "id": 9,  "title": "关闭 session 弹窗加'也删除 worktree'复选 + deleteSession 携带 gc", "verify": "V4 三条分支：保留 / 删除 / 取消", "status": "done" },
+    { "id": 10, "title": "README Concepts 加 worktree 段；新建 dev/learnings.md 写一条", "verify": "肉眼读", "status": "done" },
+    { "id": 11, "title": "scripts/worktree-smoke.mjs + package.json smoke:worktree 脚本", "verify": "pnpm smoke:worktree 全绿（含两 session 写同名文件主仓干净 assert）", "status": "done" },
+    { "id": 12, "title": "全量验收：浏览器 V1-V4 + ERROR 日志 + tsc + 全量 smoke", "verify": "手动+命令行全过", "status": "done" }
+  ]
+}

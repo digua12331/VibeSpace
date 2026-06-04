@@ -1,0 +1,85 @@
+{
+  "task": "关闭原因日志",
+  "steps": [
+    {
+      "id": 1,
+      "title": "pty-manager 加 killReason + kill 接 reason + exit emit 第 5 参",
+      "verify": "pnpm --filter @vibespace/server typecheck 通过；grep 显示 6 处 ptyManager.kill 调用点尚未传 reason",
+      "status": "done",
+      "read_files": ["packages/server/src/pty-manager.ts"],
+      "write_files": ["packages/server/src/pty-manager.ts"]
+    },
+    {
+      "id": 2,
+      "title": "index.ts exit handler 算 closeReason+level + serverLog",
+      "verify": "类型检查通过；启动后让一个会话 CLI 自己退出，LogsView 出现 scope=session msg=close (cli-exit)",
+      "status": "done",
+      "read_files": ["packages/server/src/index.ts", "packages/server/src/log-bus.ts", "packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/index.ts"]
+    },
+    {
+      "id": 3,
+      "title": "orphan reap 改 serverLog",
+      "verify": "强制留一行 ended_at=NULL 的旧 session 后启动，LogsView 出现 scope=session msg=close (orphan-reap) level=warn",
+      "status": "done",
+      "read_files": ["packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/index.ts"]
+    },
+    {
+      "id": 4,
+      "title": "shutdown 加 serverLog + kill 传 server-shutdown",
+      "verify": "Ctrl-C 后端，LogsView 出现 shutdown 开始 和每个活会话的 close (server-shutdown)",
+      "status": "done",
+      "read_files": ["packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/index.ts"]
+    },
+    {
+      "id": 5,
+      "title": "sessions 路由 DELETE / restart 传 reason",
+      "verify": "点关闭看到 close (user-stop)，点 restart 看到 close (user-restart)",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/sessions.ts"],
+      "write_files": ["packages/server/src/routes/sessions.ts"]
+    },
+    {
+      "id": 6,
+      "title": "projects 路由删除传 project-delete",
+      "verify": "删一个有活会话的项目，LogsView 出现 close (project-delete)",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/projects.ts"],
+      "write_files": ["packages/server/src/routes/projects.ts"]
+    },
+    {
+      "id": 7,
+      "title": "hibernate-sweeper 传 hibernate-auto",
+      "verify": "让一个会话休眠，LogsView 出现 hibernate-auto 成功 但不额外出现 close 条目",
+      "status": "done",
+      "read_files": ["packages/server/src/hibernate-sweeper.ts"],
+      "write_files": ["packages/server/src/hibernate-sweeper.ts"]
+    },
+    {
+      "id": 8,
+      "title": "task-budget 传 budget-cutoff",
+      "verify": "类型检查通过；grep ptyManager.kill( 调用点全部带 reason 参数",
+      "status": "done",
+      "read_files": ["packages/server/src/task-budget.ts"],
+      "write_files": ["packages/server/src/task-budget.ts"]
+    },
+    {
+      "id": 9,
+      "title": "全局复查 write_files 白名单",
+      "verify": "git diff --name-only HEAD 仅含 6 个 packages/server/src/ 文件 + dev/active/关闭原因日志/ 三件套，无越界",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 10,
+      "title": "后端起一次 + 全场景手动验收",
+      "verify": "步骤 2/3/4/5/6/7 各跑一次；本会话无浏览器与后端实地验环境，验收路径列在 handoff 摘要里由大哥按一遍",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

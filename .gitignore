@@ -10,7 +10,9 @@ packages/server/data/
 .env.local
 *.log
 .vibespace/
-dev/
+# Dev Docs 工作流内容需跨设备，整体进 git；只挡运行期噪声（*.log 已由上面全局规则覆盖）
+dev/**/*.err
+dev/_run_test.py
 .claude/*
 !.claude/settings.json
 !.claude/templates

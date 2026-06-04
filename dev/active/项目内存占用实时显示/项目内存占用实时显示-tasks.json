@@ -1,0 +1,69 @@
+{
+  "task": "项目内存占用实时显示",
+  "steps": [
+    {
+      "id": 1,
+      "title": "新增 process-mem-service.ts（ticker + CIM + BFS + broadcast）",
+      "verify": "文件存在，server tsc 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/pty-manager.ts", "packages/server/src/db.ts", "packages/server/src/ws-hub.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/process-mem-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "index.ts 启停 ticker",
+      "verify": "启动后 LogsView 看到 scope=mem-stats ticker-start",
+      "status": "todo",
+      "read_files": ["packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/index.ts"]
+    },
+    {
+      "id": 3,
+      "title": "types.ts 加 mem-stats WS 联合分支",
+      "verify": "web tsc 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/types.ts"]
+    },
+    {
+      "id": 4,
+      "title": "store.ts 加 memByProject + setter",
+      "verify": "store 类型正确",
+      "status": "todo",
+      "read_files": ["packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/store.ts"]
+    },
+    {
+      "id": 5,
+      "title": "main.tsx switch 接 mem-stats → store",
+      "verify": "收到消息能进 store",
+      "status": "todo",
+      "read_files": ["packages/web/src/main.tsx"],
+      "write_files": ["packages/web/src/main.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "ProjectsColumn 渲染内存数字",
+      "verify": "有 AI 会话的项目行末尾显示如 850 MB / 1.2 GB",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/layout/ProjectsColumn.tsx"],
+      "write_files": ["packages/web/src/components/layout/ProjectsColumn.tsx"]
+    },
+    {
+      "id": 7,
+      "title": "server + web 类型检查",
+      "verify": "tsc 退出码 0",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 8,
+      "title": "浏览器自查",
+      "verify": "项目行显示内存数字、起停会话 10s 内变化、日志面板见 ticker 起停",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

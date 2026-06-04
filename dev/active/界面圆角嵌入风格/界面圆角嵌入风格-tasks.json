@@ -1,0 +1,38 @@
+{
+  "task": "界面圆角嵌入风格",
+  "steps": [
+    {
+      "id": 1,
+      "title": "index.css 加 #root padding + .app-frame 规则",
+      "verify": ".app-frame 含圆角/边框/阴影/overflow；#root 有 padding",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/index.css",
+        "packages/web/src/theme/tokens.css"
+      ],
+      "write_files": [
+        "packages/web/src/index.css"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Workbench 根 div 加 app-frame class",
+      "verify": "根 div className 含 app-frame",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/layout/Workbench.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/layout/Workbench.tsx"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "web 类型检查",
+      "verify": "tsc -b 退出码 0",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "task": "工具栏图标化与界面全屏",
+  "steps": [
+    { "id": 1, "title": "EditorArea triggerLabel 改「+」", "verify": "行 326 prop 值为 \"+\"", "status": "done", "read_files": ["packages/web/src/components/editor/EditorArea.tsx"], "write_files": ["packages/web/src/components/editor/EditorArea.tsx"] },
+    { "id": 2, "title": "EditorArea EmptyState 文案同步", "verify": "行 431 不再含「启动 AI / 终端」", "status": "done", "read_files": ["packages/web/src/components/editor/EditorArea.tsx"], "write_files": ["packages/web/src/components/editor/EditorArea.tsx"] },
+    { "id": 3, "title": "StartSessionMenu 删 +missingCount span", "verify": "📦 按钮内仅 emoji", "status": "done", "read_files": ["packages/web/src/components/StartSessionMenu.tsx"], "write_files": ["packages/web/src/components/StartSessionMenu.tsx"] },
+    { "id": 4, "title": "index.css 删 App frame 块", "verify": "文件无 .app-frame / #root{padding", "status": "done", "read_files": ["packages/web/src/index.css"], "write_files": ["packages/web/src/index.css"] },
+    { "id": 5, "title": "Workbench 去 app-frame class", "verify": "根 div className 无 app-frame", "status": "done", "read_files": ["packages/web/src/components/layout/Workbench.tsx"], "write_files": ["packages/web/src/components/layout/Workbench.tsx"] },
+    { "id": 6, "title": "前端类型检查", "verify": "tsc -b 通过 (EXIT=0)", "status": "done", "read_files": [], "write_files": [] }
+  ]
+}

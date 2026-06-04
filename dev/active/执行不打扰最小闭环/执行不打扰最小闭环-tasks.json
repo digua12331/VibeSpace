@@ -1,0 +1,121 @@
+{
+  "task": "执行不打扰最小闭环",
+  "steps": [
+    {
+      "id": 1,
+      "title": "BudgetManager 核心（task-budget.ts）",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；状态机由 step 7/8 smoke 端到端覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/status.ts",
+        "packages/server/src/install-jobs.ts",
+        "packages/server/src/subagent-runs.ts",
+        "packages/server/src/log-bus.ts",
+        "packages/server/src/db.ts"
+      ],
+      "write_files": ["packages/server/src/task-budget.ts"]
+    },
+    {
+      "id": 2,
+      "title": "接入 routes/hooks.ts：PreToolUse/PostToolUse 计数 + token 估算",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；smoke 中发 PostToolUse 看 BudgetManager 轮次 +1",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/hooks.ts",
+        "packages/server/src/task-budget.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/hooks.ts",
+        "packages/server/src/task-budget.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "真熔断 + STATUS.md 写入（task-status.ts）",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；smoke 撞 maxRounds 看 PTY 真死 + STATUS.md 多一行 CUTOFF",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/ws-hub.ts",
+        "packages/server/src/log-bus.ts",
+        "packages/server/src/task-budget.ts"
+      ],
+      "write_files": [
+        "packages/server/src/task-status.ts",
+        "packages/server/src/task-budget.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "自动 checkpoint：statusManager 'change' → appendStatusEntry",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；smoke 启停 session 一次看 STATUS.md 自动多两行",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/status.ts",
+        "packages/server/src/task-status.ts",
+        "packages/server/src/task-budget.ts"
+      ],
+      "write_files": ["packages/server/src/task-budget.ts"]
+    },
+    {
+      "id": 5,
+      "title": "SessionStart hook 注入 STATUS 摘要",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；smoke 起 task 绑定 session 看 SessionStart payload 含 STATUS 摘要 ≤3KB",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/hooks.ts",
+        "packages/server/src/task-status.ts"
+      ],
+      "write_files": ["packages/server/src/routes/hooks.ts"]
+    },
+    {
+      "id": 6,
+      "title": "验收失败默认策略：recordVerifyResult + maxVerifyFails 熔断",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；smoke 模拟 verify 连失 3 次自动熔断",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/task-budget.ts",
+        "packages/server/src/task-status.ts"
+      ],
+      "write_files": ["packages/server/src/task-budget.ts"]
+    },
+    {
+      "id": 7,
+      "title": "前端 DocsView：types + api + store + UI",
+      "verify": "pnpm -C packages/web exec tsc -b --force 通过；自派 vibespace-browser-tester 验收 8 条清单",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts",
+        "packages/web/src/ws.ts",
+        "packages/web/src/components/sidebar/DocsView.tsx",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts",
+        "packages/web/src/components/sidebar/DocsView.tsx"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "scripts/budget-cutoff-smoke.mjs + 配置模板 + .gitignore",
+      "verify": "pnpm smoke:budget-cutoff 全 assertion 通过；最终全套 tsc + smoke 复跑全绿",
+      "status": "done",
+      "read_files": [
+        "scripts/worktree-smoke.mjs",
+        "scripts/issues-jobs-smoke.mjs",
+        "package.json",
+        ".gitignore"
+      ],
+      "write_files": [
+        "scripts/budget-cutoff-smoke.mjs",
+        "package.json",
+        ".gitignore",
+        ".aimon/templates/task-budget.example.json"
+      ]
+    }
+  ]
+}

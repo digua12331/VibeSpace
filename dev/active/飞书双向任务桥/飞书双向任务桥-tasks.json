@@ -1,0 +1,175 @@
+{
+  "task": "飞书双向任务桥",
+  "steps": [
+    {
+      "id": "S0.1",
+      "title": "装 SDK + feishu 模块骨架 + config.ts",
+      "verify": "pnpm -F @aimon/server build 通过；data/feishu.json 在 .gitignore；缺文件时返回 disabled 不抛",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/app-settings.ts",
+        "packages/server/package.json",
+        ".gitignore"
+      ],
+      "write_files": [
+        "packages/server/src/feishu/config.ts",
+        "packages/server/package.json",
+        ".gitignore",
+        "packages/server/src/feishu/types.ts"
+      ]
+    },
+    {
+      "id": "S0.2",
+      "title": "feishu/client.ts 长连接客户端",
+      "verify": "pnpm -F @aimon/server build 通过；connect 起止配对日志；密钥错 ERROR（待大哥验真连接）",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/feishu/config.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": [
+        "packages/server/src/feishu/client.ts"
+      ]
+    },
+    {
+      "id": "S0.3",
+      "title": "routes/feishu.ts + 注册",
+      "verify": "build 通过；GET /api/feishu/config 掩码返回；PUT 落盘",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/app-settings.ts",
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/feishu.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": "S0.4",
+      "title": "feishu/hub-session.ts 常驻总控台",
+      "verify": "build 通过；__hub__ 被拉起带 aimon-hub MCP；hub-ensure 配对日志",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/sessions.ts",
+        "packages/server/src/hub-project.ts",
+        "packages/server/src/mcp-bridge.ts",
+        "packages/server/src/status.ts",
+        "packages/server/src/pty-manager.ts"
+      ],
+      "write_files": [
+        "packages/server/src/feishu/hub-session.ts"
+      ]
+    },
+    {
+      "id": "S0.5",
+      "title": "前端飞书设置 section + api + types",
+      "verify": "pnpm -F @aimon/web build 通过；浏览器见飞书块、Secret 掩码、测试连接；config-save 起止配对",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/SettingsDialog.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/SettingsDialog.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts"
+      ]
+    },
+    {
+      "id": "S1.1",
+      "title": "feishu/inbound.ts 入站",
+      "verify": "build 通过；消息写进 __hub__；inbound 起止配对（待大哥验真消息）",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/feishu/client.ts",
+        "packages/server/src/feishu/hub-session.ts",
+        "packages/server/src/pty-manager.ts"
+      ],
+      "write_files": [
+        "packages/server/src/feishu/inbound.ts",
+        "packages/server/src/feishu/config.ts"
+      ]
+    },
+    {
+      "id": "S1.2",
+      "title": "白名单拒绝分支",
+      "verify": "名单外回无权限不写入；inbound 拒绝 WARN（待大哥验/单测校验函数）",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/feishu/inbound.ts"
+      ],
+      "write_files": [
+        "packages/server/src/feishu/inbound.ts"
+      ]
+    },
+    {
+      "id": "S2.1",
+      "title": "outbound sendToOwner + send_feishu_message 工具",
+      "verify": "build 通过；owner 收到消息；outbound 起止配对；断网 ERROR（待大哥验）",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/feishu/client.ts",
+        "packages/server/src/mcp-hub/index.ts",
+        "packages/server/src/routes/feishu.ts"
+      ],
+      "write_files": [
+        "packages/server/src/feishu/outbound.ts",
+        "packages/server/src/mcp-hub/index.ts",
+        "packages/server/src/routes/feishu.ts"
+      ]
+    },
+    {
+      "id": "S3.1",
+      "title": "worker 反馈汇聚（statusManager 监听）",
+      "verify": "build 通过；worker waiting_input/结束发飞书带标签；notify 配对；限流去重",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/status.ts",
+        "packages/server/src/feishu/hub-session.ts",
+        "packages/server/src/feishu/outbound.ts"
+      ],
+      "write_files": [
+        "packages/server/src/feishu/outbound.ts"
+      ]
+    },
+    {
+      "id": "S4.1",
+      "title": "grep claimIdle/dispatch 引用图（破坏性前置）",
+      "verify": "列出受影响清单，确认新增不改既有符号",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/mcp-hub/index.ts",
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/status.ts"
+      ],
+      "write_files": []
+    },
+    {
+      "id": "S4.2",
+      "title": "send-input-to-session 端点 + MCP 工具（严格门禁）",
+      "verify": "build 通过；waiting_input worker 被写入接着跑；非法目标被拒；send-input 起止配对；改后 grep 无误用",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/mcp-hub/index.ts",
+        "packages/server/src/status.ts",
+        "packages/server/src/pty-manager.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/mcp-hub/index.ts"
+      ]
+    },
+    {
+      "id": "Z.1",
+      "title": "全量 build + diff 白名单比对",
+      "verify": "server+web build 全绿；diff 内本任务文件都在白名单（剔除 terminalKeybindings）",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

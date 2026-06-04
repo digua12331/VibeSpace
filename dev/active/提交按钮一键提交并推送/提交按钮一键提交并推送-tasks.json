@@ -1,0 +1,57 @@
+{
+  "task": "提交按钮一键提交并推送",
+  "steps": [
+    {
+      "id": 1,
+      "title": "改 onCommit 函数体，commit 成功后若非 detached 自动 push；push 失败时 setErr 写「已本地提交，但推送失败：…」",
+      "verify": "函数最终调用图里能看到 api.gitPush + logAction('git','push',...)；阅读改后函数确认错误前缀正确",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/ChangesList.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/ChangesList.tsx"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "改按钮文案、placeholder、tooltip 反映新行为（含 detached 降级 + busy='push' 时的「推送中…」）",
+      "verify": "grep 「提交并推送」与「仅本地」在 ChangesList.tsx 各出现 ≥1 次；按钮 JSX busy==='push' 分支出现「推送中…」",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/ChangesList.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/ChangesList.tsx"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "跑 pnpm --filter @aimon/web exec tsc -b 类型检查",
+      "verify": "退出码 0，无 TS error",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 4,
+      "title": "检查 git diff --name-only HEAD 仅包含写白名单文件 + 三个 dev/active md",
+      "verify": "无越界文件；超出 write_files 的改动必须回滚或回 plan 扩范围",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 5,
+      "title": "派 vibespace-browser-tester 跑验收清单（主路径 + detached 降级 + busy 切换；断网失败分支留给大哥手动）",
+      "verify": "agent 报告主路径 PASS、detached 降级 PASS、busy 状态 PASS",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/ChangesList.tsx"
+      ],
+      "write_files": []
+    }
+  ]
+}

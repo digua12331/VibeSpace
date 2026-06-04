@@ -1,0 +1,77 @@
+{
+  "task": "终端自动停止与卡顿修复",
+  "steps": [
+    {
+      "id": 1,
+      "title": "app-settings.ts 休眠默认改 false",
+      "verify": "通读 hibernate-sweeper 确认 enabled===false 时 tick 提前 return；SettingsDialog 读同源 /api/app-settings",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/app-settings.ts",
+        "packages/server/src/hibernate-sweeper.ts",
+        "packages/web/src/components/SettingsDialog.tsx"
+      ],
+      "write_files": [
+        "packages/server/src/app-settings.ts",
+        "packages/web/src/components/SettingsDialog.tsx"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "TerminalHost 项目保活过滤始终生效",
+      "verify": "当前 active 会话恒在保活集合；web tsc 通过",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/terminal/TerminalHost.tsx",
+        "packages/web/src/perf-marks.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/terminal/TerminalHost.tsx"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "关闭 5 个冗余 Claude Code 插件",
+      "verify": "文件仍是合法 JSON；codex/github/superpowers 仍 true",
+      "status": "done",
+      "read_files": [
+        "C:/Users/zh_zhang/.claude/settings.json"
+      ],
+      "write_files": [
+        "C:/Users/zh_zhang/.claude/settings.json"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "项目级类型检查",
+      "verify": "server 与 web 各自 tsc 退出码 0",
+      "status": "done",
+      "read_files": [
+        "package.json",
+        "packages/server/package.json",
+        "packages/web/package.json"
+      ],
+      "write_files": []
+    },
+    {
+      "id": 5,
+      "title": "浏览器验收 P1/P2",
+      "verify": "浏览器自动化工具未注册,自动验收跳过;改用 curl /api/app-settings 实测 hibernation.enabled=false(P1 通过);P2 靠代码审查+类型检查",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 6,
+      "title": "issues.md 追加 2 条遗留",
+      "verify": "issues.md 末尾新增 2 行 - [ ]",
+      "status": "done",
+      "read_files": [
+        "dev/issues.md"
+      ],
+      "write_files": [
+        "dev/issues.md"
+      ]
+    }
+  ]
+}

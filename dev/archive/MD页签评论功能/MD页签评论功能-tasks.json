@@ -1,0 +1,14 @@
+{
+  "task": "MD页签评论功能",
+  "steps": [
+    { "id": 1, "title": "后端 comments-service.ts（类型 + 读写 + 错误类）", "verify": "pnpm --filter @aimon/server exec tsc --noEmit 通过；临时 node 脚本跑 readComments/writeComments", "status": "done" },
+    { "id": 2, "title": "后端 routes/comments.ts + 注册到 index.ts", "verify": "curl POST/GET/PATCH/DELETE 都 200；LogsView 看到 scope=comments 起止配对；非法 path 400", "status": "done" },
+    { "id": 3, "title": "前端依赖 + types + api client 四个调用", "verify": "pnpm install 成功；web tsc --noEmit 通过", "status": "done" },
+    { "id": 4, "title": "前端 commentAnchor.ts (extractAnchors + matchAnchor + hash)", "verify": "浏览器 console 跑三条测例（primary / fallback / orphan）", "status": "done" },
+    { "id": 5, "title": "前端 rehypeAnchorIds 插件 + SCHEMA 白名单", "verify": "插件单元测试 + SCHEMA 审查；DOM 级 verify 在步骤 6/9 做", "status": "done" },
+    { "id": 6, "title": "前端 MarkdownView 挂 block 级 hover 💬 + 角标", "verify": "代码完成 + TSC 过；DOM verify 合并到步骤 9", "status": "done" },
+    { "id": 7, "title": "前端 CommentPopover + CommentsPanel", "verify": "代码完成 + TSC 过；交互 verify 合并到步骤 9", "status": "done" },
+    { "id": 8, "title": "前端 FilePreview 集成 + 只读模式 + logAction 埋点", "verify": "代码完成 + TSC 过（web + server）；端到端 smoke 合并到步骤 9", "status": "done" },
+    { "id": 9, "title": "收尾：类型检查 + 浏览器 smoke", "verify": "两个包 tsc --noEmit 都过；浏览器 10 条 smoke 全通过；孤儿→失效改名", "status": "done" }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "task": "总控台体验对齐",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端 hub-project + 启动顺序（D2 硬要求）",
+      "verify": "build 通过；projects.json 含 __hub__；旧 /api/hub/session 返 404",
+      "status": "done",
+      "read_files": ["packages/server/src/index.ts", "packages/server/src/db.ts", "packages/server/src/hub-workspace.ts"],
+      "write_files": ["packages/server/src/hub-project.ts", "packages/server/src/index.ts"]
+    },
+    {
+      "id": 2,
+      "title": "后端 5 处 filter 守卫（D3）",
+      "verify": "5 curl 攻击向量分别返 400 + 对应 error code",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/projects.ts", "packages/server/src/routes/sessions.ts", "packages/server/src/routes/fs-ops.ts", "packages/server/src/hub-workspace.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/routes/projects.ts", "packages/server/src/routes/sessions.ts", "packages/server/src/routes/fs-ops.ts"]
+    },
+    {
+      "id": 3,
+      "title": "后端 MCP 注入分流（D4）",
+      "verify": "__hub__ session 后 cat .mcp.json 含 aimon-hub + browser-use merge",
+      "status": "done",
+      "read_files": ["packages/server/src/mcp-bridge.ts", "packages/server/src/hub-workspace.ts", "packages/server/src/hub-token.ts"],
+      "write_files": ["packages/server/src/mcp-bridge.ts", "packages/server/src/hub-workspace.ts"]
+    },
+    {
+      "id": 4,
+      "title": "后端 read_session_output 接口 + MCP 工具（D6）",
+      "verify": "curl recent-output 返预期；MCP tools/list 返 7 工具",
+      "status": "done",
+      "notes": "复用 ptyManager.getBuffer 现成 buffer，无新增 ring buffer",
+      "read_files": ["packages/server/src/pty-manager.ts", "packages/server/src/routes/hub.ts", "packages/server/src/mcp-hub/index.ts"],
+      "write_files": ["packages/server/src/routes/hub.ts", "packages/server/src/mcp-hub/index.ts"]
+    },
+    {
+      "id": 5,
+      "title": "删除第 2 期独立 hub session runtime（D5）",
+      "verify": "build 通过；/api/hub/session 返 404",
+      "status": "done",
+      "notes": "合并到 Step 3 build 修复同时完成",
+      "read_files": ["packages/server/src/hub-session-runtime.ts", "packages/server/src/routes/hub-session.ts", "packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/index.ts"],
+      "delete_files": ["packages/server/src/hub-session-runtime.ts", "packages/server/src/routes/hub-session.ts"]
+    },
+    {
+      "id": 6,
+      "title": "前端清除第 2 期 hub 视图遗物 + Activity 加 hub-dashboard 类型",
+      "verify": "build 通过（TS 编译捕获残留）",
+      "status": "done",
+      "read_files": ["packages/web/src/store.ts", "packages/web/src/types.ts", "packages/web/src/api.ts", "packages/web/src/components/hub/HubView.tsx", "packages/web/src/components/hub/HubTerminal.tsx"],
+      "write_files": ["packages/web/src/store.ts", "packages/web/src/types.ts", "packages/web/src/api.ts"],
+      "delete_files": ["packages/web/src/components/hub/HubView.tsx", "packages/web/src/components/hub/HubTerminal.tsx"]
+    },
+    {
+      "id": 7,
+      "title": "前端 Workbench 简化 + ProjectsColumn 入口缩窄 + 项目卡 filter __hub__",
+      "verify": "build 通过；浏览器 📊 按钮窄；点切 hub 主区是普通 EditorArea + SessionView",
+      "status": "done",
+      "read_files": ["packages/web/src/components/layout/Workbench.tsx", "packages/web/src/components/layout/ProjectsColumn.tsx", "packages/web/src/components/layout/ActivityBar.tsx"],
+      "write_files": ["packages/web/src/components/layout/Workbench.tsx", "packages/web/src/components/layout/ProjectsColumn.tsx"]
+    },
+    {
+      "id": 8,
+      "title": "前端 ActivityBar 加 hub-dashboard view + HubDashboardView + PrimarySidebar 接入（D7）",
+      "verify": "build 通过；选 __hub__ ActivityBar 多 📊 icon + sidebar 显示看板；切别项目 📊 icon 消失",
+      "status": "done",
+      "read_files": ["packages/web/src/components/layout/ActivityBar.tsx", "packages/web/src/components/layout/PrimarySidebar.tsx", "packages/web/src/components/hub/HubProjectCard.tsx", "packages/web/src/components/hub/HubDispatchDialog.tsx", "packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/components/layout/ActivityBar.tsx", "packages/web/src/components/layout/PrimarySidebar.tsx", "packages/web/src/components/sidebar/HubDashboardView.tsx"]
+    },
+    {
+      "id": 9,
+      "title": "白名单 + grep + 浏览器端到端 + tester",
+      "verify": "git diff 覆盖白名单；grep 无运行时残留；5 攻击向量 ✓；MCP 7 工具 ✓；tester 按既定不派",
+      "status": "done",
+      "notes": "grep 6 文件命中全是注释/README 不影响运行；5 guard 全 400；MCP 7 tools 含 read_session_output",
+      "read_files": ["packages/server/src/hub-project.ts", "packages/server/src/index.ts", "packages/web/src/components/sidebar/HubDashboardView.tsx", "packages/web/src/components/layout/ProjectsColumn.tsx", "packages/web/src/components/layout/ActivityBar.tsx"],
+      "write_files": []
+    }
+  ]
+}

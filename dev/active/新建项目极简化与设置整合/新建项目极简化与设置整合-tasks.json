@@ -1,0 +1,15 @@
+{
+  "task": "新建项目极简化与设置整合",
+  "steps": [
+    { "id": 1, "title": "后端 routes/projects.ts: DEFAULT_ROOT + path 可选 + 删 applyDevDocsGuidelines 字段 + mkdirSync 兜底 + path_unwritable", "verify": "curl POST /api/projects -d {\"name\":\"vsTestA\"} 返回 201 且 F:\\VibeSpace\\vsTestA 已建", "status": "done" },
+    { "id": 2, "title": "后端: 新增 GET /api/projects/:id/dev-docs-status", "verify": "curl GET 返回 { enabled, claudeMdExists }", "status": "done" },
+    { "id": 3, "title": "后端: 新增 DELETE /api/projects/:id/dev-docs（indexOf+slice 移除 anchor 块）", "verify": "curl DELETE 后 type CLAUDE.md 看不到工作流段落", "status": "done" },
+    { "id": 4, "title": "后端: POST /api/projects 补 serverLog project-create 起止配对", "verify": "LogsView 建项目时见 scope=server project-create 起止", "status": "done" },
+    { "id": 5, "title": "前端 types.ts: 新增 DevDocsStatus", "verify": "pnpm -F web tsc --noEmit 0 错误", "status": "done" },
+    { "id": 6, "title": "前端 api.ts: createProject 入参改 + getDevDocsStatus / removeDevDocs", "verify": "pnpm -F web tsc --noEmit 0 错误", "status": "done" },
+    { "id": 7, "title": "前端 NewProjectDialog.tsx: 简化主区 + 受控折叠区 + 删 Dev Docs toggle", "verify": "浏览器对话框只见名称 + 折叠区，无 Dev Docs toggle", "status": "done" },
+    { "id": 8, "title": "前端 PermissionsDrawer.tsx: mode 扩展 + 工作流 tab 默认 + WorkflowTab 内联", "verify": "抽屉默认落工作流 tab，开关切换弹 danger confirmDialog，LogsView 见 set-devdocs 起止", "status": "done" },
+    { "id": 9, "title": "全量类型检查（前后端）", "verify": "两端 pnpm -F * tsc --noEmit 0 错误", "status": "done" },
+    { "id": 10, "title": "浏览器跑 plan 验收 1–8 + 失败分支 ERROR 验证 + dev/issues.md 追加单测待办", "verify": "8 项实操通过 + ERROR 条目 + issues.md 新增行", "status": "blocked" }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "task": "规范三件套工作流",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端 WorkflowMode 字面量扩 spec-trio",
+      "verify": "grep WorkflowMode 引用点确认；pnpm -F @aimon/server build 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/db.ts"]
+    },
+    {
+      "id": 2,
+      "title": "workflow-service.ts apply 加 spec-trio 分支 + gstack 字段",
+      "verify": "apply 走 spec-trio 时复用 applyOpenSpecTemplate + 强制 appendSuperpowersGuidelines + 末尾调 getGstackStatus；pnpm -F @aimon/server build 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/workflow-service.ts", "packages/server/src/gstack-installer.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts"]
+    },
+    {
+      "id": 3,
+      "title": "workflow-service.ts remove 加 spec-trio 分支 + gstack 字段",
+      "verify": "spec-trio 卸载 openspec+superpowers+harness 但不调 uninstallGstack；pnpm -F @aimon/server build 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/workflow-service.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts"]
+    },
+    {
+      "id": 4,
+      "title": "getWorkflowStatus 改两参签名 + gstack 字段 + detectedMode db 优先",
+      "verify": "签名变；调用方 routes/projects.ts:344 同步改；pnpm -F @aimon/server build 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/workflow-service.ts", "packages/server/src/routes/projects.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts", "packages/server/src/routes/projects.ts"]
+    },
+    {
+      "id": 5,
+      "title": "routes/projects.ts zod schema 扩 spec-trio",
+      "verify": "pnpm -F @aimon/server build 通过；curl POST {\"mode\":\"spec-trio\"} 不再 400",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/projects.ts"],
+      "write_files": ["packages/server/src/routes/projects.ts"]
+    },
+    {
+      "id": 6,
+      "title": "前端 types.ts 镜像 WorkflowMode + shape 接口加 gstack",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "done",
+      "read_files": ["packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/types.ts"]
+    },
+    {
+      "id": 7,
+      "title": "PermissionsDrawer WorkflowTab 下拉新增 spec-trio + 切换逻辑 + Superpowers 强制",
+      "verify": "build 通过；浏览器看到下拉 4 项；切到 spec-trio Superpowers 框 disabled 且 checked",
+      "status": "done",
+      "read_files": ["packages/web/src/components/PermissionsDrawer.tsx"],
+      "write_files": ["packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 8,
+      "title": "WorkflowTab 状态栏三 chip 改造 + gstack 未装跳 tab 按钮",
+      "verify": "浏览器 spec-trio 项目里看到三 chip；点 gstack 琥珀色按钮切到 Tools tab",
+      "status": "done",
+      "read_files": ["packages/web/src/components/PermissionsDrawer.tsx"],
+      "write_files": ["packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 9,
+      "title": "WorkflowTab 切换 partial：gstack 未装时弹专项提示",
+      "verify": "故意改名 ~/.claude/skills/gstack 后切 spec-trio，弹 gstack 未装专项提示",
+      "status": "done",
+      "read_files": ["packages/web/src/components/PermissionsDrawer.tsx"],
+      "write_files": ["packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 10,
+      "title": "WorkflowTab 卸载确认文案：spec-trio 提示 gstack 不会被卸",
+      "verify": "浏览器 spec-trio 点卸载全部，确认弹窗含 'gstack 不会被卸'",
+      "status": "done",
+      "read_files": ["packages/web/src/components/PermissionsDrawer.tsx"],
+      "write_files": ["packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 11,
+      "title": "NewProjectDialog 下拉加 spec-trio option",
+      "verify": "build 通过；新建项目对话框下拉看到 4 项",
+      "status": "done",
+      "read_files": ["packages/web/src/components/NewProjectDialog.tsx"],
+      "write_files": ["packages/web/src/components/NewProjectDialog.tsx"]
+    },
+    {
+      "id": 12,
+      "title": "ActivityBar 加 spec-trio docsItem 复用 OpenSpec 图标",
+      "verify": "build 通过；spec-trio 项目侧栏看到 📜 规范",
+      "status": "done",
+      "read_files": ["packages/web/src/components/layout/ActivityBar.tsx"],
+      "write_files": ["packages/web/src/components/layout/ActivityBar.tsx"]
+    },
+    {
+      "id": 13,
+      "title": "PrimarySidebar 加 spec-trio 复用 OpenSpecView",
+      "verify": "build 通过；spec-trio 项目点 docs 看到 OpenSpec 提案列表",
+      "status": "done",
+      "read_files": ["packages/web/src/components/layout/PrimarySidebar.tsx"],
+      "write_files": ["packages/web/src/components/layout/PrimarySidebar.tsx"]
+    },
+    {
+      "id": 14,
+      "title": "后端 serverLog 起止 meta 加 gstackInstalled",
+      "verify": "LogsView 看到 apply-workflow 成功条 meta 含 gstackInstalled",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/projects.ts"],
+      "write_files": ["packages/server/src/routes/projects.ts"]
+    },
+    {
+      "id": 15,
+      "title": "双绿构建 + 自派 browser-tester + 写 handoff",
+      "verify": "pnpm -F @aimon/server build + pnpm -F @aimon/web build 双绿；browser-tester 被大哥撤回，浏览器验收转手测；handoff 已写出明确点位",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

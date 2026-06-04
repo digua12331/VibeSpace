@@ -1,0 +1,69 @@
+{
+  "task": "本地AI提交体检与Claude打杂",
+  "steps": [
+    {
+      "id": 1,
+      "title": "git-service 加 getWorkingDiff 导出",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/git-service.ts"],
+      "write_files": ["packages/server/src/git-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "新建 local-ai-service.ts",
+      "verify": "后端 build 通过；curl 对开着的 Ollama 调通 chat",
+      "status": "todo",
+      "read_files": ["packages/server/src/git-service.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/local-ai-service.ts"]
+    },
+    {
+      "id": 3,
+      "title": "新建 routes/local-ai.ts 并注册",
+      "verify": "后端 build 通过；curl 三端点；关 AI 时 commit-check 返回 409",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/skill-market.ts", "packages/server/src/routes/git.ts", "packages/server/src/index.ts", "packages/server/src/local-ai-service.ts"],
+      "write_files": ["packages/server/src/routes/local-ai.ts", "packages/server/src/index.ts"]
+    },
+    {
+      "id": 4,
+      "title": "前端 api.ts + types.ts",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/api.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/api.ts", "packages/web/src/types.ts"]
+    },
+    {
+      "id": 5,
+      "title": "ChangesList.tsx UI",
+      "verify": "web build 通过；浏览器点按钮出结论；三类毛病被揪出；LogsView 见起止配对",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/ChangesList.tsx", "packages/web/src/logs.ts", "packages/web/src/api.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/components/ChangesList.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "失败路径验收",
+      "verify": "关掉本地 AI 点体检 → 可读错误 + LogsView error 终点",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/ChangesList.tsx"],
+      "write_files": []
+    },
+    {
+      "id": 7,
+      "title": "scripts/local_ai_ask.py + skills/localai/SKILL.md",
+      "verify": "python 脚本打印回答；SKILL.md 写明只做简单杂活",
+      "status": "todo",
+      "read_files": ["scripts/local_ai_chat.py"],
+      "write_files": ["scripts/local_ai_ask.py", ".claude/skills/localai/SKILL.md"]
+    },
+    {
+      "id": 8,
+      "title": "收尾白名单比对",
+      "verify": "git diff --name-only HEAD 无越界",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

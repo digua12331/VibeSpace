@@ -1,0 +1,109 @@
+{
+  "task": "粘贴图片自动清理",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端配置存储 app-settings.ts + data/app-settings.json atomic 写入",
+      "verify": "模块可被 import；getAppSettings() 在文件缺省时返回 {pasteImageRetentionDays:1}；setAppSettings 后再读值正确；写盘走 tmp+rename。",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/db.ts"
+      ],
+      "write_files": [
+        "packages/server/src/app-settings.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "后端清理函数 paste-image-cleaner.ts::pruneOldPastedImages()",
+      "verify": "塞 mtime=3天前 + 12小时前的 png 各一张，调用后前者删除后者保留；LogsView 起止配对日志 meta 数字正确；路径越界严格拒绝。",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/log-bus.ts",
+        "packages/server/src/db.ts",
+        "packages/server/src/routes/paste-image.ts",
+        "packages/server/src/app-settings.ts"
+      ],
+      "write_files": [
+        "packages/server/src/paste-image-cleaner.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "index.ts main() 接入 fire-and-forget 清理调用",
+      "verify": "pnpm --filter @aimon/server dev 启动，LogsView 启动后数秒内出现 cleanup/paste-images-prune 起止配对；故意制造失败也不阻塞 server crash。",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/index.ts",
+        "packages/server/src/paste-image-cleaner.ts"
+      ],
+      "write_files": [
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "后端 REST 路由 routes/app-settings.ts GET/PUT + 注册",
+      "verify": "GET 返回当前；PUT 合法值持久化；非法值（>365 / 非整数 / 负数）400 + zod issue；起止日志 scope=settings。",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/openspec.ts",
+        "packages/server/src/app-settings.ts",
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/app-settings.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "前端 types + api client",
+      "verify": "AppSettings 类型导出；getAppSettings()/updateAppSettings() 客户端函数；pnpm --filter @aimon/web build 通过。",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts"
+      ],
+      "write_files": [
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "前端 SettingsDialog.tsx 独立 modal 组件 + openSettings() API",
+      "verify": "组件挂载后调用 openSettings() 弹出 modal；下拉切换 1/3/7/30/不清理（值 1/3/7/30/0）；保存走 logAction 包 update-paste-image-retention；保存后关闭；重开值持久。",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/dialog/DialogHost.tsx",
+        "packages/web/src/logs.ts",
+        "packages/web/src/api.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Workbench.tsx footer 加 ⚙ 设置按钮 + 挂载 SettingsDialog",
+      "verify": "浏览器开 VibeSpace，右下状态栏看到齿轮图标，title='设置'，点击弹出 step6 dialog。",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/layout/Workbench.tsx",
+        "packages/web/src/components/SettingsDialog.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/layout/Workbench.tsx"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "构建 + 浏览器验收 + diff 白名单核验",
+      "verify": "pnpm --filter @aimon/server build 与 pnpm --filter @aimon/web build 都通过；vibespace-browser-tester SKIP（browser-use MCP 工具未注入到本 session）；git diff --name-only HEAD 全在白名单内（含 tsbuildinfo 副产物）。",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "task": "启动脚本自愈",
+  "steps": [
+    { "id": 1, "title": "改 start.bat 重编译触发条件", "verify": "git diff start.bat 显示仅本段改动", "status": "done" },
+    { "id": 2, "title": "main 提交", "verify": "git log -1 --name-only 显示新提交", "status": "done" },
+    { "id": 3, "title": "打 stable-2026-05-06 标签", "verify": "git tag -l 列出新标签", "status": "done" },
+    { "id": 4, "title": "跑 sync-to-stable.bat", "verify": "末尾输出 [sync] DONE", "status": "done" },
+    { "id": 5, "title": "stable 端启动验证", "verify": "后端日志写入 backend listening on 127.0.0.1:8787，浏览器无红条", "status": "done" }
+  ]
+}

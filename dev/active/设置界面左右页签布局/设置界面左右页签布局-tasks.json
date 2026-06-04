@@ -1,0 +1,53 @@
+{
+  "task": "设置界面左右页签布局",
+  "steps": [
+    {
+      "id": 1,
+      "title": "加 activeTab 状态 + 左右 flex 框架",
+      "verify": "浏览器打开设置见左右两栏，左侧三个页签按钮成形",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "5 个 section 按分组拆进 activeTab 条件渲染，footer 固定右栏底部",
+      "verify": "点不同页签右侧内容切换，五块内容全在",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "页签按钮选中态高亮 + 点击切换，切页签值不丢",
+      "verify": "在终端页签改冬眠分钟数，切到通用再切回，值仍在",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "build 通过 + 越界检查",
+      "verify": "pnpm -F @aimon/web build 成功，git diff 仅 SettingsDialog.tsx + dev/ 文档",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/SettingsDialog.tsx"
+      ]
+    }
+  ]
+}

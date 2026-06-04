@@ -1,0 +1,216 @@
+{
+  "task": "AI开发三件套接入",
+  "steps": [
+    {
+      "id": 1,
+      "title": "db.ts 给 Project 加 workflowMode 字段（仅 TS 类型 + projects.json 真源，详 context D11）",
+      "verify": "pnpm -F @aimon/server build（项目无 typecheck 脚本，build = tsc 类型检查兜底）通过；新增 setter updateProjectWorkflowMode；loadProjectsJson 解析 workflowMode 字段",
+      "status": "done",
+      "read_files": ["packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/db.ts"]
+    },
+    {
+      "id": 2,
+      "title": "workflow-service.ts 扩展 mode + superpowers 参数（与 T06 合并完成）",
+      "verify": "pnpm -F @aimon/server build 通过；零参调用与原行为一致",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/workflow-service.ts",
+        "packages/server/src/harness-template-service.ts",
+        "packages/server/src/dev-docs-guidelines.ts"
+      ],
+      "write_files": ["packages/server/src/workflow-service.ts"]
+    },
+    {
+      "id": 3,
+      "title": "新建 superpowers-guidelines.ts",
+      "verify": "build 通过；apply/remove 写出/撤回 CLAUDE.md 锚点段（实测留 T17）",
+      "status": "done",
+      "read_files": ["packages/server/src/dev-docs-guidelines.ts"],
+      "write_files": ["packages/server/src/superpowers-guidelines.ts"]
+    },
+    {
+      "id": 4,
+      "title": "新建 openspec-template-service.ts（apply/uninstall/status + changes CRUD）",
+      "verify": "build 通过；REPL 实测留 T17",
+      "status": "done",
+      "read_files": ["packages/server/src/harness-template-service.ts"],
+      "write_files": ["packages/server/src/openspec-template-service.ts"]
+    },
+    {
+      "id": 5,
+      "title": "新建 gstack-installer.ts（含 bun 检测、git ls-remote 探测）",
+      "verify": "build 通过；getStatus 实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/cli-installer.ts",
+        "packages/server/src/install-jobs.ts"
+      ],
+      "write_files": ["packages/server/src/gstack-installer.ts"]
+    },
+    {
+      "id": 6,
+      "title": "routes/projects.ts workflow API 加 body schema + projects.json 持久化 workflowMode（与 T02 合并）",
+      "verify": "build 通过；curl 实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/projects.ts",
+        "packages/server/src/workflow-service.ts",
+        "packages/server/src/db.ts"
+      ],
+      "write_files": ["packages/server/src/routes/projects.ts"]
+    },
+    {
+      "id": 7,
+      "title": "新建 routes/openspec.ts + index.ts 注册",
+      "verify": "build 通过；curl 五端点实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/docs.ts",
+        "packages/server/src/docs-service.ts",
+        "packages/server/src/openspec-template-service.ts",
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/openspec.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "新建 routes/external-tools.ts + index.ts 注册",
+      "verify": "build 通过；curl 实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/gstack-installer.ts",
+        "packages/server/src/routes/cli-installer.ts",
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/external-tools.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "后端整体 build",
+      "verify": "pnpm -F @aimon/server build 全绿",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 10,
+      "title": "api.ts + types.ts 加 openspec/externalTools/Project.workflowMode（含 PermissionsDrawer 最小兼容修复）",
+      "verify": "web build 通过；DevTools 能调通 api 新方法（实测留 T17）",
+      "status": "done",
+      "read_files": ["packages/web/src/api.ts", "packages/web/src/types.ts"],
+      "write_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/components/PermissionsDrawer.tsx"
+      ]
+    },
+    {
+      "id": 11,
+      "title": "store.ts 加 setWorkflowMode action（Project.workflowMode 已在 T10 上线，复用 selectedProjectId+projects 模式）",
+      "verify": "web build 通过；apply/remove workflow 后 setWorkflowMode 原地更新 projects[] 即可驱动 T15 互斥渲染",
+      "status": "done",
+      "read_files": ["packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/store.ts"]
+    },
+    {
+      "id": 12,
+      "title": "新建 OpenSpecView.tsx（changes 列表 + 三件展开 + 新建/归档；编辑走只读预览，与 DocsView 同模式）",
+      "verify": "web build 通过；浏览器 V2/V3/V4 实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/sidebar/DocsView.tsx",
+        "packages/web/src/components/dialog/DialogHost.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": ["packages/web/src/components/sidebar/OpenSpecView.tsx"]
+    },
+    {
+      "id": 13,
+      "title": "NewProjectDialog 加开发流程下拉 + Superpowers checkbox + 提交后调 applyWorkflow",
+      "verify": "web build 通过；V1 浏览器实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/NewProjectDialog.tsx",
+        "packages/web/src/api.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/NewProjectDialog.tsx"
+      ]
+    },
+    {
+      "id": 14,
+      "title": "PermissionsDrawer：新增 ToolsTab（gstack 安装/更新/卸载/状态）+ 扩展 WorkflowTab 支持 mode 切换 + Superpowers + setWorkflowMode 乐观镜像",
+      "verify": "web build 通过；V5/V6/V7 浏览器实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/PermissionsDrawer.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": ["packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 15,
+      "title": "互斥渲染：ActivityBar 切 docs item 图标/标签 + PrimarySidebar 按 mode 切 view + 标题随 mode 变换",
+      "verify": "web build 通过；V2/V7 浏览器实测留 T17",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/layout/ActivityBar.tsx",
+        "packages/web/src/components/layout/PrimarySidebar.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/layout/ActivityBar.tsx",
+        "packages/web/src/components/layout/PrimarySidebar.tsx"
+      ]
+    },
+    {
+      "id": 16,
+      "title": "前端整体构建",
+      "verify": "pnpm -F @aimon/web build 全绿",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 17,
+      "title": "派 vibespace-browser-tester 跑 V1–V7",
+      "verify": "测试 agent 报告全 PASS；任何 FAIL 回对应阶段修复",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 18,
+      "title": "README + README.zh-CN.md 同步项目工作流章节",
+      "verify": "两份文件双语对齐，含三件入口/关系/Superpowers 浅集成边界",
+      "status": "todo",
+      "read_files": ["README.md", "README.zh-CN.md"],
+      "write_files": ["README.md", "README.zh-CN.md"]
+    },
+    {
+      "id": 19,
+      "title": "dev/memory/manual.md 追加本次接入沉淀",
+      "verify": "manual.md 末尾多一行，格式与现有条目一致",
+      "status": "todo",
+      "read_files": ["dev/memory/manual.md"],
+      "write_files": ["dev/memory/manual.md"]
+    },
+    {
+      "id": 20,
+      "title": "收尾自查 + handoff",
+      "verify": "git diff --name-only HEAD 输出全部命中各任务 write_files 白名单；handoff 含验收指引/改动文件/浏览器证据/Superpowers 边界声明/git diff 行",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

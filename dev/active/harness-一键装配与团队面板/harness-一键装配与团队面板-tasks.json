@@ -1,0 +1,14 @@
+{
+  "task": "harness-一键装配与团队面板",
+  "steps": [
+    { "id": "A-1", "title": "新建 harness-template-service.ts", "verify": "server tsc 通过 + 自测三函数", "status": "done" },
+    { "id": "A-2", "title": "routes/projects.ts 加 schema 字段 + 2 endpoint + 操作日志", "verify": "curl 三路径 + ERROR 触发", "status": "done" },
+    { "id": "A-3", "title": "install.sh 加同步提醒注释", "verify": "肉眼读", "status": "done" },
+    { "id": "B-1", "title": "前端 types/api 加 HarnessStatus + createProject 字段", "verify": "web tsc 通过", "status": "done" },
+    { "id": "B-2", "title": "NewProjectDialog 加 🤝 复选框 + 透传", "verify": "A-V1/V2/V4 浏览器", "status": "done" },
+    { "id": "B-3", "title": "新建 HarnessTeamDrawer.tsx 居中 modal", "verify": "B-V2/V3/V5 浏览器 + ERROR", "status": "done" },
+    { "id": "B-4", "title": "ProjectsColumn 右键加 🤝 团队 + 触发 drawer", "verify": "B-V1/V4 浏览器", "status": "done" },
+    { "id": "C-1", "title": "issues.md + README + learnings.md 收尾", "verify": "肉眼读", "status": "done" },
+    { "id": "C-2", "title": "全量验收 + tsc + smoke:worktree", "verify": "手动+命令行全过", "status": "done" }
+  ]
+}

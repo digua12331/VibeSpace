@@ -1,0 +1,18 @@
+{
+  "task": "策划方案改为文档浏览器",
+  "steps": [
+    { "id": 1, "title": "新增 routes/project-docs.ts + index.ts 注册", "verify": "文件创建 + index.ts 替换 + tsc 过", "status": "done", "read_files": ["packages/server/src/index.ts", "packages/server/src/log-bus.ts", "packages/server/src/db.ts"], "write_files": ["packages/server/src/routes/project-docs.ts", "packages/server/src/index.ts"] },
+    { "id": 2, "title": "删 routes/output.ts + output-service.ts + 摘除注册", "verify": "文件不存在 + grep 0 命中", "status": "done", "read_files": ["packages/server/src/routes/output.ts", "packages/server/src/output-service.ts", "packages/server/src/index.ts"], "write_files": ["packages/server/src/routes/output.ts", "packages/server/src/output-service.ts", "packages/server/src/index.ts"] },
+    { "id": 3, "title": "types.ts 清 Output*/Checklist* + 加 ProjectDocFile/ProjectDocsListResult", "verify": "grep 旧 type 0 命中", "status": "done", "read_files": ["packages/web/src/types.ts"], "write_files": ["packages/web/src/types.ts"] },
+    { "id": 4, "title": "api.ts 清旧函数 + 加 listProjectDocs", "verify": "grep 0 命中", "status": "done", "read_files": ["packages/web/src/api.ts"], "write_files": ["packages/web/src/api.ts"] },
+    { "id": 5, "title": "store.ts 改字段族 + Activity union + EditorTabKind", "verify": "grep 字面量 0 命中", "status": "done", "read_files": ["packages/web/src/store.ts"], "write_files": ["packages/web/src/store.ts"] },
+    { "id": 6, "title": "新增 sidebar/ProjectDocsView.tsx + 删 OutputView.tsx", "verify": "文件互换 + logAction 埋点", "status": "done", "read_files": ["packages/web/src/components/sidebar/OutputView.tsx", "packages/web/src/logs.ts"], "write_files": ["packages/web/src/components/sidebar/ProjectDocsView.tsx", "packages/web/src/components/sidebar/OutputView.tsx"] },
+    { "id": 7, "title": "EditorArea.tsx 删 ChecklistEditor lazy/分支/extractFeature", "verify": "grep 0 命中", "status": "done", "read_files": ["packages/web/src/components/editor/EditorArea.tsx"], "write_files": ["packages/web/src/components/editor/EditorArea.tsx"] },
+    { "id": 8, "title": "删 editor/ChecklistEditor.tsx", "verify": "文件不存在", "status": "done", "read_files": ["packages/web/src/components/editor/ChecklistEditor.tsx"], "write_files": ["packages/web/src/components/editor/ChecklistEditor.tsx"] },
+    { "id": 9, "title": "ActivityBar.tsx 改 id/icon/label", "verify": "编辑完成 + tsc 过", "status": "done", "read_files": ["packages/web/src/components/layout/ActivityBar.tsx"], "write_files": ["packages/web/src/components/layout/ActivityBar.tsx"] },
+    { "id": 10, "title": "PrimarySidebar.tsx 改 import/STATIC_TITLES/case", "verify": "grep 0 命中", "status": "done", "read_files": ["packages/web/src/components/layout/PrimarySidebar.tsx"], "write_files": ["packages/web/src/components/layout/PrimarySidebar.tsx"] },
+    { "id": 11, "title": "全仓 grep 残留 + 双包类型检查", "verify": "server tsc EXIT=0；web tsc -b EXIT=0", "status": "done", "read_files": ["packages/**/*"], "write_files": [] },
+    { "id": 12, "title": "自派 vibespace-browser-tester", "verify": "全 PASS", "status": "blocked", "read_files": [], "write_files": [], "block_reason": "dev server uptime ~80min 跑老代码缺新路由；vite dev 5173 未起。需用户重启 server + 启动 web 后再跑（或用户自行验收）" },
+    { "id": 13, "title": "write_files 越界检查", "verify": "diff 在 plan 清单内", "status": "done", "read_files": [], "write_files": [] }
+  ]
+}

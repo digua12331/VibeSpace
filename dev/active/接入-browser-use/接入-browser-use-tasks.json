@@ -1,0 +1,68 @@
+{
+  "task": "接入-browser-use",
+  "phase": "Phase 1 only (B 路径，MCP 注入)；Phase 2 已并入新任务 agent-团队编排",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端类型扩展 + browser-use catalog 入口",
+      "verify": "pnpm -r run typecheck 全绿；GET /api/cli-installer/catalog 返回数组里能看到 id=browser-use 且 kind=mcp-tool；其他既有条目默认 kind=agent",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "前端类型 + UI 渲染（徽章 + 下拉过滤）",
+      "verify": "浏览器里 📦 CliInstallerDialog 的 browser-use 卡片右上有 'MCP 工具' 徽章；'+启动 AI/终端' 下拉里没有 browser-use",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "手动跑通安装链路",
+      "verify": "浏览器里点装 browser-use → SSE 跑完 → /api/cli-installer/status 反映 installed=true；LogsView 看到 installer:install-browser-use 起止配对",
+      "status": "doing",
+      "note": "browser-use 已装到 C:/Users/zh_zhang/.local/bin（uv 清华镜像），待 dev server 重启 + UI 验证"
+    },
+    {
+      "id": 4,
+      "title": "mcp-bridge 模块 + sessions.ts 调用",
+      "verify": "起 claude session，<projectPath>/.mcp.json 出现 mcpServers[\"browser-use\"] 条目；LogsView 看到 installer:inject-mcp-browseruse 起止配对（成功）",
+      "status": "doing",
+      "note": "代码已写完且 typecheck 过；待 dev server 重启 + 起 claude session 验证"
+    },
+    {
+      "id": 5,
+      "title": "幂等性测试",
+      "verify": "同项目连续起两个 claude session，.mcp.json 里 browser-use 条目仅一份（不重复）",
+      "status": "todo"
+    },
+    {
+      "id": 6,
+      "title": "codex 注入路径",
+      "verify": "装了 codex 的环境下起 codex session，~/.codex/config.toml 出现 [mcp_servers.browser-use] 段；LogsView 看到注入成功的配对。没装 codex 标 blocked",
+      "status": "todo"
+    },
+    {
+      "id": 7,
+      "title": "失败分支测试",
+      "verify": ".mcp.json 改只读后起 claude session，LogsView 出现 inject-mcp-browseruse 失败 ERROR（带 meta.error）；session 仍能进 starting → running",
+      "status": "todo"
+    },
+    {
+      "id": 8,
+      "title": "AI 真用一次浏览器工具",
+      "verify": "claude session 内输入 '用 browser-use 打开 http://127.0.0.1:8788 然后截图'，xterm 看到截图回流，LogsView 看到 browser_navigate / browser_screenshot 工具名",
+      "status": "todo"
+    },
+    {
+      "id": 9,
+      "title": "README 写章节",
+      "verify": "干净环境（无 uv / 无 browser-use）跟着 README 能从 0 装到能用；README 含 Python ≥ 3.11 + uv 前置、装法、最小例子",
+      "status": "todo"
+    },
+    {
+      "id": 10,
+      "title": "整体回归",
+      "verify": "pnpm -r run typecheck 全绿；pnpm smoke:server / smoke:web / smoke:hooks 全绿，没退步",
+      "status": "todo"
+    }
+  ]
+}

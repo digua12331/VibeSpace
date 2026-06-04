@@ -1,0 +1,32 @@
+{
+  "task": "VibeSpace-CLI",
+  "steps": [
+    { "id": 1, "title": "建 packages/cli 骨架", "verify": "ls packages/cli/bin + pnpm install ok", "status": "done",
+      "read_files": ["packages/hook-script/package.json"],
+      "write_files": ["packages/cli/package.json", "packages/cli/bin/vibespace.mjs", "packages/cli/src/index.mjs"] },
+    { "id": 2, "title": "args parser + config + ping", "verify": "ping 通；后台关 exit 2；未知 flag exit 3", "status": "done",
+      "read_files": ["packages/cli/src/**"],
+      "write_files": ["packages/cli/src/args.mjs", "packages/cli/src/config.mjs", "packages/cli/src/api.mjs", "packages/cli/src/commands/ping.mjs", "packages/cli/bin/vibespace.mjs"] },
+    { "id": 3, "title": "project create/list/delete/switch", "verify": "4 命令通 + delete 安全闸", "status": "done",
+      "read_files": ["packages/server/src/routes/projects.ts"],
+      "write_files": ["packages/cli/src/commands/project.mjs", "packages/cli/bin/vibespace.mjs"] },
+    { "id": 4, "title": "session start", "verify": "起 claude session 浏览器看到", "status": "done",
+      "read_files": ["packages/server/src/routes/sessions.ts"],
+      "write_files": ["packages/cli/src/commands/session.mjs", "packages/cli/bin/vibespace.mjs"] },
+    { "id": 5, "title": "docs read/write/archive", "verify": "三种来源通 + archive 安全闸", "status": "done",
+      "read_files": ["packages/server/src/routes/docs.ts"],
+      "write_files": ["packages/cli/src/commands/docs.mjs", "packages/cli/bin/vibespace.mjs"] },
+    { "id": 6, "title": "skill install", "verify": "~/.claude/skills/vibespace-cli/SKILL.md 内容一致", "status": "done",
+      "read_files": ["packages/cli/skill/vibespace-cli.md"],
+      "write_files": ["packages/cli/src/commands/skill.mjs", "packages/cli/bin/vibespace.mjs"] },
+    { "id": 7, "title": "skill 真源 vibespace-cli.md", "verify": "触发词 + 边界说明完整", "status": "done",
+      "read_files": [],
+      "write_files": ["packages/cli/skill/vibespace-cli.md"] },
+    { "id": 8, "title": "双语 README 加 CLI 小节", "verify": "README.md + README.zh-CN.md 都有", "status": "done",
+      "read_files": ["README.md", "README.zh-CN.md"],
+      "write_files": ["README.md", "README.zh-CN.md", "packages/cli/README.md"] },
+    { "id": 9, "title": "边界 + 烟测", "verify": "plan 12 条验收 + diff 在边界内", "status": "done",
+      "read_files": [],
+      "write_files": [] }
+  ]
+}

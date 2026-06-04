@@ -1,0 +1,53 @@
+{
+  "task": "工作流模板同步",
+  "steps": [
+    {
+      "id": 1,
+      "title": "重写 DEV_DOCS_GUIDELINES 字符串（剔专属 + 保留方法论 + 泛化路径）",
+      "verify": "grep 命中所有关键短语；grep 不命中专属字面（除非括号举例）；tsc 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/dev-docs-guidelines.ts", "CLAUDE.md", "packages/server/src/workflow-service.ts"],
+      "write_files": ["packages/server/src/dev-docs-guidelines.ts"]
+    },
+    {
+      "id": 2,
+      "title": "重写 ISSUES_ARCHIVE_SECTION 与新 DEV_DOCS_GUIDELINES 内嵌段一致",
+      "verify": "两份 Issues 档案段 diff 一致",
+      "status": "done",
+      "read_files": ["packages/server/src/dev-docs-guidelines.ts"],
+      "write_files": ["packages/server/src/dev-docs-guidelines.ts"]
+    },
+    {
+      "id": 3,
+      "title": "跑 pnpm -C packages/server exec tsc -b 类型检查",
+      "verify": "退出码 0，无新增类型错误",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 4,
+      "title": "关闭 .aimon/docs/team-agent-harness-dev-docs-workflow.md:346 老 TODO（追加 ✅ 后缀）",
+      "verify": "grep 该行命中且含 ✅ 标记",
+      "status": "done",
+      "read_files": [".aimon/docs/team-agent-harness-dev-docs-workflow.md"],
+      "write_files": [".aimon/docs/team-agent-harness-dev-docs-workflow.md"]
+    },
+    {
+      "id": 5,
+      "title": "self-test diff 校验：贴 git diff --name-only HEAD 到 tasks.md 末尾",
+      "verify": "tasks.md 末尾能看到真实 diff 输出，所有路径在白名单内",
+      "status": "done",
+      "read_files": [],
+      "write_files": ["dev/active/工作流模板同步/工作流模板同步-tasks.md"]
+    },
+    {
+      "id": 6,
+      "title": "交付 handoff 摘要",
+      "verify": "≤10 行白话摘要，含 git diff 输出，第一行验收指引",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

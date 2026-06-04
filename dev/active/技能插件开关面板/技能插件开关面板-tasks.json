@@ -1,0 +1,65 @@
+{
+  "task": "技能插件开关面板",
+  "steps": [
+    {
+      "id": 1,
+      "title": "写后端 helper claude-settings.ts",
+      "verify": "文件存在；导出 readClaudeSettings / patchClaudeSettings；patch 写 null 删 key、写 'off' 增改 key、tmp 文件与目标同目录、写前 re-read",
+      "status": "done",
+      "read_files": ["packages/server/src/app-settings.ts"],
+      "write_files": ["packages/server/src/claude-settings.ts"]
+    },
+    {
+      "id": 2,
+      "title": "写后端路由 routes/claude-settings.ts",
+      "verify": "GET 返回 { skillOverrides, enabledPlugins, path, exists }；PUT 走 zod 校验；serverLog scope=claude-settings 起止/失败配对",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/app-settings.ts",
+        "packages/server/src/log-bus.ts",
+        "packages/server/src/claude-settings.ts"
+      ],
+      "write_files": ["packages/server/src/routes/claude-settings.ts"]
+    },
+    {
+      "id": 3,
+      "title": "注册路由 + 前端类型 + 客户端",
+      "verify": "index.ts 加 import + 注册一行；types.ts 加 ClaudeGlobalSettings/ClaudeSettingsPatch；api.ts 加 getClaudeSettings/patchClaudeSettings",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/index.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts"
+      ],
+      "write_files": [
+        "packages/server/src/index.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "改 SkillsView：toggle + 批量按钮 + 插件区 + banner",
+      "verify": "agent=claude-code 时浏览器能看到 toggle/banner/全局插件区；agent=codex|opencode 时不显示",
+      "status": "done",
+      "read_files": ["packages/web/src/components/sidebar/SkillsView.tsx"],
+      "write_files": ["packages/web/src/components/sidebar/SkillsView.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "类型检查 + diff 白名单核对",
+      "verify": "pnpm --filter @vibespace/server run typecheck 和 pnpm --filter @vibespace/web run typecheck 都 exit 0；git diff --name-only HEAD 输出全部在 write_files 白名单内",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 6,
+      "title": "浏览器验收派 vibespace-browser-tester（大哥决定跳过）",
+      "verify": "跑着的 dev server 在 AIkanban-stable，本任务改动在 AIkanban-main，跨树无法即时验收；大哥选择跳过 tester，自己开浏览器验",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

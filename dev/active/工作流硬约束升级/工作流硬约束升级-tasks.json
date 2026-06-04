@@ -1,0 +1,69 @@
+{
+  "task": "工作流硬约束升级",
+  "steps": [
+    {
+      "id": 1,
+      "title": "CLAUDE.md 加 tasks.json 字段示例 + 两条硬性规则",
+      "verify": "grep 命中 '读写白名单' / '破坏性变更协议' / 'read_files'",
+      "status": "done",
+      "read_files": ["CLAUDE.md"],
+      "write_files": ["CLAUDE.md"]
+    },
+    {
+      "id": 2,
+      "title": "CLAUDE.md plan 第 1 步加 ARCHITECTURE.md 扫描 + handoff 段加 diff 校验",
+      "verify": "grep 命中 'dev/ARCHITECTURE.md' / 'git diff --name-only'",
+      "status": "done",
+      "read_files": ["CLAUDE.md"],
+      "write_files": ["CLAUDE.md"]
+    },
+    {
+      "id": 3,
+      "title": "AGENTS.md 同步步骤 1+2 内容（主语 Codex）",
+      "verify": "grep 命中四个关键词全部在 AGENTS.md",
+      "status": "done",
+      "read_files": ["AGENTS.md", "CLAUDE.md"],
+      "write_files": ["AGENTS.md"]
+    },
+    {
+      "id": 4,
+      "title": ".aimon/docs/team-agent-harness-dev-docs-workflow.md 同步",
+      "verify": "grep 命中 '读写白名单' / '破坏性变更协议' / 'ARCHITECTURE.md'",
+      "status": "done",
+      "read_files": [".aimon/docs/team-agent-harness-dev-docs-workflow.md"],
+      "write_files": [".aimon/docs/team-agent-harness-dev-docs-workflow.md"]
+    },
+    {
+      "id": 5,
+      "title": "派 vibespace-explorer 摸 packages 拓扑与既定模式",
+      "verify": "explorer 返回事实清单含三包职责、HTTP+WS 入口、关键模式",
+      "status": "done",
+      "read_files": ["packages/**"],
+      "write_files": []
+    },
+    {
+      "id": 6,
+      "title": "写 dev/ARCHITECTURE.md ≤300 行 4 节",
+      "verify": "文件存在 / wc -l ≤300 / 4 个章节 grep 全部命中",
+      "status": "done",
+      "read_files": ["packages/server/src/index.ts", "packages/web/src/main.tsx", "packages/hook-script/index.ts", "packages/**"],
+      "write_files": ["dev/ARCHITECTURE.md"]
+    },
+    {
+      "id": 7,
+      "title": "dev/issues.md 追加 AGENTS.md Codex 配置分层段问题",
+      "verify": "grep 'Codex 配置分层' dev/issues.md 命中",
+      "status": "done",
+      "read_files": ["dev/issues.md"],
+      "write_files": ["dev/issues.md"]
+    },
+    {
+      "id": 8,
+      "title": "self-test diff 校验：贴 git diff --name-only HEAD 到 tasks.md 末尾",
+      "verify": "tasks.md 末尾能看到真实 diff 输出，所有路径在白名单内",
+      "status": "done",
+      "read_files": [],
+      "write_files": ["dev/active/工作流硬约束升级/工作流硬约束升级-tasks.md"]
+    }
+  ]
+}

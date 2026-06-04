@@ -1,0 +1,13 @@
+{
+  "task": "使用量面板",
+  "steps": [
+    { "id": 1, "title": "实现 usage-service.ts（jsonl 解析器）", "verify": "一次性 node 脚本调用返回结构合理（today 有数据/last7days 长度=7/skipped 不爆炸）", "status": "done" },
+    { "id": 2, "title": "实现 routes/usage.ts + index.ts 注册 + 起止 serverLog", "verify": "server tsc 通过；curl /api/usage/claude 返回 200 + 合法 JSON", "status": "done" },
+    { "id": 3, "title": "types.ts 加 ClaudeUsage/UsageByModel/UsageDayPoint", "verify": "web tsc 通过", "status": "done" },
+    { "id": 4, "title": "api.ts 加 getClaudeUsage()", "verify": "web tsc 通过", "status": "done" },
+    { "id": 5, "title": "UsageView.tsx（三块卡片 + 占位 + 三态 + logAction 包裹）", "verify": "web tsc 通过", "status": "done" },
+    { "id": 6, "title": "接入 store/ActivityBar/PrimarySidebar", "verify": "浏览器看到 📈 图标 → 点开三块卡片 + 占位 → LogsView 看到 usage/read 起止配对", "status": "todo" },
+    { "id": 7, "title": "失败路径人工触发（临时 throw 后还原）", "verify": "前端错误态 + LogsView 出现 level=error scope=usage 条目；还原后正常", "status": "todo" },
+    { "id": 8, "title": "handoff 摘要", "verify": "≤10 行写在最后回复", "status": "todo" }
+  ]
+}

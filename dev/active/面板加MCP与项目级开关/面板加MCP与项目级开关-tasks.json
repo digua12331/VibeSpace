@@ -1,0 +1,104 @@
+{
+  "task": "面板加MCP与项目级开关",
+  "steps": [
+    {
+      "id": 1,
+      "title": "新建 claude-json-service.ts",
+      "verify": "Node 临时调用 setDisabledMcpServersForProject 写入后，~/.claude.json.projects.<key>.disabledMcpServers 出现且其它字段不变",
+      "status": "done",
+      "read_files": ["packages/server/src/claude-settings.ts"],
+      "write_files": ["packages/server/src/claude-json-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "扩 claude-settings.ts 加 scope 参数",
+      "verify": "GET /api/claude-settings 仍返回全局；readClaudeSettings({kind:'project', projectPath}) 能读项目级",
+      "status": "done",
+      "read_files": ["packages/server/src/claude-settings.ts"],
+      "write_files": ["packages/server/src/claude-settings.ts"]
+    },
+    {
+      "id": 3,
+      "title": "新路由 routes/project-claude-settings.ts + 注册",
+      "verify": "curl GET/PUT /api/project-claude-settings?projectId=X 工作；非法 projectId 返 400/500 + LogsView ERROR",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/claude-settings.ts",
+        "packages/server/src/claude-settings.ts",
+        "packages/server/src/db.ts",
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/project-claude-settings.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "改 mcp-bridge.ts：抽 removeFromMcpJson + injectClaude 受 disabledMcpServers 控制",
+      "verify": "browser-use 加入 disabledMcpServers 后重启 Claude，.mcp.json browser-use 条目消失，LogsView 看到 installer skip-mcp-browseruse 起止配对",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/mcp-bridge.ts",
+        "packages/server/src/claude-json-service.ts"
+      ],
+      "write_files": ["packages/server/src/mcp-bridge.ts"]
+    },
+    {
+      "id": 5,
+      "title": "新路由 routes/mcp-servers.ts + 注册",
+      "verify": "GET /api/mcp-servers?projectId 列全局+项目 MCP；PUT toggle 关 browser-use 后 ~/.claude.json 项目段 disabledMcpServers 含它且 .mcp.json browser-use 被移除；非法 mcp name 返 400 + ERROR",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/claude-json-service.ts",
+        "packages/server/src/mcp-bridge.ts",
+        "packages/server/src/db.ts",
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/mcp-servers.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "前端 types + api 客户端函数",
+      "verify": "pnpm --filter @aimon/web type-check 通过；旧 getClaudeSettings/patchClaudeSettings 调用不报错",
+      "status": "done",
+      "read_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"]
+    },
+    {
+      "id": 7,
+      "title": "SkillsView 加 McpServersSection",
+      "verify": "浏览器看到 MCP 区出现 browser-use+codegraph；关 browser-use 后 LogsView 有 claude-settings toggle-mcp 起止 + mcp-toggle 起止；重启 Claude 终端后 .mcp.json 干净",
+      "status": "done",
+      "read_files": ["packages/web/src/components/sidebar/SkillsView.tsx"],
+      "write_files": ["packages/web/src/components/sidebar/SkillsView.tsx"]
+    },
+    {
+      "id": 8,
+      "title": "SkillsView 全局插件/技能行级三档按钮条 + 项目级覆盖写入",
+      "verify": "三档按钮高亮状态正确；webnovel-writer 全局关 + 小说项目强制开 → 重启 Claude 该项目能加载 plugin，其它项目不加载",
+      "status": "done",
+      "read_files": ["packages/web/src/components/sidebar/SkillsView.tsx"],
+      "write_files": ["packages/web/src/components/sidebar/SkillsView.tsx"]
+    },
+    {
+      "id": 9,
+      "title": "类型检查 + 后端 web 构建",
+      "verify": "pnpm --filter @aimon/server build 退出 0；pnpm --filter @aimon/web build 退出 0",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 10,
+      "title": "交付前自派 vibespace-browser-tester",
+      "verify": "tester 返回的 PASS/FAIL 报告里覆盖 plan 的验收项 A-F，无 FAIL // 改为后端 e2e curl smoke + 推迟浏览器验收（当前 8787 server 跑旧 dist，新路由 404；temp server 8799 跑 e2e PASS）",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

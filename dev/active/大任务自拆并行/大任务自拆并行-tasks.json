@@ -1,0 +1,162 @@
+{
+  "task": "大任务自拆并行",
+  "steps": [
+    {
+      "id": 1,
+      "title": "抽公共 worktree-session-runner.ts（参数化 marker / verify）",
+      "verify": "tsc 通过；pnpm smoke:issues-jobs 仍全过",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/issue-jobs.ts",
+        "packages/server/src/issue-prompt.ts",
+        "packages/server/src/issue-verify.ts",
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/ws-hub.ts"
+      ],
+      "write_files": [
+        "packages/server/src/worktree-session-runner.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "改 routes/issue-jobs.ts 调用新 runner",
+      "verify": "tsc 通过；issues-jobs smoke 不回归",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/routes/issue-jobs.ts",
+        "packages/server/src/worktree-session-runner.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/issue-jobs.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "新建 task-subtasks.ts（结构 + 拓扑 + 校验）",
+      "verify": "tsc 通过；端到端由 step 10 smoke 覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/docs-service.ts"
+      ],
+      "write_files": [
+        "packages/server/src/task-subtasks.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "新建 task-subtasks-store.ts（仿 IssueJobManager）",
+      "verify": "tsc 通过；端到端由 step 10 smoke 覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/issue-jobs.ts",
+        "packages/server/src/task-subtasks.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": [
+        "packages/server/src/task-subtasks-store.ts"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "task-status.ts: StatusEntry 加 subtaskId 字段",
+      "verify": "tsc 通过；端到端由 step 10 smoke 覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/task-status.ts"
+      ],
+      "write_files": [
+        "packages/server/src/task-status.ts"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "新建 routes/task-subtasks.ts（5 个 HTTP 端点）",
+      "verify": "tsc 通过；端到端由 step 10 smoke 覆盖",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/task-subtasks.ts",
+        "packages/server/src/task-subtasks-store.ts",
+        "packages/server/src/worktree-session-runner.ts",
+        "packages/server/src/task-budget.ts",
+        "packages/server/src/db.ts"
+      ],
+      "write_files": [
+        "packages/server/src/routes/task-subtasks.ts"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "index.ts 注册 task-subtasks 路由",
+      "verify": "pnpm -C packages/server exec tsc -b --force 通过；server 启动不报错",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "前端 types + api + store",
+      "verify": "pnpm -C packages/web exec tsc -b --force 通过",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts",
+        "packages/web/src/ws.ts"
+      ],
+      "write_files": [
+        "packages/web/src/types.ts",
+        "packages/web/src/api.ts",
+        "packages/web/src/store.ts"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "DocsView 05_subtasks 入口 + 列表 + 按钮",
+      "verify": "web tsc 通过；自派 vibespace-browser-tester 在 step 11 统一跑",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/sidebar/DocsView.tsx",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/sidebar/DocsView.tsx"
+      ]
+    },
+    {
+      "id": 10,
+      "title": "smoke + package.json + 配置模板",
+      "verify": "pnpm smoke:task-subtasks 全过；其他 smoke 不回归",
+      "status": "done",
+      "read_files": [
+        "scripts/issues-jobs-smoke.mjs",
+        "scripts/budget-cutoff-smoke.mjs",
+        "package.json"
+      ],
+      "write_files": [
+        "scripts/task-subtasks-smoke.mjs",
+        "package.json",
+        ".aimon/templates/subtasks-syntax.example.md"
+      ]
+    },
+    {
+      "id": 11,
+      "title": "文档更新 + 浏览器验收",
+      "verify": "vibespace-browser-tester 8 条全过；handoff 摘要含验收指引",
+      "status": "done",
+      "read_files": [
+        "README.zh-CN.md",
+        "CLAUDE.md",
+        "dev/issues.md"
+      ],
+      "write_files": [
+        "README.zh-CN.md",
+        "CLAUDE.md",
+        "dev/issues.md"
+      ]
+    }
+  ]
+}

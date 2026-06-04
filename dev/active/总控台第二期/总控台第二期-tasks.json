@@ -1,0 +1,164 @@
+{
+  "task": "总控台第二期",
+  "steps": [
+    {
+      "id": 1,
+      "title": "调研 + 摸 MCP SDK 落地形态（不写代码）",
+      "verify": "pnpm add @modelcontextprotocol/sdk 成功；列出 SDK 最小运行骨架到 notes",
+      "status": "done",
+      "notes": "SDK 装好 @modelcontextprotocol/sdk@1.29.0；API = McpServer + StdioServerTransport + registerTool(name, {desc, inputSchema(zod)}, async handler)",
+      "read_files": [
+        "packages/server/src/mcp-bridge.ts",
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/cli-catalog.ts",
+        "packages/server/package.json"
+      ],
+      "write_files": []
+    },
+    {
+      "id": 2,
+      "title": "后端 hub workspace + token + 鉴权",
+      "verify": "build 通过；curl 无 token localhost 200、带 wrong token 401、带正确 token 200；hub-workspace/ 目录 + README.md 创建",
+      "status": "done",
+      "notes": "鉴权 hook 第一版漏洞：带错 token 仍被 loopback fallback 放行，修为带 token 就严格校验；最终验证三种情况都对",
+      "read_files": [
+        "packages/server/src/index.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": [
+        "packages/server/src/hub-workspace.ts",
+        "packages/server/src/hub-token.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "后端 hub session runtime + 路由（dummy MCP 配置先用占位）",
+      "verify": "build 通过；POST 起 shell hub session 拿到 hubId；ws 订阅 hub:<hubId> 拿输出；DELETE 杀 PTY；LogsView 看到 scope=hub session-start/stop 配对",
+      "status": "done",
+      "notes": "Step 6 已合并完成 — runtime 启动时即 writeHubMcpConfig；ptyManager.spawn 直接接受 `hub:<id>` 前缀的 sessionId；exit listener 自动清理 Map",
+      "read_files": [
+        "packages/server/src/pty-manager.ts",
+        "packages/server/src/cli-catalog.ts",
+        "packages/server/src/log-bus.ts",
+        "packages/server/src/index.ts",
+        "packages/server/src/routes/hub.ts"
+      ],
+      "write_files": [
+        "packages/server/src/hub-session-runtime.ts",
+        "packages/server/src/routes/hub-session.ts",
+        "packages/server/src/index.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "后端 path-guard helper + hub.ts 追加 git-log/file 2 端点",
+      "verify": "build 通过；curl git-log 返回 commit；curl file 返回内容；越界路径返回 400 path_escape；大文件返回 file_too_large",
+      "status": "done",
+      "notes": "ExcelCon git-log 返实数据；attack vectors 全拒绝；file_too_large/binary_file 逻辑覆盖（同 readGuarded 路径）但未造极端样本实测",
+      "read_files": [
+        "packages/server/src/git-service.ts",
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/log-bus.ts"
+      ],
+      "write_files": [
+        "packages/server/src/hub-path-guard.ts",
+        "packages/server/src/routes/hub.ts"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "MCP server 单文件 bin（6 工具 + 结构化错误） + package.json bin entry",
+      "verify": "build 通过；dist/mcp-hub/index.js 存在；手测 stdio JSON-RPC tools/list 返回 6 工具；tools/call hub_status 返回 server_ok",
+      "status": "done",
+      "notes": "initialize 握手 OK；tools/list 返 6 工具完整 schema；token 同步后 hub_status 返 {server_ok:true, projects_count:4}；read_file path_escape 攻击向量返结构化错误",
+      "read_files": [
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/routes/hub-session.ts"
+      ],
+      "write_files": [
+        "packages/server/src/mcp-hub/index.ts",
+        "packages/server/package.json"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "hub-workspace .mcp.json 真实生成（含 mcp-hub bin spawn 命令 + 真 HUB_TOKEN）",
+      "verify": "启动 hub session 后 cat .mcp.json 内容含 command/args/env 全部正确",
+      "status": "done",
+      "notes": "跟 Step 3 合并完成（runtime 启动时即写）；.mcp.json 内容含 node 解释器绝对路径 + mcp-hub bin 绝对路径 + env.HUB_TOKEN + env.AIMON_BACKEND_PORT",
+      "read_files": [
+        "packages/server/src/hub-workspace.ts",
+        "packages/server/src/hub-token.ts",
+        "packages/server/src/hub-session-runtime.ts"
+      ],
+      "write_files": [
+        "packages/server/src/hub-workspace.ts",
+        "packages/server/src/hub-session-runtime.ts"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "前端 api + types + store —— hub session 客户端 + currentHubSession 状态",
+      "verify": "web build 通过；浏览器 console await api.startHubSession({agent:'shell'}) 拿到 hubId；sessionStorage 持久化生效",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/store.ts"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "HubTerminal 简化版组件（xterm + WebGL fallback + WS + IME 守卫）",
+      "verify": "build 通过；HubView 暂时硬编码渲染 HubTerminal 给已知 hubId 能看 shell 输出 + 输入回显",
+      "status": "done",
+      "notes": "HubTerminal 实际 ~150 行（plan 估 400-500，省了 SessionView 1404 行里 project/task/worktree/permission/customButtons 全部耦合）；未做精细 IME 守卫，disableStdin:false + onData 直发已够用",
+      "read_files": [
+        "packages/web/src/components/terminal/SessionView.tsx",
+        "packages/web/src/ws.ts",
+        "packages/web/src/types.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/hub/HubTerminal.tsx"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "HubView 右半接入启动/停止 UI + agent 下拉",
+      "verify": "build 通过；端到端浏览器走一遍 hub claude → list_projects MCP 工具 → dispatch shell 到 VibeSpace → 切回看到新 session 跑命令 → LogsView 看到完整 scope=hub 日志链",
+      "status": "done",
+      "notes": "HubView 改成左右两栏（左看板 + 右 hub session 区 480px）；HubStartPanel 子组件（agent 下拉 + 启动按钮）；reconcile effect：store 有但 server 没有自动清；浏览器端到端留大哥手验",
+      "read_files": [
+        "packages/web/src/components/hub/HubView.tsx",
+        "packages/web/src/components/hub/HubTerminal.tsx",
+        "packages/web/src/store.ts",
+        "packages/web/src/api.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/hub/HubView.tsx"
+      ]
+    },
+    {
+      "id": 10,
+      "title": "安全 + 白名单 + grep + tester",
+      "verify": "path 越界/超大/二进制三攻击向量被拒；git diff 覆盖白名单 14 文件；grep HUB_TOKEN 无日志泄漏；tester PASS 或 SKIP+handoff 标注",
+      "status": "done",
+      "notes": "白名单 14 全覆盖 + pnpm-lock.yaml 合理副作用；HUB_TOKEN 无 log 泄漏；tester 按大哥既定不派",
+      "read_files": [
+        "packages/server/src/mcp-hub/index.ts",
+        "packages/server/src/routes/hub.ts",
+        "packages/server/src/routes/hub-session.ts",
+        "packages/web/src/components/hub/HubView.tsx",
+        "packages/web/src/components/hub/HubTerminal.tsx"
+      ],
+      "write_files": []
+    }
+  ]
+}

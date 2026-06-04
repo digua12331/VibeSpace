@@ -1,0 +1,62 @@
+{
+  "task": "终端快捷键自定义",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端数据结构：terminalKeybindings 字段 + DEFAULTS + read/clamp/merge",
+      "verify": "删掉 json 该字段后启动 GET /api/app-settings 返回默认 null/null；server build 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/app-settings.ts"],
+      "write_files": ["packages/server/src/app-settings.ts"]
+    },
+    {
+      "id": 2,
+      "title": "后端校验：UpdateBody 加 terminalKeybindings + 非法组合拦截 + ERROR 日志",
+      "verify": "合法保存成功；非法组合 400 且 serverLog ERROR；server build 通过",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/app-settings.ts", "packages/server/src/app-settings.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/routes/app-settings.ts"]
+    },
+    {
+      "id": 3,
+      "title": "前端类型：KeyCombo / TerminalKeybindings 挂到 AppSettings",
+      "verify": "pnpm -F @aimon/web build 类型检查通过",
+      "status": "done",
+      "read_files": ["packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/types.ts"]
+    },
+    {
+      "id": 4,
+      "title": "前端 store + 启动载入：store 状态/setter + App.tsx useEffect 灌 store",
+      "verify": "web build 通过；刷新后不开弹窗 store 即有值",
+      "status": "done",
+      "read_files": ["packages/web/src/store.ts", "packages/web/src/App.tsx", "packages/web/src/api.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/store.ts", "packages/web/src/App.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "设置弹窗 UI：终端快捷键 section + 录制/清除 + 前端校验 + 同步 store",
+      "verify": "能录 F8/能清除；录制态 Esc 只取消录制；非法键提示；LogsView 起止配对；web build 通过",
+      "status": "done",
+      "read_files": ["packages/web/src/components/SettingsDialog.tsx", "packages/web/src/store.ts", "packages/web/src/logs.ts", "packages/web/src/api.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/components/SettingsDialog.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "终端接线：SessionView matchCombo + keybindingsRef 发 \\x03/\\x1b",
+      "verify": "跑 AI 的终端按 F8 能打断；默认 Esc/Ctrl+C 不变；web build 通过",
+      "status": "done",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx", "packages/web/src/store.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 7,
+      "title": "整体验收 + 越界检查",
+      "verify": "server+web build 全绿；浏览器五项验收过；git diff --name-only 无越界；browser-tester 复核",
+      "status": "blocked",
+      "note": "代码完成+build绿+diff无越界；浏览器验收需先重建重启 VibeSpace（旧后端进程未带新字段），重启断会话，待大哥定夺"
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

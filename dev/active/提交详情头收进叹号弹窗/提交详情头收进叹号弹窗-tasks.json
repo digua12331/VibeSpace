@@ -1,0 +1,37 @@
+{
+  "task": "提交详情头收进叹号弹窗",
+  "steps": [
+    {
+      "id": 1,
+      "title": "store + GitGraph：把提交说明带上页签",
+      "verify": "pnpm -F @aimon/web build 类型检查过",
+      "status": "done",
+      "read_files": ["packages/web/src/store.ts", "packages/web/src/components/GitGraph.tsx"],
+      "write_files": ["packages/web/src/store.ts", "packages/web/src/components/GitGraph.tsx"]
+    },
+    {
+      "id": 2,
+      "title": "EditorArea 页签标题改为提交说明 + 短哈希",
+      "verify": "build 过；浏览器点提交页签显示 提交说明 @ 短SHA，hover 全文",
+      "status": "done",
+      "read_files": ["packages/web/src/components/editor/EditorArea.tsx"],
+      "write_files": ["packages/web/src/components/editor/EditorArea.tsx"]
+    },
+    {
+      "id": 3,
+      "title": "CommitDetailView 顶部提交头折叠为叹号弹窗",
+      "verify": "build 过；浏览器顶部无信息条，点❗弹出/再点/点外/Esc 收起，内容与原提交头一致",
+      "status": "done",
+      "read_files": ["packages/web/src/components/CommitDetailView.tsx"],
+      "write_files": ["packages/web/src/components/CommitDetailView.tsx"]
+    },
+    {
+      "id": 4,
+      "title": "白名单核对 + 浏览器验收",
+      "verify": "白名单核对通过；浏览器验收 blocked（browser-use MCP 不可用，需手动验）",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

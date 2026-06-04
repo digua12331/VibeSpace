@@ -1,0 +1,77 @@
+{
+  "task": "按项目独立按钮配置",
+  "steps": [
+    {
+      "id": 1,
+      "title": "改造 customButtons.ts：per-project key + cache map + listener 协议变更 + migrateGlobalToPerProject",
+      "verify": "pnpm --filter @aimon/web build 通过（tsc 会让旧签名调用方 type error）",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/customButtons.ts",
+        "packages/web/src/prompts.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/customButtons.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "PermissionsDrawer.tsx ButtonsTab 接 project prop 而非 selectedProjectId，传 projectId 给新 API，加日志",
+      "verify": "build 通过；浏览器手测：设置抽屉打开后看到当前项目按钮列表；切项目列表跟着变",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/PermissionsDrawer.tsx",
+        "packages/web/src/customButtons.ts",
+        "packages/web/src/store.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/PermissionsDrawer.tsx"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "SessionView.tsx 按 session.projectId 订阅，listener 过滤，项目被删时返回 [] 不写入",
+      "verify": "build 通过；浏览器手测：同时开两个不同项目的 session，各自按钮独立",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/terminal/SessionView.tsx",
+        "packages/web/src/customButtons.ts",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "App.tsx useEffect 启动期迁移：projects 首次非空时调 migrateGlobalToPerProject，pushLog 记录",
+      "verify": "清空 localStorage + 手动塞旧 array → 刷新 → 所有项目都注入了原按钮 + LogsView 看到 custom-buttons-migrated 日志；再刷不重复迁移",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/App.tsx",
+        "packages/web/src/customButtons.ts",
+        "packages/web/src/store.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/App.tsx"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "白名单比对 + grep 残留 + 自派 vibespace-browser-tester 跑验收清单",
+      "verify": "git diff 只在 4 白名单内；grep 无残留旧签名；tester 报告 PASS/FAIL",
+      "status": "done",
+      "notes": "白名单 ✓ / grep ✓ / tester SKIP——browser-use MCP 未注册到当前会话，无法跑浏览器自动化验收，留给大哥手动验。",
+      "read_files": [
+        "packages/web/src/customButtons.ts",
+        "packages/web/src/components/PermissionsDrawer.tsx",
+        "packages/web/src/components/terminal/SessionView.tsx",
+        "packages/web/src/App.tsx"
+      ],
+      "write_files": []
+    }
+  ]
+}

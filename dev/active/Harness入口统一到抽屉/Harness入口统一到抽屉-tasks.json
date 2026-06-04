@@ -1,0 +1,12 @@
+{
+  "task": "Harness 入口统一到抽屉",
+  "steps": [
+    { "id": 1, "title": "删 HarnessTeamDrawer.tsx 整文件", "verify": "文件不存在；tsc 仅 ProjectsColumn import 错（预期）", "status": "done" },
+    { "id": 2, "title": "ProjectsColumn.tsx 清理（import + state + 右键菜单按钮 + IIFE 渲染）", "verify": "浏览器右键项目菜单不见'🤝 团队'项", "status": "done" },
+    { "id": 3, "title": "api.ts 删 getHarnessStatus + types.ts 删相关类型", "verify": "pnpm -F web tsc --noEmit 0 错误", "status": "done" },
+    { "id": 4, "title": "PermissionsDrawer applyHarnessClick 追加 alertDialog 详情", "verify": "浏览器点 Harness 应用后弹'一键安装结果'详情", "status": "done" },
+    { "id": 5, "title": "dev/issues.md 追加后端死路由清理待办", "verify": "tail issues.md 见新增行", "status": "done" },
+    { "id": 6, "title": "全量类型检查", "verify": "pnpm -F web tsc --noEmit 0 错误", "status": "done" },
+    { "id": 7, "title": "浏览器跑 plan 验收 1–6", "verify": "5 项浏览器实操通过", "status": "blocked" }
+  ]
+}

@@ -1,0 +1,8 @@
+# 运行 Python 文件 · 任务清单
+
+- [x] 1. 新建 `packages/web/src/components/runPython.ts`，导出 `runPythonFile(projectId, path)`；内部复用 `fileContextMenu.ts:126-155` `.bat` "执行"模式（创建 cmd session → 写状态 → ws.subscribe → 120ms 兜底 → `aimonWS.sendInput("cd /d \"<dir>\" && python \"<file>\"\r")`），整段包在 `logAction('fs','run-python', …, { projectId, meta: { path } })` 里 → verify: 文件存在；`grep` 看到 `logAction('fs', 'run-python'` 出现一次；导出签名 `(projectId: string, path: string) => Promise<void>`
+- [x] 2. 在 `packages/web/src/components/FilePreview.tsx` 加 `isPythonPath`（sniff 函数群里）+ import `runPythonFile` + header tab 区前面插入 `▶ 运行` 按钮（仅 `isPython && !showDiffTab && tab !== 'diff'` 等条件下渲染，hover title 提示"运行磁盘上当前 worktree 版本的此文件"，onClick 调 `runPythonFile`，失败 `alertDialog` → verify: `pnpm --filter @aimon/web exec tsc -b --noEmit` 通过；`grep` 看到 `isPythonPath` 与 `runPythonFile` 各 ≥ 1 次
+- [ ] 3. 浏览器 happy path 实测：在任意项目里建一个临时 `_run_test.py`（含 `print("hello")` 与 `raise RuntimeError("boom")`），打开它的 FilePreview → 看到 ▶ 按钮 → 点 → 新 cmd tab 出现 → xterm 显示 `cd /d "..." && python "_run_test.py"` 命令行 + `hello` + `RuntimeError: boom` traceback；LogsView 看到 `INFO fs run-python 开始` 与 `INFO fs run-python 成功 (Nms)` 配对一次 → verify: 两条日志、xterm 输出齐
+- [ ] 4. 浏览器失败 path 实测：构造一个失败 ERROR——把浏览器 devtools 里临时 monkey-patch `api.createSession` 让其 `throw new Error('forced')`（或直接断网 backend），再点 ▶ → LogsView 出现 `ERROR fs run-python 失败: …`，前端弹"运行失败" alert → verify: ERROR 条目 + alert 弹出
+- [ ] 5. 非 .py 文件不出现 ▶：打开 `packages/web/src/types.ts`（或任意 `.ts/.md/.json`）确认 ▶ 按钮**不**渲染 → verify: 视觉确认无 ▶
+- [x] 6. 右键菜单对称：在 `fileContextMenu.ts` 加 `isPython` + `pyExecItem`（label "执行" / icon ▶ / 复用 `runPythonFile`），插入位置紧跟 `.bat` 的 `execItem` 之后 → verify: tsc 通过；右键 .py 文件能看到「执行」菜单项；右键 .ts 看不到（与 .bat 路径完全对称）

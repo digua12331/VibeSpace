@@ -1,0 +1,53 @@
+{
+  "task": "hub派给闲置session",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端 statusManager 加 claimIdle/releaseIdleClaim + statusChangedAt + dispatchLocks",
+      "verify": "server build 通过；现有 5 处 set 调用无回归",
+      "status": "todo",
+      "read_files": ["packages/server/src/status.ts", "packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/status.ts"]
+    },
+    {
+      "id": 2,
+      "title": "后端 pty-manager 加 lastInputAt + 3 export + ws-hub 调 markUserInput",
+      "verify": "server build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/pty-manager.ts", "packages/server/src/ws-hub.ts"],
+      "write_files": ["packages/server/src/pty-manager.ts", "packages/server/src/ws-hub.ts"]
+    },
+    {
+      "id": 3,
+      "title": "后端 POST /api/hub/dispatch-to-idle-session 6 步流程 + 错误码体系",
+      "verify": "build 通过；成功 200 + 8 个拒绝路径 curl 验",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/hub.ts", "packages/server/src/status.ts", "packages/server/src/pty-manager.ts", "packages/server/src/db.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/routes/hub.ts"]
+    },
+    {
+      "id": 4,
+      "title": "MCP server 加 dispatch_to_idle_session 工具",
+      "verify": "build 通过；tools/list 返 8 工具；tools/call 拒绝路径返结构化错误",
+      "status": "todo",
+      "read_files": ["packages/server/src/mcp-hub/index.ts", "packages/server/src/routes/hub.ts"],
+      "write_files": ["packages/server/src/mcp-hub/index.ts"]
+    },
+    {
+      "id": 5,
+      "title": "前端 types + api + HubDispatchDialog 改造单选两选项",
+      "verify": "web build 通过；浏览器两条路径 + 拒绝错误提示",
+      "status": "todo",
+      "read_files": ["packages/web/src/types.ts", "packages/web/src/api.ts", "packages/web/src/components/hub/HubDispatchDialog.tsx", "packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/types.ts", "packages/web/src/api.ts", "packages/web/src/components/hub/HubDispatchDialog.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "白名单 + grep + tester",
+      "verify": "git diff 8 文件覆盖；grep 新符号散布合理；tester 按既定不派",
+      "status": "todo",
+      "read_files": ["packages/server/src/status.ts", "packages/server/src/pty-manager.ts", "packages/server/src/routes/hub.ts", "packages/server/src/mcp-hub/index.ts", "packages/web/src/components/hub/HubDispatchDialog.tsx"],
+      "write_files": []
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "task": "图片与Excel页签预览",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端：新增 raw 流式路由 + 注册",
+      "verify": "server build 通过；活体 curl 等 Step 7 重启后一起验证",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "前端：api.ts 加 projectRawUrl",
+      "verify": "web build 通过",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "前端：安装 xlsx 依赖",
+      "verify": "web/package.json 含 xlsx@0.18.5；build 后独立 chunk xlsx-*.js 424.76 kB",
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "title": "前端：ImagePreview 组件 + preview-image 埋点",
+      "verify": "web build 通过；活体留到 Step 7",
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "title": "前端：ExcelPreview 组件（动态 import xlsx）+ preview-xlsx 埋点",
+      "verify": "web build 通过；xlsx 独立 chunk 已落地",
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "title": "前端：FilePreview 接入 isImage/isExcel 分支 + 历史 ref 禁用 Preview",
+      "verify": "web build 通过；活体留到 Step 7",
+      "status": "done"
+    },
+    {
+      "id": 7,
+      "title": "收尾活体冒烟：用户重启 backend 后浏览器测三类场景 + LogsView 配对/ERROR",
+      "verify": "浏览器看到图/表格/历史回退；LogsView 三组配对 + ERROR",
+      "status": "blocked",
+      "block_reason": "需用户重启 backend 让 raw 路由生效（现 stable 进程已跑 41h+，未载新路由）"
+    }
+  ]
+}

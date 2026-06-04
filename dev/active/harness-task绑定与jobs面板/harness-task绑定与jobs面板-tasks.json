@@ -1,0 +1,18 @@
+{
+  "task": "harness-task绑定与jobs面板",
+  "steps": [
+    { "id": "A-1", "title": "DB schema sessions 加 task_name 列 + 类型 + CRUD + setSessionTask", "verify": "server tsc 通过；老行 task_name=NULL；smoke:server/persistence 仍过", "status": "done" },
+    { "id": "A-2", "title": "routes/sessions.ts: CreateSchema 加 task；PATCH /:id/task 含抢占 409；操作日志", "verify": "curl 路径全过；同任务抢占 409；force:true 通过；tsc", "status": "done" },
+    { "id": "A-3", "title": "前端 types/api/store: Session.task / bindSessionTask / setSessionTaskLocal", "verify": "web tsc 通过", "status": "done" },
+    { "id": "A-4", "title": "DocsView: 右键加'绑定到 session'submenu + 行 binding badge + 抢占 confirm", "verify": "A-V1 浏览器子菜单 + badge", "status": "done" },
+    { "id": "A-5", "title": "EditorArea: 标签前缀 📝 + closeSessionTab 文案融合任务进度", "verify": "A-V2/V3/V4 浏览器三分支；web tsc", "status": "done" },
+    { "id": "B-1", "title": "新建 jobs-service.ts (JobsService class)", "verify": "server tsc + B-2 接入后实测", "status": "done" },
+    { "id": "B-2", "title": "review-runner 接 JobsService.register", "verify": "归档触发时 server log 看到 jobs register/done", "status": "done" },
+    { "id": "B-3", "title": "新建 routes/jobs.ts: GET/POST cancel/DELETE + index.ts 注册", "verify": "curl GET /api/jobs 在归档/装 CLI 时返回对应条目", "status": "done" },
+    { "id": "B-4", "title": "前端 types/api/store: JobItem + listJobs + Activity 加 jobs", "verify": "web tsc 通过", "status": "done" },
+    { "id": "B-5", "title": "新建 JobsView.tsx (3s 轮询 + 表格行 + 点击行 dialog)", "verify": "B-V1/V2/V3 浏览器跑通", "status": "done" },
+    { "id": "B-6", "title": "ActivityBar + PrimarySidebar 注册 jobs tab (icon 🛠)", "verify": "看到新 tab；web tsc", "status": "done" },
+    { "id": "C-1", "title": "README Concepts 段 + dev/learnings.md (按需)", "verify": "肉眼读", "status": "done" },
+    { "id": "C-2", "title": "全量验收: 浏览器 A-V1..V4 + B-V1..V4 + ERROR 日志 + tsc + smoke 全过", "verify": "手动+命令行全过", "status": "done" }
+  ]
+}

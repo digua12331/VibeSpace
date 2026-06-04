@@ -1,0 +1,11 @@
+{
+  "task": "项目列表激活分页",
+  "steps": [
+    { "id": 1, "title": "ProjectsColumn 加 activeTab state + useMemo 派生 + countFor 加 ended_at 过滤", "verify": "pnpm -F web tsc --noEmit 0 错误", "status": "done" },
+    { "id": 2, "title": "标题栏下方插入候选 A tab 条 JSX（独立一行）", "verify": "浏览器项目列顶部见两个 tab 按钮，点击可切换高亮", "status": "done" },
+    { "id": 3, "title": "projects.map 改为 currentList.map", "verify": "切到激活只见有数字徽标的项目；切到未激活只见数字为 0 的项目", "status": "done" },
+    { "id": 4, "title": "添加 tab 空态文案分支", "verify": "关掉所有终端激活 tab 显示对应文案", "status": "done" },
+    { "id": 5, "title": "浏览器跑 plan 验收 1–6", "verify": "6 项浏览器实操通过", "status": "blocked", "note": "等大哥浏览器验收" },
+    { "id": 6, "title": "全量类型检查", "verify": "pnpm -F web tsc --noEmit 0 错误", "status": "done" }
+  ]
+}

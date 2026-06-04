@@ -1,0 +1,148 @@
+{
+  "task": "AI终端多开卡顿优化",
+  "steps": [
+    {
+      "id": 1,
+      "title": "P0-1 ws.ts 新增 onSessionMessage 路由",
+      "verify": "注册回调后只接 output/replay/status/exit；全局 onMessage 仍接 hello/log/error/error-pattern-alert；pnpm -F @aimon/web build 通过",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/ws.ts",
+        "packages/web/src/main.tsx",
+        "packages/web/src/types.ts"
+      ],
+      "write_files": [
+        "packages/web/src/ws.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "P0-2 SessionView 接入 onSessionMessage",
+      "verify": "同时开 6 个 AI 终端 + 全速输出，非 active 终端不再被 output 回调命中；hello/log 仍正常显示；pnpm -F @aimon/web build 通过",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/terminal/SessionView.tsx",
+        "packages/web/src/ws.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "P0-3 ws-hub.ts broadcast 入口加 16ms 合并 + 边界强制 flush",
+      "verify": "长输出/ANSI 彩色/TUI 菜单/bracketed paste 不乱；模拟 session exit 时最后一屏 output 完整到达；服务端类型检查通过",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/ws-hub.ts",
+        "packages/server/src/pty-manager.ts"
+      ],
+      "write_files": [
+        "packages/server/src/ws-hub.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "P0-4 SessionView WebGL/ResizeObserver 仅 active",
+      "verify": "DevTools 看 WebGL context 数量不随 6 个终端线性增长；切换终端时光标/buffer/主题/滚动位置保留；窗口缩放只触发 active 一次 fit()",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "P0 阶段验收 type-check + browser-tester",
+      "verify": "pnpm -F @aimon/web build 通过；vibespace-browser-tester 跑 P0 压力场景 PASS",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 6,
+      "title": "P1-1 SessionView 隐藏 session scrollback 降到 1000",
+      "verify": "隐藏终端 buffer 不再持续涨；切回最多 1-2 帧重画，不丢现有屏幕内容",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "P1-2 SessionView input-submit 日志降采样",
+      "verify": "正常按 10 次 Enter 不再出现 10 条 input-submit；payload>2048 看到一条；IME 异常仍可见",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "P1-3 log-bus appendJsonl 批量落盘",
+      "verify": "高频日志场景下磁盘写次数下降；LogsView 实时性不变；进程关闭前 flush 剩余条目",
+      "status": "done",
+      "read_files": [
+        "packages/server/src/log-bus.ts",
+        "packages/server/src/index.ts"
+      ],
+      "write_files": [
+        "packages/server/src/log-bus.ts"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "P1 阶段验收 type-check + browser-tester",
+      "verify": "pnpm -F @aimon/web build 通过；服务端类型检查通过；vibespace-browser-tester 跑日志/scrollback 场景 PASS",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 10,
+      "title": "P2-1 store 加 slashCommandsCache stale-while-revalidate",
+      "verify": "多终端同 project 同 agent 时网络只发一次；refreshing 状态可观察；pnpm -F @aimon/web build 通过",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/store.ts",
+        "packages/web/src/components/terminal/SessionView.tsx",
+        "packages/web/src/components/ChangesList.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/store.ts",
+        "packages/web/src/components/terminal/SessionView.tsx"
+      ]
+    },
+    {
+      "id": 11,
+      "title": "P2-2 perf-marks 终端数硬上限 + StartSessionMenu 提示",
+      "verify": "开到 12 个时点 + 启动看到提示且给出关闭最早终端动作；≤11 个时不影响正常流程",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/perf-marks.ts",
+        "packages/web/src/components/StartSessionMenu.tsx",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/perf-marks.ts",
+        "packages/web/src/components/StartSessionMenu.tsx"
+      ]
+    },
+    {
+      "id": 12,
+      "title": "P2-3 完整压力验收 + diff 越界自查",
+      "verify": "同时开 6 终端 1 active 观察 WS 回调数/WebGL context 数/输入延迟；vibespace-browser-tester 全量 PASS；git diff --name-only HEAD 与 write_files 白名单一致",
+      "status": "blocked",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

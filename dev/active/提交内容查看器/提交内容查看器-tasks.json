@@ -1,0 +1,67 @@
+{
+  "task": "提交内容查看器",
+  "steps": [
+    {
+      "id": 1,
+      "title": "store 扩 EditorTabKind + commitDetailCache",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/store.ts",
+        "packages/web/src/types.ts"
+      ],
+      "write_files": [
+        "packages/web/src/store.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "新建 CommitDetailView 组件",
+      "verify": "build 通过，组件可被 import",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/ChangesList.tsx",
+        "packages/web/src/components/DiffView.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/CommitDetailView.tsx"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "EditorArea 按 kind 渲染 + commit 标签样式",
+      "verify": "build 通过",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/editor/EditorArea.tsx"
+      ],
+      "write_files": [
+        "packages/web/src/components/editor/EditorArea.tsx"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "GitGraph onCommitClick 开 commit 标签",
+      "verify": "build 通过；git diff --name-only HEAD 仅含白名单",
+      "status": "done",
+      "read_files": [
+        "packages/web/src/components/GitGraph.tsx",
+        "packages/web/src/store.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/GitGraph.tsx"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "浏览器验收",
+      "verify": "大哥指示不需测试，跳过自动浏览器验收，留待自验",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

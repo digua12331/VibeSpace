@@ -1,0 +1,37 @@
+{
+  "task": "窄面板看板适配",
+  "steps": [
+    {
+      "id": 1,
+      "title": "改 HubProjectCard.tsx header 布局支持 wrap",
+      "verify": "diff 只动 L83–137 区间，外层出现 flex-wrap，按钮组出现 ml-auto",
+      "status": "done",
+      "read_files": ["packages/web/src/components/hub/HubProjectCard.tsx"],
+      "write_files": ["packages/web/src/components/hub/HubProjectCard.tsx"]
+    },
+    {
+      "id": 2,
+      "title": "TypeScript 类型检查",
+      "verify": "pnpm -C packages/web typecheck 退出码 0",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 3,
+      "title": "浏览器三宽度验收",
+      "verify": "派 vibespace-browser-tester 在 sidebar ~320/480/640px 三宽度下确认按钮完整、贴右、宽屏单行不变",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 4,
+      "title": "write_files 边界自查",
+      "verify": "git diff --name-only HEAD 仅含 HubProjectCard.tsx + dev/active 任务目录",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

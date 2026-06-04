@@ -1,0 +1,53 @@
+{
+  "task": "产品自闭环skill套件",
+  "steps": [
+    {
+      "id": 1,
+      "title": "重构 skills-service.ts：scanSkillsDir 抽取 + 全局池 + pickSkillsForTask 合并",
+      "verify": "pnpm --filter @aimon/server build 零报错",
+      "status": "done",
+      "read_files": ["packages/server/src/skills-service.ts", "packages/server/src/routes/sessions.ts", "packages/server/src/routes/projects.ts"],
+      "write_files": ["packages/server/src/skills-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "改 sessions.ts 调用方 + 注入日志 meta 加 source",
+      "verify": "pnpm --filter @aimon/server build 零报错",
+      "status": "done",
+      "read_files": ["packages/server/src/routes/sessions.ts", "packages/server/src/skills-service.ts"],
+      "write_files": ["packages/server/src/routes/sessions.ts"]
+    },
+    {
+      "id": 3,
+      "title": "写 smoke 测试覆盖 5 场景",
+      "verify": "pnpm smoke:global-skills exit 0，5 场景全 PASS",
+      "status": "done",
+      "read_files": ["scripts/memory-parse-smoke.mjs", "packages/server/scripts/memory-parse-test.ts", "packages/server/src/skills-service.ts"],
+      "write_files": ["scripts/global-skills-smoke.mjs", "packages/server/scripts/global-skills-test.ts", "package.json"]
+    },
+    {
+      "id": 4,
+      "title": "写 5 个 skill md 到 .aimon/global-skills/",
+      "verify": "frontmatter 合法，trigger 不过宽，发布 skill 含强制卡点",
+      "status": "done",
+      "read_files": [".aimon/skills/加新api路由.md", ".aimon/skills/操作日志埋点.md"],
+      "write_files": [".aimon/global-skills/产品自闭环-总纲.md", ".aimon/global-skills/捞需求-github-issues.md", ".aimon/global-skills/本地实现-切分支改代码.md", ".aimon/global-skills/录演示视频-hyperframes.md", ".aimon/global-skills/发布-pr与社交平台.md"]
+    },
+    {
+      "id": 5,
+      "title": "README 增补产品自闭环 skill 包安装节",
+      "verify": "README.md 和 README.zh-CN.md 都含新节",
+      "status": "done",
+      "read_files": ["README.md", "README.zh-CN.md"],
+      "write_files": ["README.md", "README.zh-CN.md"]
+    },
+    {
+      "id": 6,
+      "title": "端到端验收：安装到 ~/.aimon/skills/ 并起会话验证注入",
+      "verify": "代码层已验证（smoke 15/15 + 真实家目录 pickSkillsForTask 命中 source=global）；UI 层待大哥重启 dev server 后自验",
+      "status": "done",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

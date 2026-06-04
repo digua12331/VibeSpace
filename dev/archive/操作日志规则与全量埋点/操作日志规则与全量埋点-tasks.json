@@ -1,0 +1,19 @@
+{
+  "task": "操作日志规则与全量埋点",
+  "steps": [
+    { "id": 1, "title": "CLAUDE.md 追加「操作日志规则」节", "verify": "grep -n \"操作日志\" CLAUDE.md 命中 ≥1；人读一遍语义清晰、豁免清单完整", "status": "done" },
+    { "id": 2, "title": "扩展 WS 消息类型（前端 ClientMsg/ServerMsg + 后端 ws-hub 注释）", "verify": "pnpm -F web tsc --noEmit 与 pnpm -F server tsc --noEmit 双绿", "status": "done" },
+    { "id": 3, "title": "新建 packages/server/src/log-bus.ts（serverLog/persistClientLog/handleClientLogRoundtrip/appendJsonl/getLogFilePath UTC）+ ws-hub 导出 broadcast", "verify": "文件存在；tsc 绿；getLogFilePath() 返回 data/logs/YYYY-MM-DD.log（冒烟时验证）", "status": "done" },
+    { "id": 4, "title": "ws-hub.ts 导出 broadcast(msg) + 收 log-from-client 路由到 persistClientLog/handleClientLogRoundtrip", "verify": "tsc 绿；后端启动不报错", "status": "done" },
+    { "id": 5, "title": "前端 ws.ts 加 sendClientLog 方法（rawSend 返回 false 即静默丢弃）；case 'log' 分发挪到步骤 6", "verify": "tsc 绿", "status": "done" },
+    { "id": 6, "title": "前端 logs.ts 扩展（_fromServer 私参 + 自动回传 + logAction + testBackendLog）+ main.tsx case 'log' 分发", "verify": "tsc 绿；浏览器冒烟时跑 logAction 见起止 + 耗时", "status": "done" },
+    { "id": 7, "title": "前端 main.tsx 挂 window.__vibe（DEV 守卫 + 4 个键）", "verify": "tsc 绿；浏览器 dev/prod 验证挪到步骤 12", "status": "done" },
+    { "id": 8, "title": "示范埋点① NewProjectDialog 创建项目", "verify": "tsc 绿；浏览器验证挪到步骤 12", "status": "done" },
+    { "id": 9, "title": "示范埋点② StartSessionMenu 整合为 logAction 配对", "verify": "tsc 绿；浏览器验证挪到步骤 12", "status": "done" },
+    { "id": 10, "title": "示范埋点③ DocsView 归档 + routes/docs.ts 补 serverLog", "verify": "tsc 双绿；浏览器验证挪到步骤 12", "status": "done" },
+    { "id": 11, "title": "index.ts 启动日志用 serverLog（db/projects.json 路径保留 console.log）", "verify": "tsc 绿；浏览器验证挪到步骤 12", "status": "done" },
+    { "id": 12, "title": "全链路冒烟：tsc 双绿 + prod build + DCE + 后端日志文件内容核对", "verify": "tsc 双绿；vite build 通过；dist 无 __vibe；日志文件 18 行合法 JSON，含 scope=server/session 的起止配对", "status": "done" },
+    { "id": 13, "title": "dev/issues.md 追加待补清单（至少 8 条单行）", "verify": "grep -c \"操作日志\\|logAction\\|serverLog\" dev/issues.md = 8", "status": "done" },
+    { "id": 14, "title": "输出 handoff 摘要（≤10 行）", "verify": "最后一轮回复末尾有该段，可直接当 commit message", "status": "done" }
+  ]
+}

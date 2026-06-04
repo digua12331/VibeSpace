@@ -1,0 +1,12 @@
+{
+  "task": "工作流入口形态对齐",
+  "steps": [
+    { "id": 1, "title": "后端 service 新增 uninstallHarnessTemplate（含 rmdir 三处空目录兜底）", "verify": "pnpm -F server tsc --noEmit 0 错误", "status": "done" },
+    { "id": 2, "title": "后端 routes 注册 DELETE /harness + 统一 apply-harness scope 为 project", "verify": "tsc 0 错误 + curl DELETE 返 200/207", "status": "done" },
+    { "id": 3, "title": "前端 api.ts 新增 removeHarness + HarnessUninstallResult", "verify": "pnpm -F web tsc --noEmit 0 错误", "status": "done" },
+    { "id": 4, "title": "前端 PermissionsDrawer Dev Docs 区块改按钮形态（outline rose 卸载按钮）", "verify": "浏览器抽屉 Dev Docs 区块按钮形态 + confirmDialog/logAction 保留", "status": "done" },
+    { "id": 5, "title": "前端 PermissionsDrawer Harness 区块加卸载按钮 + removeHarnessClick + harnessRemoving state", "verify": "浏览器卸载流程：confirm → 状态翻未应用 + LogsView remove-harness 起止", "status": "done" },
+    { "id": 6, "title": "全量类型检查（前后端）", "verify": "两端 pnpm -F * tsc --noEmit 0 错误", "status": "done" },
+    { "id": 7, "title": "浏览器跑 plan 验收 1–7（含失败分支 + 卸载后状态不回弹）", "verify": "7 项实操通过", "status": "blocked" }
+  ]
+}
