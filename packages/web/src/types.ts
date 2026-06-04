@@ -1216,3 +1216,23 @@ export interface FeishuTestResult {
   ok: boolean
   message: string
 }
+
+// ---------- Local AI (Ollama / LM Studio) ----------
+
+export type LocalAiProviderId = 'ollama' | 'lmstudio'
+
+export interface LocalAiProvider {
+  id: LocalAiProviderId
+  label: string
+  reachable: boolean
+}
+
+export interface LocalAiModelsResult {
+  models: string[]
+}
+
+export interface CommitCheckResult {
+  verdict: 'ok' | 'warn'
+  warnings: string[]
+  truncated: boolean
+}

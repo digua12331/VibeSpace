@@ -78,6 +78,10 @@ import type {
   ProjectClaudeSettings,
   McpServerListResult,
   McpServerToggleResult,
+  LocalAiProvider,
+  LocalAiProviderId,
+  LocalAiModelsResult,
+  CommitCheckResult,
 } from './types'
 
 const BASE: string =
@@ -1196,5 +1200,30 @@ export function getSessionRecentOutput(
 ): Promise<SessionRecentOutput> {
   return request<SessionRecentOutput>(
     `/api/hub/sessions/${encodeURIComponent(sessionId)}/recent-output?lines=${lines}`,
+  )
+}
+
+// ---------- Local AI (Ollama / LM Studio) ----------
+
+export function getLocalAiProviders(): Promise<LocalAiProvider[]> {
+  return request<LocalAiProvider[]>('/api/local-ai/providers')
+}
+
+export function getLocalAiModels(
+  provider: LocalAiProviderId,
+): Promise<LocalAiModelsResult> {
+  return request<LocalAiModelsResult>(
+    `/api/local-ai/models?provider=${encodeURIComponent(provider)}`,
+  )
+}
+
+export function localAiCommitCheck(
+  projectId: string,
+  provider: LocalAiProviderId,
+  model: string,
+): Promise<CommitCheckResult> {
+  return request<CommitCheckResult>(
+    '/api/local-ai/commit-check',
+    jsonInit('POST', { projectId, provider, model }),
   )
 }

@@ -586,6 +586,34 @@ export async function getDiff(
   return { path: relPosix, from, to, patch, isBinary };
 }
 
+/**
+ * Whole-working-tree diff against HEAD (tracked files, staged + unstaged
+ * combined). Returns LF-normalized patch text. For a repo with no commits
+ * yet (no HEAD), falls back to the staged diff against the empty tree.
+ * Untracked files are NOT included (callers list them separately).
+ * Used by the local-AI commit-check.
+ */
+export async function getWorkingDiff(projectPath: string): Promise<string> {
+  let raw: string;
+  try {
+    raw = await runGitOrThrow(
+      projectPath,
+      "diff HEAD",
+      ["diff", "--no-color", "HEAD"],
+      LOCAL_TIMEOUT_MS,
+    );
+  } catch {
+    // No HEAD (fresh repo) or other failure → fall back to staged-only diff.
+    raw = await runGitOrThrow(
+      projectPath,
+      "diff --cached",
+      ["diff", "--no-color", "--cached"],
+      LOCAL_TIMEOUT_MS,
+    );
+  }
+  return raw.replace(/\r\n?/g, "\n");
+}
+
 // ---------- Write operations (stage / unstage / discard / commit) ----------
 
 function resolveRepoPaths(projectPath: string, paths: string[]): string[] {

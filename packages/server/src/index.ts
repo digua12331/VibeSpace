@@ -49,6 +49,7 @@ import { registerProjectClaudeSettingsRoutes } from "./routes/project-claude-set
 import { registerMcpServersRoutes } from "./routes/mcp-servers.js";
 import { registerHubRoutes } from "./routes/hub.js";
 import { registerFeishuRoutes } from "./routes/feishu.js";
+import { registerLocalAiRoutes } from "./routes/local-ai.js";
 import { startFeishuBridge } from "./feishu/index.js";
 import { getHubToken } from "./hub-token.js";
 import { ensureHubWorkspace } from "./hub-workspace.js";
@@ -287,6 +288,7 @@ async function main(): Promise<void> {
   await registerMcpServersRoutes(app);
   await registerHubRoutes(app);
   await registerFeishuRoutes(app);
+  await registerLocalAiRoutes(app);
   registerWsHub(app);
 
   await app.listen({ port: PORT, host: HOST });
