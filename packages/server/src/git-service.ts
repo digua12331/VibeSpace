@@ -591,7 +591,7 @@ export async function getDiff(
  * combined). Returns LF-normalized patch text. For a repo with no commits
  * yet (no HEAD), falls back to the staged diff against the empty tree.
  * Untracked files are NOT included (callers list them separately).
- * Used by the local-AI commit-check.
+ * Used by the local-AI commit-message generator.
  */
 export async function getWorkingDiff(projectPath: string): Promise<string> {
   let raw: string;

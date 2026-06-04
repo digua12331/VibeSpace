@@ -81,7 +81,7 @@ import type {
   LocalAiProvider,
   LocalAiProviderId,
   LocalAiModelsResult,
-  CommitCheckResult,
+  CommitMessageResult,
 } from './types'
 
 const BASE: string =
@@ -1205,6 +1205,11 @@ export function getSessionRecentOutput(
 
 // ---------- Local AI (Ollama / LM Studio) ----------
 
+// 本地 AI 后端 / 模型的选择是纯前端机器级偏好，存 localStorage（不进后端
+// app-settings）。设置弹窗写、提交面板读，共用同一组 key 避免漂移。
+export const LS_LOCALAI_PROVIDER = 'vibespace.localai.provider'
+export const LS_LOCALAI_MODEL = 'vibespace.localai.model'
+
 export function getLocalAiProviders(): Promise<LocalAiProvider[]> {
   return request<LocalAiProvider[]>('/api/local-ai/providers')
 }
@@ -1217,13 +1222,13 @@ export function getLocalAiModels(
   )
 }
 
-export function localAiCommitCheck(
+export function localAiCommitMessage(
   projectId: string,
   provider: LocalAiProviderId,
   model: string,
-): Promise<CommitCheckResult> {
-  return request<CommitCheckResult>(
-    '/api/local-ai/commit-check',
+): Promise<CommitMessageResult> {
+  return request<CommitMessageResult>(
+    '/api/local-ai/commit-message',
     jsonInit('POST', { projectId, provider, model }),
   )
 }

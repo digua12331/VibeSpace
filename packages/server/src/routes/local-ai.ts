@@ -7,12 +7,12 @@ import {
   LocalAiError,
   listModels,
   listProviders,
-  runCommitCheck,
+  runCommitMessage,
 } from "../local-ai-service.js";
 
 const ProviderEnum = z.enum(["ollama", "lmstudio"]);
 const ProviderQuery = z.object({ provider: ProviderEnum });
-const CommitCheckBody = z.object({
+const CommitMessageBody = z.object({
   projectId: z.string().min(1),
   provider: ProviderEnum,
   model: z.string().min(1).max(200),
@@ -50,10 +50,11 @@ export async function registerLocalAiRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  // ---------- POST /api/local-ai/commit-check ----------
-  // User-triggered action → serverLog start/end pair (scope=ai).
-  app.post("/api/local-ai/commit-check", async (req, reply) => {
-    const parsed = CommitCheckBody.safeParse(req.body);
+  // ---------- POST /api/local-ai/commit-message ----------
+  // User-triggered action → serverLog start/end pair (scope=ai). Generates a
+  // one-line commit message from the working diff; never commits.
+  app.post("/api/local-ai/commit-message", async (req, reply) => {
+    const parsed = CommitMessageBody.safeParse(req.body);
     if (!parsed.success) {
       return reply
         .code(400)
@@ -66,7 +67,7 @@ export async function registerLocalAiRoutes(app: FastifyInstance): Promise<void>
     }
 
     const t0 = Date.now();
-    serverLog("info", "ai", "commit-check 开始", {
+    serverLog("info", "ai", "commit-message 开始", {
       projectId,
       meta: { provider, model },
     });
@@ -74,20 +75,20 @@ export async function registerLocalAiRoutes(app: FastifyInstance): Promise<void>
       if (!(await isGitRepo(proj.path))) {
         throw new LocalAiError("not_a_git_repo", "该项目不是 Git 仓库", 400);
       }
-      const result = await runCommitCheck(proj.path, provider, model);
-      serverLog("info", "ai", `commit-check 成功 (${Date.now() - t0}ms)`, {
+      const result = await runCommitMessage(proj.path, provider, model);
+      serverLog("info", "ai", `commit-message 成功 (${Date.now() - t0}ms)`, {
         projectId,
         meta: {
           provider,
           model,
-          verdict: result.verdict,
-          warnings: result.warnings.length,
+          length: result.message.length,
+          truncated: result.truncated,
         },
       });
       return reply.send(result);
     } catch (err) {
       const e = err as Error;
-      serverLog("error", "ai", `commit-check 失败: ${e?.message ?? String(err)}`, {
+      serverLog("error", "ai", `commit-message 失败: ${e?.message ?? String(err)}`, {
         projectId,
         meta: {
           provider,

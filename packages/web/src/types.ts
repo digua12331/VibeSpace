@@ -1231,8 +1231,7 @@ export interface LocalAiModelsResult {
   models: string[]
 }
 
-export interface CommitCheckResult {
-  verdict: 'ok' | 'warn'
-  warnings: string[]
+export interface CommitMessageResult {
+  message: string
   truncated: boolean
 }

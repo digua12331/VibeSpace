@@ -1,0 +1,53 @@
+{
+  "task": "本地AI生成提交信息",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端服务 runCommitMessage + 删体检",
+      "verify": "后端 tsc 通过，无 runCommitCheck/scanDiff 残留",
+      "status": "todo",
+      "read_files": ["packages/server/src/local-ai-service.ts", "packages/server/src/git-service.ts"],
+      "write_files": ["packages/server/src/local-ai-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "后端路由 commit-message",
+      "verify": "grep commit-check 无残留",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/local-ai.ts"],
+      "write_files": ["packages/server/src/routes/local-ai.ts"]
+    },
+    {
+      "id": 3,
+      "title": "前端 api/types",
+      "verify": "随前端 build 过类型",
+      "status": "todo",
+      "read_files": ["packages/web/src/api.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/api.ts", "packages/web/src/types.ts"]
+    },
+    {
+      "id": 4,
+      "title": "设置弹窗加本地 AI 模型选择",
+      "verify": "pnpm -F @aimon/web build 通过；浏览器选完重开仍记得",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/SettingsDialog.tsx", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/components/SettingsDialog.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "提交面板删体检+加生成按钮",
+      "verify": "pnpm -F @aimon/web build 通过；LogsView 见起止配对 + error 分支",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/ChangesList.tsx", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/components/ChangesList.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "文档对齐",
+      "verify": "人读一致",
+      "status": "todo",
+      "read_files": ["docs/local-ai-commit-message.md"],
+      "write_files": ["docs/local-ai-commit-message.md"]
+    }
+  ]
+}

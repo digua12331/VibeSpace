@@ -2,14 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import { logAction } from '../logs'
 import { useStore, type SelectedChange } from '../store'
-import type {
-  ChangeEntry,
-  ChangeStatus,
-  ChangesResponse,
-  CommitCheckResult,
-  LocalAiProvider,
-  LocalAiProviderId,
-} from '../types'
+import type { ChangeEntry, ChangeStatus, ChangesResponse } from '../types'
 import { alertDialog, confirmDialog } from './dialog/DialogHost'
 import { openContextMenu } from './ContextMenu'
 import { buildFileContextItems, type FileContextSession } from './fileContextMenu'
@@ -42,9 +35,6 @@ function StatusBadge({ status }: { status: ChangeStatus }) {
 
 type Kind = 'staged' | 'unstaged' | 'untracked'
 
-const LS_AI_PROVIDER = 'vibespace.localai.provider'
-const LS_AI_MODEL = 'vibespace.localai.model'
-
 export default function ChangesList({ projectId }: Props) {
   // SWR：data 直接派生自 store 缓存，跨项目切换瞬间用上次的 changes 撑画面，
   // load() 后台静默刷新写回 cache 触发重渲染。无 cache 时为 null，沿用原 loading 路径。
@@ -63,14 +53,9 @@ export default function ChangesList({ projectId }: Props) {
   const [branchAnchor, setBranchAnchor] = useState<{ left: number; top: number; bottom: number } | null>(null)
   const branchChipRef = useRef<HTMLButtonElement | null>(null)
 
-  // ---- local AI commit-check ----
-  const [aiProviders, setAiProviders] = useState<LocalAiProvider[]>([])
-  const [aiProvider, setAiProvider] = useState<LocalAiProviderId | ''>('')
-  const [aiModels, setAiModels] = useState<string[]>([])
-  const [aiModel, setAiModel] = useState('')
-  const [aiBusy, setAiBusy] = useState(false)
-  const [aiResult, setAiResult] = useState<CommitCheckResult | null>(null)
-  const [aiErr, setAiErr] = useState<string | null>(null)
+  // ---- local AI commit-message generation ----
+  const [genBusy, setGenBusy] = useState(false)
+  const [genErr, setGenErr] = useState<string | null>(null)
 
   const selected = useStore((s) => s.selectedChange)
   const selectChange = useStore((s) => s.selectChange)
@@ -110,74 +95,41 @@ export default function ChangesList({ projectId }: Props) {
     void loadStashCount()
   }, [load, loadStashCount])
 
-  // Load local-AI providers once on mount; auto-pick stored-or-first reachable.
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const provs = await api.getLocalAiProviders()
-        if (cancelled) return
-        setAiProviders(provs)
-        const reachable = provs.filter((p) => p.reachable)
-        const stored = localStorage.getItem(LS_AI_PROVIDER) as LocalAiProviderId | null
-        const pick =
-          (stored && reachable.some((p) => p.id === stored) ? stored : '') ||
-          reachable[0]?.id ||
-          ''
-        setAiProvider(pick)
-      } catch {
-        // backend unreachable → leave empty, the 体检 button stays disabled
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // Load models whenever the selected provider changes; auto-pick stored-or-first.
-  useEffect(() => {
-    if (!aiProvider) {
-      setAiModels([])
-      setAiModel('')
+  // 「✨ 生成」：从 localStorage 读设置里选好的本地 AI 后端/模型，让它读当前
+  // 改动写一句提交说明填进输入框。只填字，不提交。模型未选 → 提示去设置配置。
+  async function onGenerate() {
+    const provider = localStorage.getItem(api.LS_LOCALAI_PROVIDER) || ''
+    const model = localStorage.getItem(api.LS_LOCALAI_MODEL) || ''
+    if (!provider || !model) {
+      setGenErr('未选本地 AI 模型，请先到右上角「设置 → 本地 AI（提交信息）」里选一个')
       return
     }
-    let cancelled = false
-    void (async () => {
-      try {
-        const { models } = await api.getLocalAiModels(aiProvider)
-        if (cancelled) return
-        setAiModels(models)
-        const stored = localStorage.getItem(LS_AI_MODEL)
-        setAiModel((stored && models.includes(stored) ? stored : '') || models[0] || '')
-      } catch {
-        if (!cancelled) {
-          setAiModels([])
-          setAiModel('')
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
+    if (message.trim()) {
+      const ok = await confirmDialog('提交框已有内容，用 AI 生成的说明覆盖它？', {
+        title: '覆盖提交信息',
+        confirmLabel: '覆盖',
+      })
+      if (!ok) return
     }
-  }, [aiProvider])
-
-  async function onAiCheck() {
-    if (!aiProvider || !aiModel) return
-    setAiBusy(true)
-    setAiErr(null)
-    setAiResult(null)
+    setGenBusy(true)
+    setGenErr(null)
     try {
       const r = await logAction(
         'ai',
-        'commit-check',
-        () => api.localAiCommitCheck(projectId, aiProvider, aiModel),
-        { projectId, meta: { provider: aiProvider, model: aiModel } },
+        'commit-message',
+        () =>
+          api.localAiCommitMessage(
+            projectId,
+            provider as Parameters<typeof api.localAiCommitMessage>[1],
+            model,
+          ),
+        { projectId, meta: { provider, model } },
       )
-      setAiResult(r)
+      setMessage(r.message)
     } catch (e) {
-      setAiErr(e instanceof Error ? e.message : String(e))
+      setGenErr(e instanceof Error ? e.message : String(e))
     } finally {
-      setAiBusy(false)
+      setGenBusy(false)
     }
   }
 
@@ -541,6 +493,17 @@ export default function ChangesList({ projectId }: Props) {
 
       {/* commit message + commit button */}
       <div className="px-3 py-2 border-b border-border/60 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-muted">提交信息</span>
+          <button
+            onClick={() => void onGenerate()}
+            disabled={busy != null || genBusy || totalChanges === 0}
+            title="用本地 AI（在「设置 → 本地 AI」里选）读当前改动，自动写一句提交说明填进下面的框；只填字，不提交"
+            className="fluent-btn shrink-0 px-2 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-[11px] disabled:opacity-40"
+          >
+            {genBusy ? '生成中…' : '✨ 生成'}
+          </button>
+        </div>
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
@@ -601,82 +564,9 @@ export default function ChangesList({ projectId }: Props) {
         {err && (
           <div className="text-[11px] text-rose-300 whitespace-pre-wrap break-words">{err}</div>
         )}
-
-        {/* ---- local AI commit-check (Ollama / LM Studio) ---- */}
-        <div className="space-y-1.5 pt-0.5 border-t border-border/40">
-          <div className="flex items-center gap-1 pt-1.5">
-            <select
-              value={aiProvider}
-              onChange={(e) => {
-                const v = e.target.value as LocalAiProviderId | ''
-                setAiProvider(v)
-                if (v) localStorage.setItem(LS_AI_PROVIDER, v)
-                setAiResult(null)
-                setAiErr(null)
-              }}
-              title="选择本地 AI 后端（Ollama / LM Studio，需先自行开启）"
-              className="fluent-btn min-w-0 flex-1 bg-black/30 border border-border/60 rounded-md px-1.5 py-0.5 text-[11px] text-fg focus:outline-none focus:border-accent/60"
-            >
-              {aiProviders.length === 0 && <option value="">未检测到本地 AI</option>}
-              {aiProviders.map((p) => (
-                <option key={p.id} value={p.id} disabled={!p.reachable}>
-                  {p.label}
-                  {p.reachable ? '' : '（未启动）'}
-                </option>
-              ))}
-            </select>
-            <select
-              value={aiModel}
-              onChange={(e) => {
-                setAiModel(e.target.value)
-                if (e.target.value) localStorage.setItem(LS_AI_MODEL, e.target.value)
-              }}
-              disabled={aiModels.length === 0}
-              title="选择模型"
-              className="fluent-btn min-w-0 flex-1 bg-black/30 border border-border/60 rounded-md px-1.5 py-0.5 text-[11px] text-fg focus:outline-none focus:border-accent/60 disabled:opacity-40"
-            >
-              {aiModels.length === 0 && <option value="">无模型</option>}
-              {aiModels.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => void onAiCheck()}
-              disabled={busy != null || aiBusy || !aiProvider || !aiModel || totalChanges === 0}
-              title="用本地 AI 对当前改动做提交前体检（只挑低级毛病，仅提示，不影响提交）"
-              className="fluent-btn shrink-0 px-2 py-0.5 rounded-md border border-border text-muted hover:text-fg hover:border-accent/60 text-[11px] disabled:opacity-40"
-            >
-              {aiBusy ? '体检中…' : '🩺 AI 体检'}
-            </button>
-          </div>
-          {aiErr && (
-            <div className="text-[11px] text-rose-300 whitespace-pre-wrap break-words">{aiErr}</div>
-          )}
-          {aiResult?.verdict === 'ok' && (
-            <div className="text-[11px] text-emerald-300">
-              ✓ AI 体检通过，未发现明显低级毛病（仅提示）
-            </div>
-          )}
-          {aiResult?.verdict === 'warn' && (
-            <div className="text-[11px] text-amber-200 border border-amber-600/40 bg-amber-500/10 rounded-md px-2 py-1.5 space-y-0.5">
-              <div className="font-medium">
-                ⚠ AI 体检发现 {aiResult.warnings.length} 条，仅提示、不影响提交：
-              </div>
-              <ul className="list-disc pl-4 space-y-0.5">
-                {aiResult.warnings.map((w, i) => (
-                  <li key={i} className="break-words">
-                    {w}
-                  </li>
-                ))}
-              </ul>
-              {aiResult.truncated && (
-                <div className="text-amber-400/70">（改动较大，仅检查了前一部分）</div>
-              )}
-            </div>
-          )}
-        </div>
+        {genErr && (
+          <div className="text-[11px] text-rose-300 whitespace-pre-wrap break-words">{genErr}</div>
+        )}
       </div>
 
       {/* changes list */}

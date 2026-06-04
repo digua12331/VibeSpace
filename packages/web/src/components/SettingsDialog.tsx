@@ -6,6 +6,10 @@ import {
   updateFeishuConfig,
   getFeishuStatus,
   testFeishu,
+  getLocalAiProviders,
+  getLocalAiModels,
+  LS_LOCALAI_PROVIDER,
+  LS_LOCALAI_MODEL,
 } from '../api'
 import { logAction } from '../logs'
 import { currentPermission, requestPermission } from '../notify'
@@ -17,6 +21,8 @@ import type {
   TerminalKeybindings,
   FeishuStatus,
   FeishuTestResult,
+  LocalAiProvider,
+  LocalAiProviderId,
 } from '../types'
 
 /**
@@ -141,6 +147,11 @@ export default function SettingsDialog() {
     useState<TerminalKeybindings>(DEFAULT_KEYBINDINGS)
   const [recording, setRecording] = useState<RecordTarget | null>(null)
   const [keyError, setKeyError] = useState<string | null>(null)
+  // 本地 AI（提交信息）后端 / 模型选择，存 localStorage（见 api.ts 的 LS_LOCALAI_*）
+  const [aiProviders, setAiProviders] = useState<LocalAiProvider[]>([])
+  const [aiProvider, setAiProvider] = useState<LocalAiProviderId | ''>('')
+  const [aiModels, setAiModels] = useState<string[]>([])
+  const [aiModel, setAiModel] = useState('')
   // 飞书桥配置（独立加载 / 独立保存，走 /api/feishu/*，不跟上面的「保存」按钮共用）
   const [feishuEnabled, setFeishuEnabled] = useState(false)
   const [feishuAppId, setFeishuAppId] = useState('')
@@ -219,6 +230,62 @@ export default function SettingsDialog() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
+
+  // 打开设置时拉本地 AI 后端列表，自动选中 已存/首个可达 的后端。
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const provs = await getLocalAiProviders()
+        if (cancelled) return
+        setAiProviders(provs)
+        const reachable = provs.filter((p) => p.reachable)
+        const stored = localStorage.getItem(
+          LS_LOCALAI_PROVIDER,
+        ) as LocalAiProviderId | null
+        const pick =
+          (stored && reachable.some((p) => p.id === stored) ? stored : '') ||
+          reachable[0]?.id ||
+          ''
+        setAiProvider(pick)
+      } catch {
+        // 后端不可达 → 留空，下拉显示「未检测到本地 AI」
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  // 后端变了就重新拉它的模型列表，自动选中 已存/首个。
+  useEffect(() => {
+    if (!open || !aiProvider) {
+      if (!aiProvider) {
+        setAiModels([])
+        setAiModel('')
+      }
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const { models } = await getLocalAiModels(aiProvider)
+        if (cancelled) return
+        setAiModels(models)
+        const stored = localStorage.getItem(LS_LOCALAI_MODEL)
+        setAiModel((stored && models.includes(stored) ? stored : '') || models[0] || '')
+      } catch {
+        if (!cancelled) {
+          setAiModels([])
+          setAiModel('')
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, aiProvider])
 
   // Capture-phase key recorder. Runs only while a slot is being recorded.
   // Capture + stopPropagation means the dialog's own Escape-to-close listener
@@ -607,6 +674,52 @@ export default function SettingsDialog() {
                   ? '已授权'
                   : '请求授权'}
             </button>
+          </div>
+        </section>
+        )}
+
+        {activeTab === 'general' && (
+        <section className="mb-4 border-t border-border/40 pt-4">
+          <div className="text-sm text-fg/90 mb-1">本地 AI（提交信息）</div>
+          <div className="text-xs text-muted mb-2 leading-relaxed">
+            在「源代码管理」面板点「✨ 生成」时，用这里选的本机模型读当前改动、
+            自动写一句提交说明。需要你自己先开着 Ollama 或 LM Studio（本地模型软件），
+            全程不联网、改动不出本机。
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={aiProvider}
+              onChange={(e) => {
+                const v = e.target.value as LocalAiProviderId | ''
+                setAiProvider(v)
+                if (v) localStorage.setItem(LS_LOCALAI_PROVIDER, v)
+              }}
+              className="flex-1 min-w-0 px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors"
+            >
+              {aiProviders.length === 0 && <option value="">未检测到本地 AI</option>}
+              {aiProviders.map((p) => (
+                <option key={p.id} value={p.id} disabled={!p.reachable}>
+                  {p.label}
+                  {p.reachable ? '' : '（未启动）'}
+                </option>
+              ))}
+            </select>
+            <select
+              value={aiModel}
+              onChange={(e) => {
+                setAiModel(e.target.value)
+                if (e.target.value) localStorage.setItem(LS_LOCALAI_MODEL, e.target.value)
+              }}
+              disabled={aiModels.length === 0}
+              className="flex-1 min-w-0 px-3 py-2 bg-white/[0.04] border border-border rounded-md focus:border-accent focus:bg-white/[0.06] text-sm transition-colors disabled:opacity-50"
+            >
+              {aiModels.length === 0 && <option value="">无模型</option>}
+              {aiModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
           </div>
         </section>
         )}
