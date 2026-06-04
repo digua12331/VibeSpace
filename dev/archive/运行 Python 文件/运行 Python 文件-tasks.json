@@ -1,0 +1,41 @@
+{
+  "task": "运行 Python 文件",
+  "steps": [
+    {
+      "id": 1,
+      "title": "新建 runPython.ts，导出 runPythonFile（复用 .bat 执行模式 + logAction 包裹）",
+      "verify": "文件存在；grep 看到 logAction('fs', 'run-python' 出现一次；导出签名 (projectId, path) => Promise<void>",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "在 FilePreview.tsx 加 isPythonPath + 引入 runPythonFile + header 插 ▶ 按钮（仅 .py 显示）",
+      "verify": "pnpm --filter @aimon/web exec tsc -b --noEmit 通过；grep 看到 isPythonPath 与 runPythonFile",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "浏览器 happy path：跑临时 .py 看 stdout + traceback + LogsView 起止配对",
+      "verify": "xterm 显示命令行与 hello 与 traceback；LogsView 出现 fs run-python 开始/成功 各一条",
+      "status": "todo"
+    },
+    {
+      "id": 4,
+      "title": "浏览器失败 path：触发 createSession 失败 → ERROR 日志 + alert",
+      "verify": "LogsView 出现 ERROR fs run-python 失败:；前端弹失败 alert",
+      "status": "todo"
+    },
+    {
+      "id": 5,
+      "title": "非 .py 文件不渲染 ▶ 按钮",
+      "verify": "打开 .ts/.md/.json 文件，header 内不存在 ▶ 按钮",
+      "status": "todo"
+    },
+    {
+      "id": 6,
+      "title": "fileContextMenu.ts 加 isPython + pyExecItem 对称 .bat 的「执行」",
+      "verify": "tsc 通过；右键 .py 看到「执行」、右键 .ts 看不到",
+      "status": "done"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "task": "移除施工边界",
+  "steps": [
+    { "id": 1, "title": "types.ts 删 SessionScope interface + Session.scope 字段", "verify": "Grep \"SessionScope\" packages/web/src/types.ts 无结果；保留三处日志条目的 scope:string", "status": "done" },
+    { "id": 2, "title": "api.ts 删 SessionScope import + createSession.scope 入参", "verify": "Grep \"SessionScope\" packages/web/src/api.ts 无结果", "status": "done" },
+    { "id": 3, "title": "StartSessionMenu.tsx 全删施工边界 UI 与状态", "verify": "Grep \"scope|施工边界\" packages/web/src/components/StartSessionMenu.tsx 无结果", "status": "done" },
+    { "id": 4, "title": "EditorArea.tsx 删 scopeBadge 函数与 tab 渲染调用", "verify": "Grep \"scopeBadge|session.scope\" packages/web/src/components/editor/EditorArea.tsx 无结果", "status": "done" },
+    { "id": 5, "title": "pnpm -F @aimon/web build 通过", "verify": "退出码 0，无 TS 报错", "status": "done" },
+    { "id": 6, "title": "hooks.ts 仅删 scope 检查段，保留 subagent 注册与 PostToolUse 分支", "verify": "Grep \"scope|picomatch\" packages/server/src/routes/hooks.ts 无结果", "status": "done" },
+    { "id": 7, "title": "sessions.ts 删 scope 全套并简化 serialize 签名 + 4 处调用点", "verify": "Grep \"SessionScope|attachScope|GlobListSchema|ScopeSchema|ScopeInput\" packages/server/src/routes/sessions.ts 无结果", "status": "done" },
+    { "id": 8, "title": "db.ts 删 session_scopes 建表 + SessionScope/SessionScopeRow interfaces + get/setSessionScope", "verify": "Grep \"session_scopes|SessionScope|getSessionScope|setSessionScope\" packages/server/src/db.ts 无结果", "status": "done" },
+    { "id": 9, "title": "pnpm -F @aimon/server build 通过", "verify": "退出码 0，无 TS 报错", "status": "done" },
+    { "id": 10, "title": "删除 packages/server/src/types/picomatch.d.ts", "verify": "文件不存在", "status": "done" },
+    { "id": 11, "title": "packages/server/package.json 删 picomatch 依赖", "verify": "grep 无结果", "status": "done" },
+    { "id": 12, "title": "pnpm install 同步 lockfile", "verify": "pnpm-lock.yaml 不再有 packages/server 那条 direct dep", "status": "done" },
+    { "id": 13, "title": "浏览器手测：菜单只剩工作区隔离 checkbox，无施工边界 + 无 textarea", "verify": "文字或截图", "status": "todo" },
+    { "id": 14, "title": "浏览器手测：session tab 无 rw:N ro:N 琥珀色徽标", "verify": "文字描述", "status": "todo" },
+    { "id": 15, "title": "POST /api/hooks/claude PreToolUse 不再 block (curl 自测)", "verify": "response 形如 {ok:true}", "status": "done" },
+    { "id": 16, "title": "浏览器手测：LogsView 起止配对 meta 不再有 scoped", "verify": "文字描述", "status": "todo" },
+    { "id": 17, "title": "输出 handoff 摘要", "verify": "≤10 行覆盖改动文件、验证方式、遗留 TODO", "status": "todo" }
+  ]
+}

@@ -1,0 +1,9 @@
+# 工作流入口形态对齐 · 任务清单
+
+- [x] 1. 后端 `harness-template-service.ts`：L12 import 追加 `unlink, rmdir` + 新增 `UninstallResult` 接口 + 新增 `uninstallHarnessTemplate(projectPath)`（按 manifest 文件级 unlink，ENOENT 计 skipped、其他错入 failedFiles；末尾按叶子→根顺序 `rmdir` 三处空目录兜底：`.aimon/skills/` → `.claude/agents/` → `.aimon/`，ENOTEMPTY/ENOENT 跳过） → verify: `pnpm -F server tsc --noEmit` 0 错误
+- [x] 2. 后端 `routes/projects.ts`：注册 `DELETE /api/projects/:id/harness`（紧挨 apply-harness 之后），用 207/200 双分支 + serverLog 起止；顺手统一 apply-harness 路由 L249/257/272 三处 scope `'installer'` 改 `'project'` → verify: `pnpm -F server tsc --noEmit` 0 错误 + 起 dev server 后 `curl -X DELETE http://127.0.0.1:8787/api/projects/<id>/harness` 返回 200/207
+- [x] 3. 前端 `api.ts`：紧接 `removeDevDocs` 之后新增 `HarnessUninstallResult` 接口（内联）+ `removeHarness(projectId)` 函数 → verify: `pnpm -F web tsc --noEmit` 0 错误
+- [x] 4. 前端 `PermissionsDrawer.tsx` Dev Docs 区块（L1133–L1160）：移除 `<label><input type="checkbox">` 结构、改"状态行 + 按钮"形态、保留 `claudeMdExists` 灰色子提示、按钮根据 `enabled` 切换"应用"(accent class)/"卸载"(outline rose `border border-rose-700/60 text-rose-300 hover:bg-rose-900/30`)、loading 文字"应用中…/卸载中…"、`toggle()` 函数体不动 → verify: 浏览器抽屉工作流 tab 见 Dev Docs 区块为按钮形态、点击触发的 confirmDialog 与 logAction 都还在
+- [x] 5. 前端 `PermissionsDrawer.tsx` Harness 区块（L1162–L1202）：移除"已应用，撤销请联系开发"提示、按钮根据 `enabled` 切换"应用"/"卸载"（卸载用 outline rose）、新增 `harnessRemoving` state、新增 `removeHarnessClick` 函数（confirmDialog danger 二次确认 → logAction 包装 → setHarnessEnabled(false) → 207 时 alertDialog 列出 failedFiles → catch 时 alertDialog 错误信息） → verify: 浏览器卸载流程：confirmDialog 弹出 → 确认后状态翻"未应用"+ LogsView 见 `scope=project action=remove-harness` 起止配对
+- [x] 6. 全量类型检查：`pnpm -F server tsc --noEmit` + `pnpm -F web tsc --noEmit` → verify: 两端 0 错误
+- [ ] 7. 浏览器跑 plan 验收 1–7：① 形态对称 ② Dev Docs 应用 ③ Dev Docs 卸载（含 confirm）④ Harness 应用 ⑤ Harness 卸载（含 confirm）⑥ Harness 部分失败分支（手动锁住一个 manifest 文件）⑦ LogsView 起止配对 + ERROR 条目 + 卸载后再开抽屉状态不回弹 → verify: 7 项实操通过 — 等主理人浏览器验收（agent 跑不了浏览器交互 + 失败分支需手动锁文件）

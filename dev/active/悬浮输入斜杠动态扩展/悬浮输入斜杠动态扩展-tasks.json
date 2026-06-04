@@ -1,0 +1,12 @@
+{
+  "task": "悬浮输入斜杠动态扩展",
+  "steps": [
+    { "id": 1, "title": "新增 dynamic-slash-service.ts", "verify": "文件存在；类型检查通过", "status": "done" },
+    { "id": 2, "title": "新增 slash-commands.ts 路由 + 注册到 index.ts", "verify": "server tsc 通过；GET 返回 {commands:[...]}", "status": "done" },
+    { "id": 3, "title": "前端 api.ts 加 listSlashCommands", "verify": "web tsc 通过", "status": "done" },
+    { "id": 4, "title": "SessionView.tsx 加 dynamicSlash + 替换两处 getSlashCommands", "verify": "web tsc 通过", "status": "done" },
+    { "id": 5, "title": "浏览器实测（待主理人手动验收）", "verify": "Network 看到 GET；菜单看到 skill/commands；shell 不出菜单", "status": "blocked" },
+    { "id": 6, "title": "双端 typecheck", "verify": "web/server tsc -b 都退 0", "status": "done" },
+    { "id": 7, "title": "handoff 摘要", "verify": "末轮回复给大哥摘要", "status": "done" }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "task": "未完成任务终端恢复",
+  "steps": [
+    { "id": 1, "title": "StartSessionMenu 加 defaultTask prop", "verify": "tsc 通过；浏览器调用时输入框预填", "status": "done" },
+    { "id": 2, "title": "store.selectProject 末尾追加 refreshDocs + refreshSessions", "verify": "切项目后 LogsView 立刻出现两条 GET 请求；DocsView 不点击就有数据", "status": "done" },
+    { "id": 3, "title": "DocsView 行 alive 路径：🔗 徽章改成可点击按钮", "verify": "alive 任务行的 🔗 按钮点击后切到对应 session 标签", "status": "done" },
+    { "id": 4, "title": "DocsView 行 no-alive 路径：内联 StartSessionMenu", "verify": "未完成且无 alive owner 任务行出现 ▶ 启动按钮，下拉里 task 名已预填", "status": "done" },
+    { "id": 5, "title": "EditorArea EmptyState 未完成任务卡片区", "verify": "无 tab 时中央显示前 3 条未完成任务卡片，每条有跳转/启动入口", "status": "done" },
+    { "id": 6, "title": "GoldenPath 完整功能验收（待主理人手动验收）", "verify": "DocsView 入口、🔗 跳转、▶ 启动 agent 后切新标签、LogsView 起止配对", "status": "blocked" },
+    { "id": 7, "title": "失败分支验收（待主理人手动验收，临时插 throw）", "verify": "LogsView 出现 ERROR；UI 红框；测完撤回 throw", "status": "blocked" },
+    { "id": 8, "title": "TypeScript 类型检查", "verify": "pnpm --filter @aimon/web exec tsc -b 退出码 0；顺带 fix issues.md#23 (Activity union 缺 'skills')", "status": "done" },
+    { "id": 9, "title": "归档清理 + handoff", "verify": "无临时代码；三 md 齐全；handoff 摘要给大哥", "status": "done" }
+  ]
+}

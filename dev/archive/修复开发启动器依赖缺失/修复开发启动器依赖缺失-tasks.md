@@ -1,0 +1,5 @@
+# 修复开发启动器依赖缺失 · 任务清单
+
+- [x] 确认报错根因是 `cross-env` 依赖链接残缺，而不是锁文件缺包 → verify: 检查 `package.json`、`pnpm-lock.yaml`、`node_modules/.pnpm/cross-env@7.0.3/node_modules`
+- [ ] 修改开发模式启动路径，绕开 `cross-env` 这一层依赖 → verify: 运行对应启动命令后，不再出现 `Cannot find module 'cross-spawn'`
+- [ ] 做启动回归验证并整理结论 → verify: 再跑一次启动命令，确认 server/web 继续启动，浏览器可访问 `http://127.0.0.1:9788`

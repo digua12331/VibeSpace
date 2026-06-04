@@ -1,0 +1,13 @@
+{
+  "task": "技能管理面板",
+  "steps": [
+    { "id": 1, "title": "写 skill-catalog-service.ts", "verify": "server typecheck 通过", "status": "done" },
+    { "id": 2, "title": "写 routes/skill-catalog.ts", "verify": "server typecheck 通过", "status": "done" },
+    { "id": 3, "title": "在 index.ts 注册新路由", "verify": "server 重启不报错", "status": "done" },
+    { "id": 4, "title": "前端类型 + api.ts 客户端函数", "verify": "web typecheck 通过", "status": "done" },
+    { "id": 5, "title": "写 SkillsView.tsx", "verify": "web typecheck 通过", "status": "done" },
+    { "id": 6, "title": "store + ActivityBar + PrimarySidebar 接入", "verify": "web typecheck 通过", "status": "done" },
+    { "id": 7, "title": "双语 README 同步", "verify": "两份 README 都含 .aimon/skills vs CLI skills 区分说明", "status": "done" },
+    { "id": 8, "title": "浏览器手工实操验收（待主理人触发）", "verify": "按 context 验收回放路径走一遍 + LogsView 起止配对 + 落盘日志 grep 命中", "status": "blocked" }
+  ]
+}

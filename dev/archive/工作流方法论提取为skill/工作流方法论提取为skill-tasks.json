@@ -1,0 +1,13 @@
+{
+  "task": "工作流方法论提取为skill",
+  "steps": [
+    { "id": 1, "title": "创建任务目录与 plan/context 两文件", "verify": "dev/active/工作流方法论提取为skill/ 下能看到 plan.md 与 context.md", "status": "done" },
+    { "id": 2, "title": "写 tasks.md / tasks.json", "verify": "两文件存在且 status 字段同步", "status": "done" },
+    { "id": 3, "title": "调用 Skill skill-creator，喂 7 条方法论材料", "verify": "skill-creator 加载并返回 skill 创建引导", "status": "done" },
+    { "id": 4, "title": "把 SKILL.md 落盘到 ~/.claude/skills/dev-docs-workflow/", "verify": "文件存在，frontmatter 含 name+description；Claude Code 系统提示已列出 dev-docs-workflow", "status": "done" },
+    { "id": 5, "title": "description 关键词覆盖触发词清单", "verify": "description 包含 plan / 重构 / bug / 新功能 / 三段式 / 量级 等多个关键词", "status": "done" },
+    { "id": 6, "title": "在 VibeSpace CLAUDE.md 顶部加一行指向该 skill", "verify": "该文件搜索 dev-docs-workflow 有命中", "status": "done" },
+    { "id": 7, "title": "写 handoff 摘要给大哥", "verify": "回复末尾有 ≤10 行白话验收指引，第一行是 在哪里看到效果", "status": "done" },
+    { "id": 8, "title": "（待主理人手动验收）在别的项目新会话里测试 skill 加载", "verify": "系统提示里出现 dev-docs-workflow", "status": "todo" }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "task": "项目切换卡顿优化",
+  "steps": [
+    { "id": "1.1", "title": "新建 perf-marks.ts 工具", "verify": "typecheck 过", "status": "done" },
+    { "id": "1.2", "title": "store.selectProject 加埋点起止", "verify": "typecheck 过", "status": "done" },
+    { "id": "1.3", "title": "记录现状基线 ms", "verify": "LogsView 出现 scope=perf msg=project-switch", "status": "blocked", "note": "需要大哥在浏览器里点击切换项目验收" },
+    { "id": "2.1", "title": "新建 TerminalHost.tsx", "verify": "typecheck 过", "status": "done" },
+    { "id": "2.2", "title": "EditorArea 内挂 TerminalHost（决策：不挂 Workbench 顶层，最小改动）", "verify": "build 过", "status": "done" },
+    { "id": "2.3", "title": "EditorArea 删除 SessionView 渲染 + 清理孤儿 import/var", "verify": "typecheck + build 过", "status": "done" },
+    { "id": "2.4", "title": "浏览器验保活: 5 终端切回不丢内容", "verify": "内容/滚动/IME/Ctrl+C 4 项无回归", "status": "blocked", "note": "需要大哥在浏览器验" },
+    { "id": "2.5", "title": "实测第二次切 ≤150ms", "verify": "LogsView ms 数据达标", "status": "blocked", "note": "需要大哥在浏览器验" },
+    { "id": "3.1", "title": "store 加 recentProjectOrder + keepAliveDegraded", "verify": "typecheck 过", "status": "done" },
+    { "id": "3.2", "title": "selectProject 维护 recent + 检测内存", "verify": "降级触发时 LogsView 出现 keepalive-degraded", "status": "done" },
+    { "id": "3.3", "title": "TerminalHost 按 degraded 过滤渲染", "verify": "typecheck 过", "status": "done" },
+    { "id": "3.4", "title": "降级后切回老项目可正常 replay", "verify": "ms 与第一次切基线相当 + 内容回放正确", "status": "blocked", "note": "需要大哥在浏览器验（内存阈值需手动调小复现）" },
+    { "id": "4.1", "title": "store 加两个 cache slice", "verify": "typecheck 过", "status": "done" },
+    { "id": "4.2", "title": "ChangesList 改 SWR (data 派生自 cache)", "verify": "typecheck 过", "status": "done" },
+    { "id": "4.3", "title": "GitGraph 改 SWR (commits 派生自 cache + EMPTY_COMMITS 稳定引用)", "verify": "typecheck 过", "status": "done" },
+    { "id": "4.4", "title": "缓存渲染时显示 ⟳ 刷新中 角标", "verify": "typecheck 过", "status": "done" },
+    { "id": "5.1", "title": "GitGraph load 用 requestIdleCallback 延后", "verify": "typecheck 过", "status": "done" },
+    { "id": "6.1", "title": "tsc --noEmit", "verify": "0 错误", "status": "done" },
+    { "id": "6.2", "title": "vite build", "verify": "构建成功 940ms", "status": "done" },
+    { "id": "6.3", "title": "浏览器最终验收", "verify": "ms 达标 + 降级可触发 + 行为无回归", "status": "blocked", "note": "需要大哥验" },
+    { "id": "6.4", "title": "给大哥写 handoff", "verify": "摘要发出", "status": "done" }
+  ]
+}

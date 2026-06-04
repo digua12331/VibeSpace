@@ -1,0 +1,15 @@
+{
+  "task": "技能市场二期",
+  "steps": [
+    { "id": 1, "title": "放弃改 skill-catalog-service.ts，二期自己写 scanLibraryDir 复用 parseSkillManifest", "verify": "决策记录留痕", "status": "done" },
+    { "id": 2, "title": "写 skill-market-service.ts（搜索 + cache + 下载 + 安全三件套）", "verify": "server typecheck 通过", "status": "done" },
+    { "id": 3, "title": "写 routes/skill-market.ts（5 端点 + zod + serverLog + 单并发锁）", "verify": "server typecheck 通过", "status": "done" },
+    { "id": 4, "title": "index.ts 注册新路由", "verify": "server 重启不报错", "status": "done" },
+    { "id": 5, "title": "前端 types + api.ts 客户端函数", "verify": "web typecheck 通过", "status": "done" },
+    { "id": 6, "title": "改 SkillsView 加 mode + 市场视图 + 本地库 section + 子组件", "verify": "web typecheck 通过", "status": "done" },
+    { "id": 7, "title": "双语 README 同步", "verify": "两份 README 都含市场说明", "status": "done" },
+    { "id": 8, "title": "浏览器手工实操验收（待主理人触发）", "verify": "按 context 验收回放路径走一遍 + 失败分支至少触发一次 + 落盘日志 grep 命中", "status": "blocked" },
+    { "id": 9, "title": "验收期 UX 跟进：本地库按短横线前缀分组+折叠+全部装/全部卸+单行🗑+后端 library/delete", "verify": "server typecheck 通过；web typecheck 通过；浏览器 gstack 折成一行；点全部卸载整组消失", "status": "done" },
+    { "id": 10, "title": "验收期 UX 跟进 v2：分组+折叠+批量按钮推广到三栏（项目/全局/本地库），提取 groupByPrefix<T> 通用 helper", "verify": "web typecheck 通过；浏览器全局技能栏 gstack 也折叠成一行", "status": "done" }
+  ]
+}

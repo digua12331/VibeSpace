@@ -1,0 +1,89 @@
+{
+  "task": "记忆结构化与错误循环监测",
+  "steps": [
+    {
+      "id": "A1",
+      "title": "升级 memory-service.ts 解析与类型（行尾标签 + 向后兼容）",
+      "verify": "pnpm -r build 过类型；scripts/memory-parse-smoke.mjs 跑 4 类样例（老格式 / 新格式 / 正文方括号 / 含逗号路径）全部断言通过",
+      "status": "done"
+    },
+    {
+      "id": "A2",
+      "title": "调整 review-runner.ts 的 prompt 与提取（宽进严出）",
+      "verify": "pnpm -r build 过类型；smoke 加 LLM 输出模拟分支（有/无标签/多行/表格），合法行保留、非法丢弃、缺标签不阻塞",
+      "status": "done"
+    },
+    {
+      "id": "A3",
+      "title": "前端 MemoryEntry 类型 + getMemory 返回类型镜像",
+      "verify": "pnpm -r build 过 web 包类型（注：'skills' Activity pre-existing 错误已记入 dev/issues.md，与本任务无关）",
+      "status": "done"
+    },
+    {
+      "id": "A4",
+      "title": "MemoryView.tsx 加 category/severity/files 筛选 UI（含未分类等兜底）",
+      "verify": "web 包 tsc 通过；浏览器「记忆」tab：默认看到老 28 条；切「未分类」仍显示；归档新任务后能筛新标签条目（待主理人手动验收）。注：原 verify 的 logAction 要求与 auto.md '纯前端切换不埋日志' 经验冲突已移除",
+      "status": "done"
+    },
+    {
+      "id": "A5",
+      "title": "确认 SessionStart hook 注入未受影响",
+      "verify": "pnpm smoke:hooks 通过；buildMemoryHeader 仅用 e.text，未受新字段影响",
+      "status": "done"
+    },
+    {
+      "id": "B1",
+      "title": "新建 error-pattern-monitor.ts（滑动窗 + 去重 + 冷却 + key 生成）",
+      "verify": "pnpm -r build；scripts/error-pattern-smoke.mjs 单测：3 次触发 / 2 次不触发 / 冷却不重复 / 不同 projectId 不误聚合 / 缺 action fallback 稳定（24/24 通过）",
+      "status": "done"
+    },
+    {
+      "id": "B2",
+      "title": "log-bus.ts 接入 monitor（setImmediate + try/catch 不打断主路径）",
+      "verify": "pnpm -r build 通过；safeRecord 用 setImmediate + try/catch + once warn（端到端验证留给 B7）",
+      "status": "done"
+    },
+    {
+      "id": "B3",
+      "title": "扩展 WS 报文：types/log.ts 加 ErrorPatternAlert + log-bus.ts 加 broadcastAlert",
+      "verify": "pnpm -r build 通过；broadcastAlert 同时 broadcast WS + serverLog warn 落 JSONL；端到端验证留给 B7",
+      "status": "done"
+    },
+    {
+      "id": "B4",
+      "title": "前端类型镜像 + main.tsx WS case 处理",
+      "verify": "pnpm -r build 过 web 包类型",
+      "status": "done"
+    },
+    {
+      "id": "B5",
+      "title": "store.ts 加 alerts 状态（上限 50 + actions）",
+      "verify": "pnpm -r build；alerts 数组上限 50 + appendAlert/dismissAlert/markAlertRead 三 actions",
+      "status": "done"
+    },
+    {
+      "id": "B6",
+      "title": "MemoryView.tsx 顶部加告警卡片区（复制草稿 / 已读 / 关闭）",
+      "verify": "LogsView 看到 scope=memory action=alert-copy-draft / alert-dismiss / alert-mark-read 起止配对；故意触发剪贴板失败看到 ERROR；manual.md 未被自动修改（待主理人手动验收）",
+      "status": "done"
+    },
+    {
+      "id": "B7",
+      "title": "端到端 smoke：scripts/error-pattern-e2e-smoke.mjs",
+      "verify": "pnpm smoke:error-pattern-e2e 通过；连发 3 次收到一次告警，再发 3 次冷却不重复，JSONL 有 alert 日志",
+      "status": "done"
+    },
+    {
+      "id": "Z1",
+      "title": "全量类型 + 双 smoke 收尾",
+      "verify": "pnpm --filter @aimon/server build + pnpm smoke:memory-parse + pnpm smoke:error-pattern + pnpm smoke:error-pattern-e2e + pnpm smoke:hooks 全绿",
+      "status": "done"
+    },
+    {
+      "id": "Z2",
+      "title": "handoff 摘要给大哥（≤10 行，第一行验收指引）",
+      "verify": "输出在最后一轮回复末尾",
+      "status": "done"
+    }
+  ]
+}

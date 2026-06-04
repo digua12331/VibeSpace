@@ -1,0 +1,35 @@
+{
+  "task": "终端方向键直通PTY",
+  "steps": [
+    {
+      "id": 1,
+      "title": "在 SessionView.tsx 加 passthroughLoggedRef 幂等标记",
+      "verify": "pnpm -F @aimon/web build 通过（确认 ref 类型正确）",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "在 attachCustomKeyEventHandler 插入 TUI passthrough 分支（守卫 + 12 键白名单 + 幂等 INFO）",
+      "verify": "pnpm -F @aimon/web build 通过（无 TS 报错、无新 warning）",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "浏览器验收 A：菜单响应 ↑/↓/Enter",
+      "verify": "在 dev server 里跑出 TUI 菜单，视觉确认高亮项随箭头移动、Enter 选中推进",
+      "status": "todo"
+    },
+    {
+      "id": 4,
+      "title": "浏览器验收 B/C/D：textarea 内 ↑/↓ 不被劫持；终端区打字仍进悬浮框；IME compose 不透传",
+      "verify": "三种退化 case 在浏览器逐一手动复现观察通过",
+      "status": "todo"
+    },
+    {
+      "id": 5,
+      "title": "浏览器验收 E：LogsView 单 session 首次透传打一条 INFO，连按多次不重复",
+      "verify": "LogsView 中只看到一条 tui-passthrough-enabled 开始 INFO",
+      "status": "todo"
+    }
+  ]
+}

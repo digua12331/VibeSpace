@@ -1,0 +1,65 @@
+{
+  "task": "完善Git面板功能",
+  "steps": [
+    {
+      "id": 1,
+      "title": "git-service.ts 加超时 helper + 11 个新函数",
+      "verify": "在临时仓库 node REPL 跑一遍每个新函数，断言成功路径返回结构、失败路径抛 GitServiceError",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "routes/git.ts 加 11 条路由（全部 zod + serverLog 起止配对）",
+      "verify": "起 dev server，curl 每个端点一次，看返回结构 + data/logs/YYYY-MM-DD.log 含起止两条",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "types.ts 加 7 个新类型导出",
+      "verify": "tsc 通过",
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "title": "api.ts 加 12 个客户端函数",
+      "verify": "tsc 通过；浏览器 console 手动调用 api.getStashes(pid) 拿到空数组",
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "title": "BranchPopover.tsx 新组件（本地/远程分支 + 新建 + 行内合并/删除）",
+      "verify": "浏览器里点分支 chip 弹出，能看到本地/远程分支、新建输入，每行有合并/删除按钮",
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "title": "ChangesList.tsx 头部分支栏改造（chip + 拉取/推送/获取）",
+      "verify": "浏览器看到新按钮，点击拉取看 LogsView 有 scope=git action=pull 起止配对；断网再点出现错误条 + LogsView ERROR",
+      "status": "done"
+    },
+    {
+      "id": 7,
+      "title": "ChangesList.tsx 提交框下二级按钮（stash/unstash/撤销提交）",
+      "verify": "浏览器跑 stash→改→unstash 改动恢复；commit→撤销→改动回到 staged，每步 LogsView 起止配对",
+      "status": "done"
+    },
+    {
+      "id": 8,
+      "title": "危险操作二次确认（删未合并分支走 confirmDialog danger）",
+      "verify": "浏览器点删未合并分支，弹红色警告，取消不执行；确认执行 -D",
+      "status": "done"
+    },
+    {
+      "id": 9,
+      "title": "scripts/git-ops-smoke.mjs 端到端冒烟（不连外网）",
+      "verify": "pnpm git-ops-smoke 退出码 0",
+      "status": "done"
+    },
+    {
+      "id": 10,
+      "title": "package.json 加 script + 全量 typecheck + 浏览器手测一轮",
+      "verify": "pnpm -w typecheck 通过；浏览器手动操作每个新按钮一次，UI 正常 + LogsView 起止配对正确",
+      "status": "done"
+    }
+  ]
+}

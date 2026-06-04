@@ -1,0 +1,35 @@
+{
+  "task": "修复自定义CSS不生效",
+  "steps": [
+    {
+      "id": 1,
+      "title": "在 store.ts 加 bumpRootSpecificity 纯函数",
+      "verify": "函数签名 (css: string) => string；空串原样；:root[data-theme=\"x\"] 不被改",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "applyUserCss 注入前调用 bumpRootSpecificity",
+      "verify": "浏览器粘贴问题里那段 :root { ... } CSS 后，<style id=user-theme> 内已变 :root[data-theme] { ... }；UI 立刻变成米黄/深棕/Georgia/方角",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "index.html IIFE 兜底脚本里同样跑一次转换",
+      "verify": "刷新页面，UI 不闪预设主题、直接呈现自定义 CSS 效果",
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "title": "项目层面 TypeScript 类型检查",
+      "verify": "pnpm 类型检查命令退出码 0",
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "title": "LogsView 验收 + 失败分支回归",
+      "verify": "LogsView 看到 scope=theme action=apply-css 起止配对；粘贴 110KB CSS 出现 ERROR \"apply-css 失败: CSS 长度 ... 字节超过上限\"",
+      "status": "todo"
+    }
+  ]
+}

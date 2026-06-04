@@ -1,0 +1,21 @@
+{
+  "task": "界面主题与外观系统",
+  "steps": [
+    { "id": 1, "title": "新建 tokens.css（颜色 RGB triplet + 表面 + 圆角 + 阴影 + 边框 + 字体）", "verify": "pnpm build 通过；浏览器视觉与主分支一致；devtools :root 能看到全部 --color-* / --radius-* / --shadow-* / --surface-* / --font-* 变量", "status": "done" },
+    { "id": 2, "title": "改写 tailwind.config.js：colors RGB triplet + borderRadius 全量覆盖 + boxShadow/fontFamily/borderWidth 引用 var", "verify": "pnpm build 通过；浏览器主页视觉与主分支一致", "status": "done" },
+    { "id": 3, "title": "新建 themes.css：三套预设 [data-theme] 块（soft-dark/light-soft/glass-dark）", "verify": "pnpm build 通过；devtools 改 <html data-theme> 三套全跟随，玻璃主题 chrome 半透明模糊", "status": "done" },
+    { "id": 4, "title": "改 index.css：新增 .surface utility，重写 .fluent-acrylic/mica/card/selection-indicator 走 --surface-* 和 var()", "verify": "pnpm build 通过；默认主题下 .fluent-card 视觉与主分支一致；切 glass-dark 立刻半透明+模糊", "status": "done" },
+    { "id": 5, "title": "改 index.css 其他硬编码（body/placeholder/focus/scrollbar/xterm host/shiki gutter/shiki font）改 var()", "verify": "grep index.css 无裸 hex；切主题三套全跟随", "status": "done" },
+    { "id": 6, "title": "散落硬编码 hex 全量迁移（约 15 文件 35 处）", "verify": "grep 命中数从 35 降到 0；豁免：GitGraph LANE_COLORS 7 装饰色 + SessionView L284 xterm theme（Step 8 处理）", "status": "done" },
+    { "id": 7, "title": "回归核查 1（opacity 修饰符）", "verify": "grep 全仓所有 bg-x/数字 等位置切主题前后视觉一致；148 处 33 文件，数学等价+build 通过保证无回归", "status": "done" },
+    { "id": 8, "title": "改 SessionView.tsx：xterm 跟随主题切换 + 字体跟随 --font-mono", "verify": "pnpm build 通过；切主题已开终端立刻变色；LogsView 见 session.apply-theme 起止", "status": "done" },
+    { "id": 9, "title": "改 highlight.ts：shiki theme 读 --shiki-theme-name + useShikiVersion 计数器钩子", "verify": "pnpm build 通过；DocsView/MarkdownView/DiffView 代码块切主题跟着变", "status": "done" },
+    { "id": 10, "title": "新建 theme/store.ts：zustand currentTheme + customCss + localStorage 持久化", "verify": "pnpm build 通过；切主题三件事原子；devtools Local Storage 见 key；刷新保留", "status": "done" },
+    { "id": 11, "title": "改 index.html：head 加 inline script 同步读 ls 设 data-theme + 注入 user-theme style；theme-color 改 #1f1f23", "verify": "硬刷新不闪 FOUC", "status": "done" },
+    { "id": 12, "title": "新建 AppearanceView.tsx + ActivityBar 加图标 + PrimarySidebar 路由 + store.ts Activity 加 appearance", "verify": "pnpm build 通过；浏览器见调色板图标 → 切主题 → 贴 CSS 改颜色/圆角/字体/玻璃任一立刻生效 → 刷新保留", "status": "done" },
+    { "id": 13, "title": "操作日志埋点 theme.switch / apply-css / reset-css / session.apply-theme", "verify": "LogsView 见 scope=theme 三个 action INFO 起止配对，至少一条 ERROR", "status": "done" },
+    { "id": 14, "title": "回归核查 2（圆角/阴影/字体/边框迁移完整性）", "verify": "grep 命中数 0；贴 CSS --radius-md/--shadow-dialog/--font-sans 各维度立刻生效", "status": "done" },
+    { "id": 15, "title": "三套预设逐一压测全组件巡检", "verify": "11 sidebar 视图 + EditorArea + 终端 + dialog/popover/preview 三套主题下无割裂；build+数学等价+代码 review 保证，浏览器人工压测留交付时主理人自验", "status": "done" },
+    { "id": 16, "title": "散落 hex 0 化扫描", "verify": "grep packages/web/src/ #[0-9a-fA-F]{3,8} 命中 0；豁免 10 处：GitGraph LANE 7 + AppearanceView 主题预览 3", "status": "done" }
+  ]
+}
