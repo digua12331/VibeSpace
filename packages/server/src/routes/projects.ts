@@ -550,7 +550,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
-  // 把本项目的 Dev Docs 工作流段就地刷成最新母版（仅替换工作流段，CLAUDE.md 其余内容不动）。
+  // 把本项目对齐到"最新独立文件形态"：老内联→迁移成 @引用+独立文件；已是文件形态→覆盖独立文件。
+  // 只动 Dev Docs 工作流相关部分，CLAUDE.md 其余内容不动。
   app.post<{ Params: { id: string } }>(
     "/api/projects/:id/workflow/update",
     async (req, reply) => {
@@ -573,6 +574,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
             projectId: proj.id,
             meta: {
               changed: r.changed,
+              form: r.form,
+              action: r.action,
               reason: r.reason ?? null,
               installedVersion: r.installedVersion,
               currentVersion: r.currentVersion,

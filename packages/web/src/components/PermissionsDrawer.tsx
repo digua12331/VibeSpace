@@ -1284,10 +1284,10 @@ function WorkflowTab({
       if (!r.changed) {
         await alertDialog(
           r.reason === 'claude_md_missing'
-            ? '该项目还没有 CLAUDE.md，无法更新。'
-            : r.reason === 'anchor_missing'
-              ? '该项目未装 Dev Docs 工作流段，请先「应用 / 切换」。'
-              : '工作流已是最新，无需更新。',
+            ? '该项目还没有 CLAUDE.md，无法处理。'
+            : r.form === 'none'
+              ? '该项目未装 Dev Docs 工作流，请先「应用 / 切换」。'
+              : '工作流已是最新的独立文件形态，无需处理。',
           { title: '工作流更新' },
         )
       }
@@ -1302,12 +1302,12 @@ function WorkflowTab({
     }
   }
 
-  // 机器级：一键把所有"已装 Dev Docs 且版本落后"的项目刷到最新母版。
+  // 机器级：一键把所有项目对齐到最新独立文件形态（老内联→迁移；文件落后→更新）。
   async function refreshAllClick() {
     if (busy) return
     const ok = await confirmDialog(
-      '会把所有"已装 Dev Docs 且版本落后"的项目刷成最新母版——只替换各项目 CLAUDE.md 里的工作流段，你自己写的其余内容一律不动。继续？',
-      { title: '刷新所有项目工作流', confirmLabel: '开始刷新' },
+      '会把所有装了 Dev Docs 的项目对齐到最新独立文件形态——老的内联形态迁移成"独立文件 + 一行引用"，已是文件形态但版本落后的覆盖更新。只动各项目的工作流相关部分，你自己写的其余内容一律不动。继续？',
+      { title: '迁移 / 更新所有项目工作流', confirmLabel: '开始' },
     )
     if (!ok) return
     setBusy(true)
@@ -1318,13 +1318,15 @@ function WorkflowTab({
         () => api.refreshAllWorkflows(),
         {},
       )
+      const migrated = r.updated.filter((u) => u.action === 'migrate')
+      const updated = r.updated.filter((u) => u.action === 'update')
       const msg =
-        `已刷新 ${r.updated.length} 个项目` +
-        (r.updated.length
-          ? '：' + r.updated.map((u) => u.name).join('、')
-          : '') +
+        `迁移 ${migrated.length} 个` +
+        (migrated.length ? '：' + migrated.map((u) => u.name).join('、') : '') +
+        `\n更新 ${updated.length} 个` +
+        (updated.length ? '：' + updated.map((u) => u.name).join('、') : '') +
         `\n跳过 ${r.skipped.length} 个（已最新 / 未装 / 无 CLAUDE.md）`
-      await alertDialog(msg, { title: '刷新完成' })
+      await alertDialog(msg, { title: '完成' })
       await refresh()
     } catch (e: unknown) {
       await alertDialog(
@@ -1337,8 +1339,15 @@ function WorkflowTab({
   }
 
   const claudeMdExists = status?.devDocs.claudeMdExists ?? false
-  const devDocsOutdated =
-    status?.detectedMode === 'dev-docs' && status.devDocs.outdated
+  const devDocsForm = status?.devDocs.form ?? 'none'
+  // 老内联待迁移 / 已是文件但版本落后待更新 / 已是最新文件形态
+  const devDocsLegacy =
+    status?.detectedMode === 'dev-docs' && devDocsForm === 'inline-legacy'
+  const devDocsFileOutdated =
+    status?.detectedMode === 'dev-docs' &&
+    devDocsForm === 'file' &&
+    status.devDocs.outdated
+  const devDocsActionable = devDocsLegacy || devDocsFileOutdated
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -1451,7 +1460,15 @@ function WorkflowTab({
                 >
                   {status.superpowers.enabled ? '已启用' : '未启用'}
                 </span>
-                {devDocsOutdated && (
+                {devDocsLegacy && (
+                  <>
+                    {' · '}
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border border-amber-700/60 bg-amber-900/30 text-amber-200">
+                      待迁移到独立文件
+                    </span>
+                  </>
+                )}
+                {devDocsFileOutdated && (
                   <>
                     {' · '}
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border border-amber-700/60 bg-amber-900/30 text-amber-200">
@@ -1462,6 +1479,16 @@ function WorkflowTab({
                     </span>
                   </>
                 )}
+                {status.detectedMode === 'dev-docs' &&
+                  devDocsForm === 'file' &&
+                  !status.devDocs.outdated && (
+                    <>
+                      {' · '}
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border border-emerald-700/60 bg-emerald-900/20 text-emerald-300">
+                        已是独立文件形态
+                      </span>
+                    </>
+                  )}
               </div>
             )}
 
@@ -1499,14 +1526,18 @@ function WorkflowTab({
             </label>
 
             <div className="flex items-center justify-end gap-2">
-              {devDocsOutdated && (
+              {devDocsActionable && (
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => void updateDevDocsClick()}
                   className="fluent-btn px-3 py-1 text-xs rounded-md border border-amber-700/60 text-amber-200 hover:bg-amber-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {busy ? '处理中…' : '更新到最新版'}
+                  {busy
+                    ? '处理中…'
+                    : devDocsLegacy
+                      ? '迁移到独立文件'
+                      : '更新到最新版'}
                 </button>
               )}
               {status.applied !== 'none' && (
@@ -1532,12 +1563,13 @@ function WorkflowTab({
         )}
       </div>
 
-      {/* 机器级：跨所有项目把落后的 Dev Docs 工作流段刷成最新母版 */}
+      {/* 机器级：跨所有项目对齐到最新独立文件形态（老内联→迁移；文件落后→更新） */}
       <div className="rounded border border-border/60 bg-bg/30 p-3 space-y-2">
-        <div className="text-sm text-fg/90">所有项目统一更新</div>
+        <div className="text-sm text-fg/90">所有项目统一对齐</div>
         <div className="text-[11px] text-muted leading-relaxed">
-          改了工作流母版后，点这里一键把所有"已装 Dev Docs 且版本落后"的项目刷成最新。
-          只替换各项目 <code className="font-mono">CLAUDE.md</code> 里的工作流段，其余内容不动。
+          一键把所有项目对齐到最新的独立文件形态：老的内联形态迁移成"独立文件 +{' '}
+          <code className="font-mono">CLAUDE.md</code> 一行引用"，已是文件形态但版本落后的覆盖更新。
+          只动各项目的工作流相关部分，其余内容不动。
         </div>
         <div className="flex justify-end">
           <button
@@ -1546,7 +1578,7 @@ function WorkflowTab({
             onClick={() => void refreshAllClick()}
             className="fluent-btn px-3 py-1 text-xs rounded-md border border-border hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {busy ? '处理中…' : '刷新所有项目'}
+            {busy ? '处理中…' : '迁移 / 更新所有项目'}
           </button>
         </div>
       </div>

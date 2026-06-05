@@ -200,14 +200,18 @@ export function getWorkflowStatus(projectId: string): Promise<WorkflowStatus> {
   )
 }
 
+export type DevDocsForm = 'none' | 'inline-legacy' | 'file'
+
 export interface DevDocsUpdateResult {
   changed: boolean
-  reason?: 'claude_md_missing' | 'anchor_missing'
+  reason?: 'claude_md_missing'
+  form: DevDocsForm
+  action: 'migrate' | 'update' | 'noop'
   installedVersion: number | null
   currentVersion: number
 }
 
-/** 把本项目的 Dev Docs 工作流段就地刷成最新母版。 */
+/** 把本项目对齐到最新独立文件形态（老内联→迁移；已是文件→覆盖更新）。 */
 export function updateProjectWorkflow(
   projectId: string,
 ): Promise<DevDocsUpdateResult> {
@@ -218,7 +222,13 @@ export function updateProjectWorkflow(
 }
 
 export interface RefreshAllResult {
-  updated: { id: string; name: string; from: number | null; to: number }[]
+  updated: {
+    id: string
+    name: string
+    action: 'migrate' | 'update'
+    from: number | null
+    to: number
+  }[]
   skipped: {
     id: string
     name: string

@@ -211,11 +211,13 @@ export interface WorkflowStatus {
   devDocs: {
     enabled: boolean
     claudeMdExists: boolean
-    /** 已装段的版本号；老项目无戳为 null。 */
+    /** 'none' 未装 / 'inline-legacy' 老内联待迁移 / 'file' 已是独立文件形态。 */
+    form: 'none' | 'inline-legacy' | 'file'
+    /** 已装的版本号；无戳为 null。 */
     installedVersion: number | null
     /** 当前母版版本号。 */
     currentVersion: number
-    /** 已装且（无戳或低于当前）→ 可一键更新。 */
+    /** inline-legacy 一律 true（待迁移）；file 形态戳低于当前 → true。 */
     outdated: boolean
   }
   openspec: OpenSpecStatusShape

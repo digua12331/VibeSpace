@@ -44,8 +44,8 @@
     {
       "id": 6,
       "title": "金丝雀迁移 VibeSpace 自身",
-      "verify": "CLAUDE.md 变薄+引用行在+独立文件落地；真会话验证引用生效（手动）",
-      "status": "todo",
+      "verify": "安全发现：不对VibeSpace自身自动迁移（剥离版母版缺专属硬规则会被吞）；金丝雀交大哥在普通目标项目做",
+      "status": "blocked",
       "read_files": ["CLAUDE.md"],
       "write_files": ["CLAUDE.md", ".aimon/workflow/dev-docs.md"]
     },
