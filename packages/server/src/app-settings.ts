@@ -50,10 +50,17 @@ export interface AppSettings {
   pasteImageRetentionDays: number;
   hibernation: HibernationSettings;
   terminalKeybindings: TerminalKeybindings;
+  /**
+   * Max number of concurrently open AI terminal sessions before the UI blocks
+   * starting a new one. Only AI terminals count — file/HTML preview tabs don't.
+   * Bounded to [1, 50] at the REST boundary; 12 is the engineering default.
+   */
+  maxAiTerminals: number;
 }
 
 const DEFAULTS: AppSettings = {
   pasteImageRetentionDays: 1,
+  maxAiTerminals: 12,
   hibernation: {
     // 默认关闭：闲置自动休眠会 kill 掉正在跑的 AI 会话 PTY，用户感知为
     // "终端放着不动就没了"。想省资源的用户可在「设置」对话框手动开启。
@@ -72,6 +79,14 @@ function clampRetentionDays(n: unknown): number {
   const v = Math.floor(n);
   if (v < 0) return 0;
   if (v > 365) return 365;
+  return v;
+}
+
+function clampMaxAiTerminals(n: unknown): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULTS.maxAiTerminals;
+  const v = Math.floor(n);
+  if (v < 1) return 1;
+  if (v > 50) return 50;
   return v;
 }
 
@@ -175,6 +190,7 @@ function readFromDisk(): AppSettings {
       pasteImageRetentionDays: clampRetentionDays(obj.pasteImageRetentionDays),
       hibernation: readHibernation(obj.hibernation),
       terminalKeybindings: readTerminalKeybindings(obj.terminalKeybindings),
+      maxAiTerminals: clampMaxAiTerminals(obj.maxAiTerminals),
     };
   } catch {
     return freshDefaults();
@@ -198,6 +214,7 @@ export interface AppSettingsPatch {
   pasteImageRetentionDays?: number;
   hibernation?: Partial<HibernationSettings>;
   terminalKeybindings?: Partial<TerminalKeybindings>;
+  maxAiTerminals?: number;
 }
 
 export function setAppSettings(patch: AppSettingsPatch): AppSettings {
@@ -236,6 +253,9 @@ export function setAppSettings(patch: AppSettingsPatch): AppSettings {
     ),
     hibernation: mergedHibernation,
     terminalKeybindings: mergedKeybindings,
+    maxAiTerminals: clampMaxAiTerminals(
+      patch.maxAiTerminals ?? current.maxAiTerminals,
+    ),
   };
   const tmp = `${SETTINGS_PATH}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2), "utf8");

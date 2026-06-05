@@ -1,0 +1,61 @@
+{
+  "task": "会话上限可配置",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端 app-settings.ts 加 maxAiTerminals",
+      "verify": "pnpm -F @aimon/server build 过",
+      "status": "todo",
+      "read_files": ["packages/server/src/app-settings.ts"],
+      "write_files": ["packages/server/src/app-settings.ts"]
+    },
+    {
+      "id": 2,
+      "title": "types.ts AppSettings 加字段",
+      "verify": "前端 build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/types.ts"]
+    },
+    {
+      "id": 3,
+      "title": "store.ts 加字段+setter",
+      "verify": "前端 build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/store.ts"]
+    },
+    {
+      "id": 4,
+      "title": "App.tsx 载入回填",
+      "verify": "前端 build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/App.tsx"],
+      "write_files": ["packages/web/src/App.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "perf-marks.ts isAtSessionLimit 加参数",
+      "verify": "前端 build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/perf-marks.ts"],
+      "write_files": ["packages/web/src/perf-marks.ts"]
+    },
+    {
+      "id": 6,
+      "title": "StartSessionMenu.tsx 读 store 上限",
+      "verify": "pnpm -F @aimon/web build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/StartSessionMenu.tsx"],
+      "write_files": ["packages/web/src/components/StartSessionMenu.tsx"]
+    },
+    {
+      "id": 7,
+      "title": "SettingsDialog.tsx 加数字输入框",
+      "verify": "pnpm -F @aimon/web build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/SettingsDialog.tsx"],
+      "write_files": ["packages/web/src/components/SettingsDialog.tsx"]
+    }
+  ]
+}

@@ -142,6 +142,7 @@ export default function SettingsDialog() {
   const [retention, setRetention] = useState<number>(1)
   const [hibernation, setHibernation] =
     useState<HibernationSettings>(DEFAULT_HIBERNATION)
+  const [maxAiTerminals, setMaxAiTerminalsLocal] = useState<number>(12)
   const [requestingNotify, setRequestingNotify] = useState(false)
   const [keybindings, setKeybindings] =
     useState<TerminalKeybindings>(DEFAULT_KEYBINDINGS)
@@ -171,6 +172,7 @@ export default function SettingsDialog() {
   const notifyPerm = useStore((s) => s.notifyPerm)
   const setNotifyPerm = useStore((s) => s.setNotifyPerm)
   const setTerminalKeybindings = useStore((s) => s.setTerminalKeybindings)
+  const setMaxAiTerminals = useStore((s) => s.setMaxAiTerminals)
 
   useEffect(() => {
     const l = (next: boolean) => setOpen(next)
@@ -191,6 +193,7 @@ export default function SettingsDialog() {
         setRetention(s.pasteImageRetentionDays)
         setHibernation(s.hibernation ?? DEFAULT_HIBERNATION)
         setKeybindings(s.terminalKeybindings ?? DEFAULT_KEYBINDINGS)
+        setMaxAiTerminalsLocal(s.maxAiTerminals ?? 12)
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e))
@@ -347,18 +350,21 @@ export default function SettingsDialog() {
             pasteImageRetentionDays: retention,
             hibernation,
             terminalKeybindings: keybindings,
+            maxAiTerminals,
           }),
         {
           meta: {
             retentionDays: retention,
             hibernation,
             terminalKeybindings: keybindings,
+            maxAiTerminals,
           },
         },
       )
       // Push the saved bindings into the store so live terminals pick them up
       // immediately without a page reload.
       setTerminalKeybindings(next.terminalKeybindings ?? keybindings)
+      setMaxAiTerminals(next.maxAiTerminals ?? maxAiTerminals)
       setOpenState(false)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -522,6 +528,32 @@ export default function SettingsDialog() {
               </option>
             ))}
           </select>
+        </section>
+        )}
+
+        {activeTab === 'terminal' && (
+        <section className="mb-4 border-b border-border/40 pb-4">
+          <div className="text-sm text-fg/90 mb-1">AI 终端数量上限</div>
+          <div className="text-xs text-muted mb-2 leading-relaxed">
+            最多能同时开几个 AI 终端页签。只数 AI 终端，文件 / 网页预览这类页签不占名额。
+            开太多浏览器会明显变卡，机器好就调大，机器吃力就调小。
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted">上限（个，1–50）</label>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              step={1}
+              disabled={loading || saving}
+              value={maxAiTerminals}
+              onChange={(e) => {
+                const n = Math.max(1, Math.min(50, Math.floor(Number(e.target.value) || 12)))
+                setMaxAiTerminalsLocal(n)
+              }}
+              className="w-20 px-2 py-1 bg-white/[0.04] border border-border rounded text-sm focus:border-accent focus:bg-white/[0.06] disabled:opacity-60"
+            />
+          </div>
         </section>
         )}
 

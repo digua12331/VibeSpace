@@ -1,0 +1,29 @@
+{
+  "task": "metal-fx按钮样例",
+  "steps": [
+    {
+      "id": 1,
+      "title": "安装 metal-fx 依赖",
+      "verify": "packages/web/package.json 出现 metal-fx,pnpm 安装成功",
+      "status": "done",
+      "read_files": ["packages/web/package.json"],
+      "write_files": ["packages/web/package.json", "pnpm-lock.yaml"]
+    },
+    {
+      "id": 2,
+      "title": "ProjectsColumn 包裹「+ 新建项目」按钮",
+      "verify": "pnpm -F @aimon/web build 通过(含 tsc 类型检查)",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/layout/ProjectsColumn.tsx"],
+      "write_files": ["packages/web/src/components/layout/ProjectsColumn.tsx"]
+    },
+    {
+      "id": 3,
+      "title": "交付浏览器验收指引",
+      "verify": "大哥在浏览器看到金属流光特效",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

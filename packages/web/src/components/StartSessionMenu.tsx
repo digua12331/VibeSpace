@@ -7,7 +7,6 @@ import {
   bindSessionSpawn,
   isAtSessionLimit,
   markSessionSpawnStart,
-  MAX_OPEN_SESSIONS,
 } from '../perf-marks'
 import type { AgentKind, CliEntry, CliStatusResponse, Session } from '../types'
 import CliInstallerDialog from './CliInstallerDialog'
@@ -181,17 +180,18 @@ export default function StartSessionMenu({
     // 不让点击静默无效（参考 manual.md "大哥不懂代码只关心大方向和验收"）。
     // 这里数的是所有 sessions（含跨项目），因为渲染开销跟总数而非当前项目数挂钩。
     const totalOpen = useStore.getState().sessions.length
-    if (isAtSessionLimit(totalOpen)) {
+    const limit = useStore.getState().maxAiTerminals
+    if (isAtSessionLimit(totalOpen, limit)) {
       setOpen(false)
       pushLog({
         level: 'warn',
         scope: 'session',
-        msg: `session 数量已达上限 ${MAX_OPEN_SESSIONS}，启动被阻止`,
+        msg: `session 数量已达上限 ${limit}，启动被阻止`,
         projectId,
-        meta: { agent, currentCount: totalOpen, limit: MAX_OPEN_SESSIONS },
+        meta: { agent, currentCount: totalOpen, limit },
       })
       await alertDialog(
-        `已达终端数量上限 ${MAX_OPEN_SESSIONS} 个（当前 ${totalOpen}）。\n\n` +
+        `已达终端数量上限 ${limit} 个（当前 ${totalOpen}）。\n\n` +
           `继续开新终端会让浏览器明显变卡。请先在左侧侧边栏关闭一个不再使用的终端（点右上角 ✕），再来启动新的。`,
         { title: '终端太多了', variant: 'danger' },
       )

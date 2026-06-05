@@ -201,6 +201,10 @@ interface State {
    *  once at app startup; SessionView reads it via a synced ref. */
   terminalKeybindings: TerminalKeybindings
 
+  /** Max concurrently open AI terminals before new-session start is blocked.
+   *  Loaded once at app startup from app-settings; StartSessionMenu reads it. */
+  maxAiTerminals: number
+
   /** Ring-buffered project log entries, newest last. */
   logs: LogEntry[]
   appendLog: (entry: LogEntry) => void
@@ -321,6 +325,7 @@ interface State {
   setServerVersion: (v: string) => void
   setNotifyPerm: (p: NotificationPermissionState) => void
   setTerminalKeybindings: (kb: TerminalKeybindings) => void
+  setMaxAiTerminals: (n: number) => void
   selectProject: (id: string | null) => void
 
   refreshProjects: () => Promise<void>
@@ -407,6 +412,7 @@ export const useStore = create<State>((set, get) => ({
   notifyPerm: initialPerm(),
   notifyingSessions: new Set<string>(),
   terminalKeybindings: { abortAltKey: null, interruptAltKey: null },
+  maxAiTerminals: 12,
   logs: [],
   alerts: [],
   selectedChange: null,
@@ -605,6 +611,7 @@ export const useStore = create<State>((set, get) => ({
   setServerVersion: (v) => set({ serverVersion: v }),
   setNotifyPerm: (p) => set({ notifyPerm: p }),
   setTerminalKeybindings: (kb) => set({ terminalKeybindings: kb }),
+  setMaxAiTerminals: (n) => set({ maxAiTerminals: n }),
   selectProject: (id) => {
     const before = get()
     const fromId = before.selectedProjectId

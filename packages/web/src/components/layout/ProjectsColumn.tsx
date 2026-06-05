@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { MetalFx } from 'metal-fx'
 import { useStore, HUB_PROJECT_ID } from '../../store'
 import * as api from '../../api'
 import PermissionsDrawer from '../PermissionsDrawer'
@@ -332,12 +333,16 @@ export default function ProjectsColumn({
           </div>
         ))}
       </div>
-      <button
-        onClick={onNewProject}
-        className="fluent-btn m-3 px-3 py-2 text-sm rounded-md border border-dashed border-border hover:border-accent/60 hover:text-accent hover:bg-white/[0.04] text-muted"
-      >
-        + 新建项目
-      </button>
+      {/* metal-fx 样例：给「新建项目」按钮套一圈会动的金属光环特效（评估用，
+          单点接入，不影响其它按钮）。m-3 外边距迁到 MetalFx wrapper 以保持间距。 */}
+      <MetalFx preset="silver" theme="dark" className="m-3 block">
+        <button
+          onClick={onNewProject}
+          className="fluent-btn w-full px-3 py-2 text-sm rounded-md border border-dashed border-border hover:border-accent/60 hover:text-accent hover:bg-white/[0.04] text-muted"
+        >
+          + 新建项目
+        </button>
+      </MetalFx>
 
       {menu && (
         <div

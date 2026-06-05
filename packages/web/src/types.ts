@@ -1009,6 +1009,8 @@ export interface AppSettings {
   pasteImageRetentionDays: number
   hibernation: HibernationSettings
   terminalKeybindings: TerminalKeybindings
+  /** Max concurrently open AI terminals before new-session start is blocked. Bounded [1,50], default 12. */
+  maxAiTerminals: number
 }
 
 /**

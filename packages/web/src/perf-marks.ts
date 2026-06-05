@@ -95,8 +95,11 @@ export const KEEPALIVE_LRU_LIMIT = 3
  */
 export const MAX_OPEN_SESSIONS = 12
 
-export function isAtSessionLimit(currentCount: number): boolean {
-  return currentCount >= MAX_OPEN_SESSIONS
+export function isAtSessionLimit(
+  currentCount: number,
+  limit: number = MAX_OPEN_SESSIONS,
+): boolean {
+  return currentCount >= limit
 }
 
 /**
