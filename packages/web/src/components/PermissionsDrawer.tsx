@@ -1270,7 +1270,75 @@ function WorkflowTab({
     }
   }
 
+  // 把本项目已装的 Dev Docs 段就地刷成最新母版（仅替换工作流段，其余内容不动）。
+  async function updateDevDocsClick() {
+    if (busy || !status) return
+    setBusy(true)
+    try {
+      const r = await logAction(
+        'project',
+        'update-workflow',
+        () => api.updateProjectWorkflow(project.id),
+        { projectId: project.id },
+      )
+      if (!r.changed) {
+        await alertDialog(
+          r.reason === 'claude_md_missing'
+            ? '该项目还没有 CLAUDE.md，无法更新。'
+            : r.reason === 'anchor_missing'
+              ? '该项目未装 Dev Docs 工作流段，请先「应用 / 切换」。'
+              : '工作流已是最新，无需更新。',
+          { title: '工作流更新' },
+        )
+      }
+      await refresh()
+    } catch (e: unknown) {
+      await alertDialog(
+        `更新失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '更新工作流失败', variant: 'danger' },
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 机器级：一键把所有"已装 Dev Docs 且版本落后"的项目刷到最新母版。
+  async function refreshAllClick() {
+    if (busy) return
+    const ok = await confirmDialog(
+      '会把所有"已装 Dev Docs 且版本落后"的项目刷成最新母版——只替换各项目 CLAUDE.md 里的工作流段，你自己写的其余内容一律不动。继续？',
+      { title: '刷新所有项目工作流', confirmLabel: '开始刷新' },
+    )
+    if (!ok) return
+    setBusy(true)
+    try {
+      const r = await logAction(
+        'workflow',
+        'refresh-all',
+        () => api.refreshAllWorkflows(),
+        {},
+      )
+      const msg =
+        `已刷新 ${r.updated.length} 个项目` +
+        (r.updated.length
+          ? '：' + r.updated.map((u) => u.name).join('、')
+          : '') +
+        `\n跳过 ${r.skipped.length} 个（已最新 / 未装 / 无 CLAUDE.md）`
+      await alertDialog(msg, { title: '刷新完成' })
+      await refresh()
+    } catch (e: unknown) {
+      await alertDialog(
+        `刷新失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '刷新所有项目失败', variant: 'danger' },
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const claudeMdExists = status?.devDocs.claudeMdExists ?? false
+  const devDocsOutdated =
+    status?.detectedMode === 'dev-docs' && status.devDocs.outdated
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -1383,6 +1451,17 @@ function WorkflowTab({
                 >
                   {status.superpowers.enabled ? '已启用' : '未启用'}
                 </span>
+                {devDocsOutdated && (
+                  <>
+                    {' · '}
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border border-amber-700/60 bg-amber-900/30 text-amber-200">
+                      工作流可更新
+                      {status.devDocs.installedVersion != null
+                        ? `（v${status.devDocs.installedVersion} → v${status.devDocs.currentVersion}）`
+                        : `（旧版 → v${status.devDocs.currentVersion}）`}
+                    </span>
+                  </>
+                )}
               </div>
             )}
 
@@ -1420,6 +1499,16 @@ function WorkflowTab({
             </label>
 
             <div className="flex items-center justify-end gap-2">
+              {devDocsOutdated && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void updateDevDocsClick()}
+                  className="fluent-btn px-3 py-1 text-xs rounded-md border border-amber-700/60 text-amber-200 hover:bg-amber-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {busy ? '处理中…' : '更新到最新版'}
+                </button>
+              )}
               {status.applied !== 'none' && (
                 <button
                   type="button"
@@ -1441,6 +1530,25 @@ function WorkflowTab({
             </div>
           </>
         )}
+      </div>
+
+      {/* 机器级：跨所有项目把落后的 Dev Docs 工作流段刷成最新母版 */}
+      <div className="rounded border border-border/60 bg-bg/30 p-3 space-y-2">
+        <div className="text-sm text-fg/90">所有项目统一更新</div>
+        <div className="text-[11px] text-muted leading-relaxed">
+          改了工作流母版后，点这里一键把所有"已装 Dev Docs 且版本落后"的项目刷成最新。
+          只替换各项目 <code className="font-mono">CLAUDE.md</code> 里的工作流段，其余内容不动。
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void refreshAllClick()}
+            className="fluent-btn px-3 py-1 text-xs rounded-md border border-border hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {busy ? '处理中…' : '刷新所有项目'}
+          </button>
+        </div>
       </div>
     </div>
   )

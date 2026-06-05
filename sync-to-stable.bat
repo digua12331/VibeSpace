@@ -3,8 +3,7 @@ setlocal EnableDelayedExpansion
 
 REM ============================================================
 REM sync-to-stable.bat [stable_dir]
-REM Sync the stable clone to the latest stable-* tag in dev.
-REM Falls back to origin/main if no such tag exists.
+REM Sync the stable clone to the latest origin/main in dev.
 REM Resolves stable dir via: CLI arg > env AIMON_STABLE_DIR
 REM > sibling auto-detect (e.g. AIkanban-main -> ../AIkanban-stable).
 REM Does NOT restart stable; you pick the moment manually.
@@ -57,28 +56,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM --- Step 1: dev working tree must be clean ---
-pushd "%DEV_DIR%" >nul
-if errorlevel 1 (
-  echo [sync] ERROR: cannot enter dev dir.
-  exit /b 1
-)
-
-git diff --quiet
-if errorlevel 1 (
-  echo [sync] ERROR: dev working tree has unstaged changes. Please commit or stash first.
-  popd >nul
-  exit /b 1
-)
-git diff --cached --quiet
-if errorlevel 1 (
-  echo [sync] ERROR: dev has staged but uncommitted changes. Please commit first.
-  popd >nul
-  exit /b 1
-)
-popd >nul
-
-REM --- Step 2: stable dir must exist ---
+REM --- Step 1: stable dir must exist ---
+REM (dev working tree is intentionally NOT checked: stable hard-resets to
+REM  origin/main regardless of dev's local uncommitted state.)
 if not exist "%STABLE_DIR%\.git" (
   echo [sync] ERROR: stable dir not found or not a git repo: %STABLE_DIR%
   echo [sync]   - run once:  init-stable.bat [stable_dir]
@@ -102,16 +82,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$root = '%STABLE_DIR%'.TrimEnd('\');" ^
   "$pattern = [regex]::Escape($root);" ^
   "$toKill = @{};" ^
-  "$victims = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match $pattern };" ^
-  "foreach ($v in $victims) {" ^
-  "  $cur = $v;" ^
-  "  while ($true) {" ^
-  "    $toKill[[int]$cur.ProcessId] = $true;" ^
-  "    if (-not $cur.ParentProcessId) { break };" ^
-  "    $parent = Get-CimInstance Win32_Process -Filter \"ProcessId=$($cur.ParentProcessId)\" -ErrorAction SilentlyContinue;" ^
-  "    if (-not $parent -or $parent.Name -ne 'node.exe') { break };" ^
-  "    $cur = $parent" ^
+  "try {" ^
+  "  $victims = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -OperationTimeoutSec 15 -ErrorAction Stop | Where-Object { $_.CommandLine -match $pattern };" ^
+  "  foreach ($v in $victims) {" ^
+  "    $cur = $v;" ^
+  "    while ($true) {" ^
+  "      if ($toKill.ContainsKey([int]$cur.ProcessId)) { break };" ^
+  "      $toKill[[int]$cur.ProcessId] = $true;" ^
+  "      if (-not $cur.ParentProcessId) { break };" ^
+  "      $parent = Get-CimInstance Win32_Process -Filter \"ProcessId=$($cur.ParentProcessId)\" -OperationTimeoutSec 10 -ErrorAction SilentlyContinue;" ^
+  "      if (-not $parent -or $parent.Name -ne 'node.exe') { break };" ^
+  "      $cur = $parent" ^
+  "    }" ^
   "  }" ^
+  "} catch {" ^
+  "  Write-Host '[sync]   WARN: WMI/Win32_Process query timed out or failed; skipping targeted kill (port-kill below still runs).'" ^
   "};" ^
   "if ($toKill.Count -gt 0) { Write-Host ('[sync]   killing node PIDs: ' + ($toKill.Keys -join ', ')) };" ^
   "foreach ($procId in $toKill.Keys) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }"
@@ -127,22 +112,14 @@ for %%P in (8787 8788) do (
 REM give Windows time to release file locks before pnpm rebuild touches native binaries
 powershell -NoProfile -Command "Start-Sleep -Milliseconds 1500" >nul 2>&1
 
-REM --- Step 3: fetch from dev (tags included) ---
-echo [sync] fetching origin with tags...
-git fetch origin --tags --prune
+REM --- Step 3: fetch from dev ---
+echo [sync] fetching origin...
+git fetch origin --prune
 if errorlevel 1 goto :fail
 
-REM --- Step 4: pick target ref = latest stable-* tag, else origin/main ---
-set TARGET_REF=
-for /f "tokens=*" %%t in ('git tag -l "stable-*" --sort^=-creatordate') do (
-  if not defined TARGET_REF set TARGET_REF=%%t
-)
-if not defined TARGET_REF (
-  echo [sync] no stable-* tag found in origin, falling back to origin/main
-  set TARGET_REF=origin/main
-) else (
-  echo [sync] latest stable tag: !TARGET_REF!
-)
+REM --- Step 4: target ref = latest origin/main ---
+set TARGET_REF=origin/main
+echo [sync] target ref: !TARGET_REF!
 
 REM --- Step 5: detect pnpm-lock.yaml change between HEAD and target ---
 git diff --quiet HEAD !TARGET_REF! -- pnpm-lock.yaml

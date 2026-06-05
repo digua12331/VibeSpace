@@ -86,6 +86,8 @@ export interface Project {
   layout?: ProjectLayout
   /** 项目级"开发流程"模式；null 等同未设置（侧栏既不显 Dev Docs 也不显 OpenSpec tab）。 */
   workflowMode?: WorkflowMode | null
+  /** 一键启动脚本路径（相对项目根或绝对）；null/缺省=未设置，点 ▶ 时回退找根目录 start.bat。 */
+  startScript?: string | null
 }
 
 export type SessionIsolation = 'shared' | 'worktree'
@@ -206,7 +208,16 @@ export interface WorkflowRemoveResult {
 
 export interface WorkflowStatus {
   detectedMode: WorkflowMode | null
-  devDocs: { enabled: boolean; claudeMdExists: boolean }
+  devDocs: {
+    enabled: boolean
+    claudeMdExists: boolean
+    /** 已装段的版本号；老项目无戳为 null。 */
+    installedVersion: number | null
+    /** 当前母版版本号。 */
+    currentVersion: number
+    /** 已装且（无戳或低于当前）→ 可一键更新。 */
+    outdated: boolean
+  }
   openspec: OpenSpecStatusShape
   harness: HarnessStatusShape
   superpowers: { enabled: boolean; claudeMdExists: boolean }

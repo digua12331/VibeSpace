@@ -5,6 +5,9 @@ import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { logAction } from '../../logs'
 import { sendToSession } from '../../sendToSession'
+import { runBatFile } from '../runExecutable'
+import StartScriptDialog from '../StartScriptDialog'
+import type { Project } from '../../types'
 
 interface ContextMenuState {
   projectId: string
@@ -34,6 +37,8 @@ export default function ProjectsColumn({
   const [busy, setBusy] = useState<string | null>(null)
   const [changeCount, setChangeCount] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<'active' | 'inactive'>('active')
+  const [scriptDialogProject, setScriptDialogProject] = useState<Project | null>(null)
+  const [launching, setLaunching] = useState<string | null>(null)
 
   const { activeProjects, inactiveProjects } = useMemo(() => {
     const active: typeof projects = []
@@ -161,6 +166,28 @@ export default function ProjectsColumn({
     setActivity('scm')
   }
 
+  // 一键启动：解析项目的启动脚本，有就直接在新终端跑（runBatFile 自带 fs/run-bat 日志），
+  // 没有（resolved=null）就弹「设置启动脚本」让大哥选一个 bat。
+  async function onLaunch(p: Project) {
+    if (launching) return
+    setLaunching(p.id)
+    try {
+      const { resolved } = await api.getStartScript(p.id)
+      if (resolved) {
+        await runBatFile(p.id, resolved)
+      } else {
+        setScriptDialogProject(p)
+      }
+    } catch (e: unknown) {
+      await alertDialog(
+        `启动失败: ${e instanceof Error ? e.message : String(e)}`,
+        { title: '启动失败', variant: 'danger' },
+      )
+    } finally {
+      setLaunching(null)
+    }
+  }
+
   function openFilesFor(pid: string) {
     select(pid)
     setActivity('files')
@@ -268,6 +295,17 @@ export default function ProjectsColumn({
               </div>
               <div className="truncate text-xs text-muted font-mono">{p.path}</div>
             </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                void onLaunch(p)
+              }}
+              disabled={launching === p.id}
+              title="一键运行此项目的启动脚本（start.bat），没有就让你指定一个"
+              className="w-6 h-6 shrink-0 inline-flex items-center justify-center rounded text-[12px] text-muted hover:text-accent hover:bg-white/[0.08] disabled:opacity-40"
+            >
+              ▶
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -412,6 +450,18 @@ export default function ProjectsColumn({
           <button
             role="menuitem"
             onClick={() => {
+              const { projectId } = menu
+              const proj = projects.find((p) => p.id === projectId)
+              setMenu(null)
+              if (proj) setScriptDialogProject(proj)
+            }}
+            className="fluent-btn block w-full text-left px-3 py-1.5 mx-1 rounded hover:bg-white/[0.06]"
+          >
+            🚀 设置启动脚本…
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
               const { projectId, projectName } = menu
               setMenu(null)
               void onDelete(projectId, projectName)
@@ -428,6 +478,14 @@ export default function ProjectsColumn({
         if (!proj) return null
         return <PermissionsDrawer project={proj} onClose={() => setPermProjectId(null)} />
       })()}
+
+      {scriptDialogProject && (
+        <StartScriptDialog
+          project={scriptDialogProject}
+          onClose={() => setScriptDialogProject(null)}
+          onChanged={() => void refreshProjects()}
+        />
+      )}
     </aside>
   )
 }

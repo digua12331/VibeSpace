@@ -12,7 +12,13 @@
 // 修改时请同步两处（DEV_DOCS_GUIDELINES 与下方 ISSUES_ARCHIVE_SECTION），
 // 或把此文件变成从 CLAUDE.md 读取的 loader（未来选项）。
 // 2026-05-07 由"工作流模板同步"任务整体重写到 CLAUDE.md 当前版本。
+// 装进各目标项目 CLAUDE.md 的 Dev Docs 工作流段版本号。母版文本有实质变更就 +1，
+// 已装项目的 getDevDocsStatus 会拿已装版本和这个值比对，低于它即 outdated，可一键更新。
+// 版本戳以 `<!-- dev-docs-workflow:vN -->` 形式嵌在下方模板锚点行之后，随装配写入目标文件。
+export const DEV_DOCS_VERSION = 1;
+
 export const DEV_DOCS_GUIDELINES = `# Dev Docs 工作流
+<!-- dev-docs-workflow:v${DEV_DOCS_VERSION} -->
 
 > 本段由 VibeSpace UI 装配（在「Dev Docs」侧栏可卸载/重装更新）。
 > 内容与 VibeSpace 仓库 CLAUDE.md 同步，剔除了 VibeSpace 仓库专属内容；具体函数路径以 VibeSpace 仓库为参考举例，目标项目可改用各自等价物。

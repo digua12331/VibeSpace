@@ -1,0 +1,53 @@
+{
+  "task": "项目一键启动脚本",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端 db.ts：Project 加 startScript + loadProjectsJson 透传 + updateProjectStartScript",
+      "verify": "server 构建通过；projects.json 手加 startScript 后 GET /api/projects 能读回",
+      "status": "todo",
+      "read_files": ["packages/server/src/db.ts"],
+      "write_files": ["packages/server/src/db.ts"]
+    },
+    {
+      "id": 2,
+      "title": "后端 projects.ts：GET/PUT /api/projects/:id/start-script",
+      "verify": "server 构建通过；curl GET 结构正确；PUT 合法成功/非法 400 且 LogsView 见 ERROR",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/projects.ts", "packages/server/src/db.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/routes/projects.ts"]
+    },
+    {
+      "id": 3,
+      "title": "前端 types.ts + api.ts：Project.startScript + getStartScript/setStartScript",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"]
+    },
+    {
+      "id": 4,
+      "title": "前端 StartScriptDialog.tsx 新建",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/NewProjectDialog.tsx", "packages/web/src/components/runExecutable.ts", "packages/web/src/api.ts", "packages/web/src/logs.ts"],
+      "write_files": ["packages/web/src/components/StartScriptDialog.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "前端 ProjectsColumn.tsx：▶ 按钮 + 右键菜单项 + 挂弹窗",
+      "verify": "pnpm -F @aimon/web build 通过；git diff --name-only HEAD 仅含 write_files",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/layout/ProjectsColumn.tsx", "packages/web/src/components/StartScriptDialog.tsx", "packages/web/src/components/runExecutable.ts"],
+      "write_files": ["packages/web/src/components/layout/ProjectsColumn.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "端到端人工验收",
+      "verify": "浏览器三条主流程 + LogsView 起止配对 + 非法 PUT ERROR",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

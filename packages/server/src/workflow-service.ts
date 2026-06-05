@@ -26,12 +26,18 @@
  *   让 UI 明确告知，重试时第一步幂等（anchor / 目录已在 → no-op）。
  * - remove：先卸 Harness 文件，再撤 CLAUDE.md 段；任意一步失败 partial。
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { WorkflowMode } from "./db.js";
 import {
   DEV_DOCS_GUIDELINES,
-  ISSUES_ARCHIVE_SECTION,
+  DEV_DOCS_VERSION,
 } from "./dev-docs-guidelines.js";
 import { getGstackStatus } from "./gstack-installer.js";
 import {
@@ -56,10 +62,21 @@ import {
   removeSuperpowersGuidelines,
 } from "./superpowers-guidelines.js";
 
-// ---------- Dev Docs (CLAUDE.md 段落) ----------
+// ---------- Dev Docs（独立文件 .aimon/workflow/dev-docs.md + CLAUDE.md @引用）----------
 
+// 老内联形态的 h1 锚点（仅迁移检测用）。必须按"整行"匹配，避免被新形态里
+// 别处的 `## ...` 当成子串误命中。
 const MAIN_GUIDELINES_ANCHOR = "# Dev Docs 工作流";
-const ISSUES_SECTION_ANCHOR = "## Issues 档案";
+const INLINE_ANCHOR_RE = /^# Dev Docs 工作流\s*$/m;
+
+const DEV_DOCS_FILE_REL = ".aimon/workflow/dev-docs.md";
+const DEV_DOCS_IMPORT_LINE = "@" + DEV_DOCS_FILE_REL;
+const DEV_DOCS_IMPORT_MARKER = "<!-- dev-docs-workflow:import -->";
+const DEV_DOCS_IMPORT_BLOCK =
+  DEV_DOCS_IMPORT_MARKER + "\n" + DEV_DOCS_IMPORT_LINE;
+
+/** 'none' 未装 / 'inline-legacy' 老内联待迁移 / 'file' 已是独立文件形态 */
+export type DevDocsForm = "none" | "inline-legacy" | "file";
 
 function appendToClaudeMd(
   projectPath: string,
@@ -87,50 +104,79 @@ function appendToClaudeMd(
   return true;
 }
 
-function insertSectionBeforeSeparator(
-  projectPath: string,
-  section: string,
-  sectionAnchor: string,
-  mainAnchor: string,
-): boolean {
-  const target = join(projectPath, "CLAUDE.md");
-  let existing: string;
-  try {
-    existing = readFileSync(target, "utf8");
-  } catch {
-    return false;
-  }
-  const mainIdx = existing.indexOf(mainAnchor);
-  if (mainIdx < 0) return false;
-
-  const afterMain = existing.slice(mainIdx);
-  const sepMatch = /\n---\s*\n/.exec(afterMain);
-  const blockEndRel = sepMatch ? sepMatch.index + 1 : afterMain.length;
-  const block = afterMain.slice(0, blockEndRel);
-
-  if (block.includes(sectionAnchor)) return false;
-
-  const blockTrimmed = block.replace(/\s+$/, "");
-  const rebuiltBlock = `${blockTrimmed}\n\n${section.trimEnd()}\n`;
-  const rebuilt =
-    existing.slice(0, mainIdx) + rebuiltBlock + afterMain.slice(blockEndRel);
-  writeFileSync(target, rebuilt, "utf8");
-  return true;
+/** 把 DEV_DOCS_GUIDELINES 母版写到项目的 .aimon/workflow/dev-docs.md（覆盖）。 */
+function writeDevDocsFile(projectPath: string): void {
+  const dir = join(projectPath, ".aimon", "workflow");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "dev-docs.md"), DEV_DOCS_GUIDELINES, "utf8");
 }
 
+function deleteDevDocsFile(projectPath: string): void {
+  try {
+    rmSync(join(projectPath, ".aimon", "workflow", "dev-docs.md"), {
+      force: true,
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 确保 CLAUDE.md 含 @引用块；已含则 no-op。返回是否改了 CLAUDE.md。 */
+function ensureImportBlock(projectPath: string): boolean {
+  return appendToClaudeMd(
+    projectPath,
+    DEV_DOCS_IMPORT_BLOCK,
+    DEV_DOCS_IMPORT_LINE,
+  );
+}
+
+/** 装配：写独立文件 + 确保引用块（替代旧的"内联整段进 CLAUDE.md"）。 */
 function appendDevDocsGuidelines(projectPath: string): boolean {
-  const wroteFull = appendToClaudeMd(
-    projectPath,
-    DEV_DOCS_GUIDELINES,
-    MAIN_GUIDELINES_ANCHOR,
-  );
-  if (wroteFull) return true;
-  return insertSectionBeforeSeparator(
-    projectPath,
-    ISSUES_ARCHIVE_SECTION,
-    ISSUES_SECTION_ANCHOR,
-    MAIN_GUIDELINES_ANCHOR,
-  );
+  writeDevDocsFile(projectPath);
+  return ensureImportBlock(projectPath);
+}
+
+function parseDevDocsVersion(text: string): number | null {
+  const m = /<!--\s*dev-docs-workflow:v(\d+)\s*-->/.exec(text);
+  return m ? Number(m[1]) : null;
+}
+
+function readDevDocsFileVersion(projectPath: string): number | null {
+  try {
+    const txt = readFileSync(
+      join(projectPath, ".aimon", "workflow", "dev-docs.md"),
+      "utf8",
+    );
+    return parseDevDocsVersion(txt);
+  } catch {
+    return null;
+  }
+}
+
+/** 老内联块范围 [start,end)：h1 锚点起，到下一 `\n\n---\n\n#` 或 EOF（安全边界，不吃相邻段）。 */
+function findInlineBlockRange(
+  content: string,
+): { start: number; end: number } | null {
+  const m = INLINE_ANCHOR_RE.exec(content);
+  if (!m) return null;
+  const start = m.index;
+  const NEXT_SECTION = "\n\n---\n\n#";
+  const nextIdx = content.indexOf(NEXT_SECTION, start + m[0].length);
+  const end = nextIdx < 0 ? content.length : nextIdx;
+  return { start, end };
+}
+
+/** 删掉 [start,end) 区域，并连带吃掉它前面的一个 `\n\n---\n\n` 分隔，避免留下孤立 `---`。 */
+function cutRegionWithLeadingSep(
+  content: string,
+  start: number,
+  end: number,
+): string {
+  const SEP = "\n\n---\n\n";
+  let s = start;
+  if (content.slice(0, s).endsWith(SEP)) s -= SEP.length;
+  const out = content.slice(0, s) + content.slice(end);
+  return out.replace(/\s+$/, "") + "\n";
 }
 
 function removeDevDocsGuidelines(projectPath: string): {
@@ -144,21 +190,39 @@ function removeDevDocsGuidelines(projectPath: string): {
   } catch {
     return { changed: false, reason: "claude_md_missing" };
   }
-  const REMOVE_PREFIX = "\n\n---\n\n" + MAIN_GUIDELINES_ANCHOR;
-  const idx = content.indexOf(REMOVE_PREFIX);
-  if (idx < 0) {
-    // CLAUDE.md 存在但里面没有"# Dev Docs 工作流"段——可能是用户手写过、
-    // 或本来就没装；按 idempotent 处理。
-    return { changed: false, reason: "anchor_missing" };
+
+  if (content.includes(DEV_DOCS_IMPORT_LINE)) {
+    // file 形态：删引用块（marker 行 + @行）+ 删独立文件
+    const lineIdx = content.indexOf(DEV_DOCS_IMPORT_LINE);
+    const markerIdx = content.lastIndexOf(DEV_DOCS_IMPORT_MARKER, lineIdx);
+    const start = markerIdx >= 0 && markerIdx < lineIdx ? markerIdx : lineIdx;
+    let end = content.indexOf("\n", lineIdx);
+    if (end < 0) end = content.length;
+    const next = cutRegionWithLeadingSep(content, start, end);
+    writeFileSync(target, next, "utf8");
+    deleteDevDocsFile(projectPath);
+    return { changed: true };
   }
-  const trimmed = content.slice(0, idx).replace(/\s+$/, "");
-  writeFileSync(target, trimmed + "\n", "utf8");
-  return { changed: true };
+
+  // inline-legacy 形态：删内联块（安全边界）
+  const range = findInlineBlockRange(content);
+  if (range) {
+    const next = cutRegionWithLeadingSep(content, range.start, range.end);
+    writeFileSync(target, next, "utf8");
+    deleteDevDocsFile(projectPath);
+    return { changed: true };
+  }
+
+  return { changed: false, reason: "anchor_missing" };
 }
 
 function getDevDocsStatus(projectPath: string): {
   enabled: boolean;
   claudeMdExists: boolean;
+  form: DevDocsForm;
+  installedVersion: number | null;
+  currentVersion: number;
+  outdated: boolean;
 } {
   const target = join(projectPath, "CLAUDE.md");
   let claudeMdExists = true;
@@ -168,9 +232,34 @@ function getDevDocsStatus(projectPath: string): {
   } catch {
     claudeMdExists = false;
   }
-  const enabled =
-    claudeMdExists && content.indexOf(MAIN_GUIDELINES_ANCHOR) >= 0;
-  return { enabled, claudeMdExists };
+
+  let form: DevDocsForm = "none";
+  if (claudeMdExists && content.includes(DEV_DOCS_IMPORT_LINE)) {
+    form = "file";
+  } else if (claudeMdExists && INLINE_ANCHOR_RE.test(content)) {
+    form = "inline-legacy";
+  }
+
+  // file 形态版本读独立文件戳；inline-legacy 读 CLAUDE.md 内联戳（兼容上一版 v1 内联）。
+  let installedVersion: number | null = null;
+  if (form === "file") installedVersion = readDevDocsFileVersion(projectPath);
+  else if (form === "inline-legacy")
+    installedVersion = parseDevDocsVersion(content);
+
+  // inline-legacy 永远视为"待迁移"（outdated=true）；file 形态戳低于当前 → outdated。
+  const outdated =
+    form === "inline-legacy" ||
+    (form === "file" &&
+      (installedVersion === null || installedVersion < DEV_DOCS_VERSION));
+
+  return {
+    enabled: form !== "none",
+    claudeMdExists,
+    form,
+    installedVersion,
+    currentVersion: DEV_DOCS_VERSION,
+    outdated,
+  };
 }
 
 // ---------- 聚合 API ----------
@@ -257,7 +346,18 @@ export interface WorkflowStatus {
    * - `null`：未应用任何规范工作流。
    */
   detectedMode: WorkflowMode | null;
-  devDocs: { enabled: boolean; claudeMdExists: boolean };
+  devDocs: {
+    enabled: boolean;
+    claudeMdExists: boolean;
+    /** 'none' 未装 / 'inline-legacy' 老内联待迁移 / 'file' 已是独立文件形态。 */
+    form: DevDocsForm;
+    /** 已装的版本号（file 形态读独立文件戳；inline-legacy 读内联戳）；无戳为 null。 */
+    installedVersion: number | null;
+    /** 当前母版版本号（DEV_DOCS_VERSION）。 */
+    currentVersion: number;
+    /** inline-legacy 一律 true（待迁移）；file 形态戳低于当前 → true。 */
+    outdated: boolean;
+  };
   openspec: OpenSpecStatus;
   harness: HarnessStatus;
   superpowers: { enabled: boolean; claudeMdExists: boolean };
@@ -503,4 +603,149 @@ export async function getWorkflowStatus(
     gstack,
     applied,
   };
+}
+
+// ---------- Dev Docs 母版统一对齐（迁移到独立文件 + 更新；单项目 + 批量） ----------
+
+export interface DevDocsUpdateResult {
+  /** 本次是否真改了东西（已是最新文件形态或未装 → false）。 */
+  changed: boolean;
+  reason?: "claude_md_missing";
+  /** 对齐后的形态。 */
+  form: DevDocsForm;
+  /** 做了什么：迁移(老内联→独立文件) / 更新(覆盖独立文件) / 无操作。 */
+  action: "migrate" | "update" | "noop";
+  installedVersion: number | null;
+  currentVersion: number;
+}
+
+/**
+ * 把单个项目对齐到"最新独立文件形态"：
+ * - inline-legacy → 移除内联块、改成 @引用块、落下独立文件（迁移）
+ * - file → 覆盖独立文件 + 自愈引用块（更新）
+ * - none → no-op
+ *
+ * 只动 Dev Docs 工作流相关部分（内联块 / 引用块 / 独立文件），CLAUDE.md 其余内容保留。
+ */
+export function updateProjectDevDocs(projectPath: string): DevDocsUpdateResult {
+  const st = getDevDocsStatus(projectPath);
+  const tail = { currentVersion: DEV_DOCS_VERSION };
+
+  if (st.form === "none") {
+    return {
+      changed: false,
+      form: "none",
+      action: "noop",
+      installedVersion: null,
+      ...tail,
+    };
+  }
+
+  if (st.form === "file") {
+    // 覆盖独立文件 + 确保引用块在（自愈）
+    writeDevDocsFile(projectPath);
+    ensureImportBlock(projectPath);
+    return {
+      changed: true,
+      form: "file",
+      action: "update",
+      installedVersion: DEV_DOCS_VERSION,
+      ...tail,
+    };
+  }
+
+  // inline-legacy → 迁移：内联块替换成引用块 + 落下独立文件
+  const target = join(projectPath, "CLAUDE.md");
+  let content: string;
+  try {
+    content = readFileSync(target, "utf8");
+  } catch {
+    return {
+      changed: false,
+      reason: "claude_md_missing",
+      form: "inline-legacy",
+      action: "noop",
+      installedVersion: null,
+      ...tail,
+    };
+  }
+  const range = findInlineBlockRange(content);
+  if (!range) {
+    return {
+      changed: false,
+      form: "none",
+      action: "noop",
+      installedVersion: null,
+      ...tail,
+    };
+  }
+  const before = content.slice(0, range.start);
+  const after = content.slice(range.end);
+  const rebuilt = after
+    ? `${before}${DEV_DOCS_IMPORT_BLOCK}${after}`
+    : `${before}${DEV_DOCS_IMPORT_BLOCK}\n`;
+  writeFileSync(target, rebuilt, "utf8");
+  writeDevDocsFile(projectPath);
+  return {
+    changed: true,
+    form: "file",
+    action: "migrate",
+    installedVersion: DEV_DOCS_VERSION,
+    ...tail,
+  };
+}
+
+export interface RefreshAllResult {
+  updated: {
+    id: string;
+    name: string;
+    action: "migrate" | "update";
+    from: number | null;
+    to: number;
+  }[];
+  skipped: {
+    id: string;
+    name: string;
+    reason: "up-to-date" | "not-installed" | "no-claude-md";
+  }[];
+}
+
+/**
+ * 遍历传入项目，按形态分派：inline-legacy 必迁移、file 仅 outdated 才覆盖、其余跳过。
+ * 项目清单由调用方（路由层）从 listProjects() 取并剔除 __hub__ 后传入，便于测试与解耦 db。
+ */
+export function refreshAllOutdatedDevDocs(
+  projects: { id: string; name: string; path: string }[],
+): RefreshAllResult {
+  const updated: RefreshAllResult["updated"] = [];
+  const skipped: RefreshAllResult["skipped"] = [];
+  for (const p of projects) {
+    const st = getDevDocsStatus(p.path);
+    if (st.form === "none") {
+      skipped.push({
+        id: p.id,
+        name: p.name,
+        reason: st.claudeMdExists ? "not-installed" : "no-claude-md",
+      });
+      continue;
+    }
+    if (st.form === "file" && !st.outdated) {
+      skipped.push({ id: p.id, name: p.name, reason: "up-to-date" });
+      continue;
+    }
+    const from = st.installedVersion;
+    const r = updateProjectDevDocs(p.path);
+    if (r.changed && (r.action === "migrate" || r.action === "update")) {
+      updated.push({
+        id: p.id,
+        name: p.name,
+        action: r.action,
+        from,
+        to: DEV_DOCS_VERSION,
+      });
+    } else {
+      skipped.push({ id: p.id, name: p.name, reason: "not-installed" });
+    }
+  }
+  return { updated, skipped };
 }

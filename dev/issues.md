@@ -38,3 +38,4 @@
 - [x] web 的 tsconfig.app.tsbuildinfo 被 git 跟踪、server 的 tsconfig.tsbuildinfo 没有（文件 packages/web/tsconfig.app.tsbuildinfo；上下文：2026-05-22 跑 tsc -b 发现 web tsbuildinfo 进 diff、server 的被 gitignore，构建缓存不应入库，建议把 web 的也加进 .gitignore）
 - [ ] WebSocket 输出缺少 backpressure，输出洪峰会拖垮浏览器或后端（文件 packages/server/src/ws-hub.ts:68,292；上下文：2026-05-22 终端卡顿排查时 Codex 指出，ws-hub 只做 16ms 合并、队列无字节上限，safeSend 不看 bufferedAmount、无慢客户端保护，AI/命令疯狂刷屏时会卡；建议每 client 设 bufferedAmount 上限 + 每 session 队列设最大字节数）
 - [ ] refreshSessions 默认 subscribe 全部 alive 会话，与 TerminalHost 保活预算不一致（文件 packages/web/src/store.ts:668-669；上下文：2026-05-22 终端保活预算上线后，被预算剔除、未挂 SessionView 的会话仍被 refreshSessions 重新订阅 WS，订阅与渲染不同步；收益小未在本轮处理，建议让订阅跟随保活集合或做引用计数）
+- [ ] db.ts isWorkflowMode 只认 dev-docs|openspec，漏 spec-trio，会把 spec-trio 项目读 projects.json 时降级成 null（文件 packages/server/src/db.ts:47；上下文：types.ts 的 WorkflowMode 含 spec-trio，但 db 校验未同步）

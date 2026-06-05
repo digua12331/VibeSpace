@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as api from '../api'
 import { useStore, type SelectedChange } from '../store'
-import type { GraphCommit } from '../types'
+import type { AgentKind, GraphCommit } from '../types'
+import { pushLog } from '../logs'
+import { sendToSession } from '../sendToSession'
+import { openContextMenu, type ContextMenuItem } from './ContextMenu'
+
+// shell 类会话不消费这段中文提交描述，跟文件右键菜单一致地排除。
+const SHELL_AGENTS: AgentKind[] = ['shell', 'cmd', 'pwsh']
 
 /**
  * VS Code-ish commit graph. Reads /graph (newest-first, --all), assigns each
@@ -155,6 +161,75 @@ export default function GitGraph({ projectId }: Props) {
   const selectedChange = useStore((s) => s.selectedChange)
   const selectChange = useStore((s) => s.selectChange)
   const openFile = useStore((s) => s.openFile)
+  const sessions = useStore((s) => s.sessions)
+  const liveStatus = useStore((s) => s.liveStatus)
+
+  // 本项目存活、非 shell 的 AI 会话，用于右键「发送到对话」。仿 FilesView.aliveSessions。
+  const aliveAiSessions = useMemo(
+    () =>
+      sessions
+        .filter((s) => {
+          if (s.projectId !== projectId) return false
+          if (SHELL_AGENTS.includes(s.agent)) return false
+          const st = liveStatus[s.id] ?? s.status
+          return st !== 'stopped' && st !== 'crashed'
+        })
+        .map((s) => ({ id: s.id, agent: s.agent })),
+    [sessions, liveStatus, projectId],
+  )
+
+  const handleCommitContext = useCallback(
+    (e: React.MouseEvent, c: GraphCommit) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const text = `提交 ${c.shortSha} "${c.subject}" `
+      const sendItem: ContextMenuItem =
+        aliveAiSessions.length === 0
+          ? { label: '发送到对话', icon: '➡', disabled: true }
+          : aliveAiSessions.length === 1
+            ? {
+                label: `发送到 ${aliveAiSessions[0].agent}·${aliveAiSessions[0].id.slice(-6)}`,
+                icon: '➡',
+                onSelect: () =>
+                  void sendToSession(projectId, aliveAiSessions[0], text, {
+                    scope: 'graph',
+                    meta: { sha: c.sha, subject: c.subject },
+                  }),
+              }
+            : {
+                label: '发送到对话',
+                icon: '➡',
+                submenu: aliveAiSessions.map((s) => ({
+                  label: `${s.agent}·${s.id.slice(-6)}`,
+                  onSelect: () =>
+                    void sendToSession(projectId, s, text, {
+                      scope: 'graph',
+                      meta: { sha: c.sha, subject: c.subject },
+                    }),
+                })),
+              }
+      openContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        items: [
+          sendItem,
+          {
+            label: '复制提交信息',
+            icon: '📋',
+            onSelect: async () => {
+              try {
+                await navigator.clipboard.writeText(text.trimEnd())
+                pushLog({ level: 'info', scope: 'graph', msg: `复制提交信息 ${c.shortSha}` })
+              } catch {
+                pushLog({ level: 'warn', scope: 'graph', msg: `复制提交信息失败 ${c.shortSha}` })
+              }
+            },
+          },
+        ],
+      })
+    },
+    [projectId, aliveAiSessions],
+  )
 
   const load = useCallback(async () => {
     const hasCache =
@@ -289,6 +364,7 @@ export default function GitGraph({ projectId }: Props) {
                 <li
                   key={row.commit.sha}
                   onClick={() => onCommitClick(row.commit)}
+                  onContextMenu={(e) => handleCommitContext(e, row.commit)}
                   style={{
                     height: ROW_HEIGHT,
                     paddingLeft: graphWidth + 8,

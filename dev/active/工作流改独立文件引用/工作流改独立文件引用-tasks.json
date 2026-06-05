@@ -1,0 +1,61 @@
+{
+  "task": "工作流改独立文件引用",
+  "steps": [
+    {
+      "id": 1,
+      "title": "装配改写为独立文件+引用",
+      "verify": "干净项目装配后独立文件含戳、CLAUDE.md 含引用行无内联；server build 过",
+      "status": "todo",
+      "read_files": ["packages/server/src/workflow-service.ts", "packages/server/src/dev-docs-guidelines.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts"]
+    },
+    {
+      "id": 2,
+      "title": "三态状态识别",
+      "verify": "三种形态 status.form 正确；server+web build 过",
+      "status": "todo",
+      "read_files": ["packages/server/src/workflow-service.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts", "packages/web/src/types.ts"]
+    },
+    {
+      "id": 3,
+      "title": "迁移/更新核心 migrateOrUpdateDevDocs",
+      "verify": "断言脚本：legacy迁移相邻段逐字保留+变引用行+独立文件存在；file更新覆盖文件不动引用与内容",
+      "status": "todo",
+      "read_files": ["packages/server/src/workflow-service.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts"]
+    },
+    {
+      "id": 4,
+      "title": "卸载兼容两形态 + refresh-all 分派",
+      "verify": "断言脚本：两形态卸载干净、相邻段保留；server build 过",
+      "status": "todo",
+      "read_files": ["packages/server/src/workflow-service.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts"]
+    },
+    {
+      "id": 5,
+      "title": "路由+前端三态UI",
+      "verify": "web build 过；浏览器三态显示+按钮翻转+LogsView 配对（手动验收）",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/projects.ts", "packages/web/src/api.ts", "packages/web/src/components/PermissionsDrawer.tsx", "packages/web/src/logs.ts"],
+      "write_files": ["packages/server/src/routes/projects.ts", "packages/web/src/api.ts", "packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "金丝雀迁移 VibeSpace 自身",
+      "verify": "CLAUDE.md 变薄+引用行在+独立文件落地；真会话验证引用生效（手动）",
+      "status": "todo",
+      "read_files": ["CLAUDE.md"],
+      "write_files": ["CLAUDE.md", ".aimon/workflow/dev-docs.md"]
+    },
+    {
+      "id": 7,
+      "title": "收尾核对白名单+双端build",
+      "verify": "git diff --name-only HEAD 无越界；server+web build 均过",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

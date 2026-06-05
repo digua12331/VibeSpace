@@ -40,6 +40,7 @@ import { registerRawFileRoutes } from "./routes/raw-file.js";
 import { registerSubagentRunsRoutes } from "./routes/subagent-runs.js";
 import { registerSkillCatalogRoutes } from "./routes/skill-catalog.js";
 import { registerSkillMarketRoutes } from "./routes/skill-market.js";
+import { registerWorkflowRoutes } from "./routes/workflow.js";
 import { registerSlashCommandRoutes } from "./routes/slash-commands.js";
 import { registerOpenspecRoutes } from "./routes/openspec.js";
 import { registerExternalToolsRoutes } from "./routes/external-tools.js";
@@ -279,6 +280,7 @@ async function main(): Promise<void> {
   await registerSubagentRunsRoutes(app);
   await registerSkillCatalogRoutes(app);
   await registerSkillMarketRoutes(app);
+  await registerWorkflowRoutes(app);
   await registerSlashCommandRoutes(app);
   await registerOpenspecRoutes(app);
   await registerExternalToolsRoutes(app);

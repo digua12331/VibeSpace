@@ -1,0 +1,37 @@
+{
+  "task": "提交图右键发送到对话",
+  "steps": [
+    {
+      "id": 1,
+      "title": "GitGraph 接入 sessions/liveStatus，派生存活非 shell AI 会话",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/GitGraph.tsx", "packages/web/src/components/sidebar/FilesView.tsx", "packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/components/GitGraph.tsx"]
+    },
+    {
+      "id": 2,
+      "title": "handleCommitContext：发送到对话(三态)+复制提交信息",
+      "verify": "浏览器右键提交行弹菜单，点发送后输入框出现提交信息",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/ContextMenu.tsx", "packages/web/src/components/fileContextMenu.ts", "packages/web/src/sendToSession.ts"],
+      "write_files": ["packages/web/src/components/GitGraph.tsx"]
+    },
+    {
+      "id": 3,
+      "title": "提交行 li 挂 onContextMenu",
+      "verify": "右键命中该行不误触发左键",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/GitGraph.tsx"],
+      "write_files": ["packages/web/src/components/GitGraph.tsx"]
+    },
+    {
+      "id": 4,
+      "title": "终验 build + 日志 + diff 白名单",
+      "verify": "build 通过 + LogsView scope=graph 起止配对 + diff 只含 GitGraph.tsx",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/GitGraph.tsx"],
+      "write_files": ["packages/web/src/components/GitGraph.tsx"]
+    }
+  ]
+}

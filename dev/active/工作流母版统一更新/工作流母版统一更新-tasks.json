@@ -1,0 +1,53 @@
+{
+  "task": "工作流母版统一更新",
+  "steps": [
+    {
+      "id": 1,
+      "title": "母版盖版本戳",
+      "verify": "grep 母版含 <!-- dev-docs-workflow:v1 -->；pnpm -F @aimon/server build 过",
+      "status": "todo",
+      "read_files": ["packages/server/src/dev-docs-guidelines.ts"],
+      "write_files": ["packages/server/src/dev-docs-guidelines.ts"]
+    },
+    {
+      "id": 2,
+      "title": "状态读版本 + 暴露 outdated",
+      "verify": "server build + web build 过；无戳 CLAUDE.md 返回 outdated=true",
+      "status": "todo",
+      "read_files": ["packages/server/src/workflow-service.ts", "packages/server/src/dev-docs-guidelines.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts", "packages/web/src/types.ts"]
+    },
+    {
+      "id": 3,
+      "title": "就地块替换函数 updateDevDocsGuidelines",
+      "verify": "断言三段式 CLAUDE.md 更新后项目自有内容+Superpowers段逐字不变、Dev Docs 段已换新",
+      "status": "todo",
+      "read_files": ["packages/server/src/workflow-service.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts"]
+    },
+    {
+      "id": 4,
+      "title": "后端能力 + 路由（单项目更新 + 批量刷新）",
+      "verify": "server build 过；旧项目被刷、最新项目跳过；LogsView 见 project/update-workflow 与 workflow/refresh-all 起止配对含一次 ERROR",
+      "status": "todo",
+      "read_files": ["packages/server/src/workflow-service.ts", "packages/server/src/routes/projects.ts", "packages/server/src/index.ts", "packages/server/src/db.ts", "packages/server/src/log-bus.ts", "packages/server/src/routes/skill-market.ts"],
+      "write_files": ["packages/server/src/workflow-service.ts", "packages/server/src/routes/projects.ts", "packages/server/src/routes/workflow.ts", "packages/server/src/index.ts"]
+    },
+    {
+      "id": 5,
+      "title": "前端按钮 + 状态 + api 客户端",
+      "verify": "pnpm -F @aimon/web build 过；浏览器旧项目可更新→点更新→已最新；LogsView 见前端 logAction 起止配对",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/PermissionsDrawer.tsx", "packages/web/src/api.ts", "packages/web/src/logs.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/components/PermissionsDrawer.tsx", "packages/web/src/api.ts"]
+    },
+    {
+      "id": 6,
+      "title": "收尾核对白名单 + 双端 build",
+      "verify": "git diff --name-only HEAD 无越界；server build + web build 均过",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

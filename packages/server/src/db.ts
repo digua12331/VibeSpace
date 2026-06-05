@@ -70,6 +70,8 @@ function loadProjectsJson(): Project[] {
         if (isProjectLayout(layout)) base.layout = layout;
         // 缺字段或非法值都序列化成 null（前端可据此判断"未设置"）
         base.workflowMode = workflowMode;
+        const ss = (p as Project).startScript;
+        if (typeof ss === "string" && ss.length > 0) base.startScript = ss;
         return base;
       });
   } catch {
@@ -270,6 +272,9 @@ export interface Project {
   /** 项目级"开发流程"模式；null 等同未设置（侧栏既不显示 Dev Docs 也不显示 OpenSpec tab）。
    *  存 projects.json 真源，不进 SQLite 影子表（与 layout 同模式，详 dev/active D11）。 */
   workflowMode?: WorkflowMode | null;
+  /** 项目的"一键启动脚本"路径：项目目录内存相对项目根（forward-slash），目录外存绝对路径；
+   *  null/缺省=未设置（点 ▶ 时回退找根目录 start.bat）。同 workflowMode，仅落 projects.json。 */
+  startScript?: string | null;
 }
 
 export type SessionIsolation = "shared" | "worktree";
@@ -393,6 +398,20 @@ export function updateProjectWorkflowMode(
   if (idx < 0) return false;
   const next = list.slice();
   next[idx] = { ...next[idx], workflowMode: mode };
+  saveProjectsJson(next);
+  return true;
+}
+
+/** 把一键启动脚本路径写进 projects.json 真源；null 表示清空（点 ▶ 回退找根目录 start.bat）。 */
+export function updateProjectStartScript(
+  id: string,
+  script: string | null,
+): boolean {
+  const list = loadProjectsJson();
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx < 0) return false;
+  const next = list.slice();
+  next[idx] = { ...next[idx], startScript: script };
   saveProjectsJson(next);
   return true;
 }
