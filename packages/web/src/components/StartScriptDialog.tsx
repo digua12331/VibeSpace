@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api'
 import { logAction } from '../logs'
-import { runBatFile } from './runExecutable'
+import { runProjectStartScript } from './runExecutable'
 import type { Project } from '../types'
 
 /** Windows 绝对路径判断：盘符开头（C:\ / C:/）、UNC（\\）或 POSIX 根（/）。 */
@@ -82,7 +82,7 @@ export default function StartScriptDialog({
         },
         { projectId: project.id, meta: { script: value } },
       )
-      await runBatFile(project.id, toAbs(project.path, value))
+      await runProjectStartScript(project.id, toAbs(project.path, value))
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

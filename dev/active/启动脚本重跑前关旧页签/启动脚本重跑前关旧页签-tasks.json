@@ -1,0 +1,21 @@
+{
+  "task": "启动脚本重跑前关旧页签",
+  "steps": [
+    {
+      "id": 1,
+      "title": "runExecutable.ts: runBatFile 返回 id + Map + runProjectStartScript/closePrevStartBat",
+      "verify": "pnpm -F @aimon/web build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/runExecutable.ts", "packages/web/src/store.ts", "packages/web/src/components/editor/EditorArea.tsx", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/components/runExecutable.ts"]
+    },
+    {
+      "id": 2,
+      "title": "两处启动入口改调 runProjectStartScript",
+      "verify": "build 过 + 浏览器三分支 + LogsView 起止配对",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/layout/ProjectsColumn.tsx", "packages/web/src/components/StartScriptDialog.tsx"],
+      "write_files": ["packages/web/src/components/layout/ProjectsColumn.tsx", "packages/web/src/components/StartScriptDialog.tsx"]
+    }
+  ]
+}

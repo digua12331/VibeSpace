@@ -5,7 +5,7 @@ import PermissionsDrawer from '../PermissionsDrawer'
 import { alertDialog, confirmDialog } from '../dialog/DialogHost'
 import { logAction } from '../../logs'
 import { sendToSession } from '../../sendToSession'
-import { runBatFile } from '../runExecutable'
+import { runProjectStartScript } from '../runExecutable'
 import StartScriptDialog from '../StartScriptDialog'
 import type { Project } from '../../types'
 
@@ -174,7 +174,7 @@ export default function ProjectsColumn({
     try {
       const { resolved } = await api.getStartScript(p.id)
       if (resolved) {
-        await runBatFile(p.id, resolved)
+        await runProjectStartScript(p.id, resolved)
       } else {
         setScriptDialogProject(p)
       }
