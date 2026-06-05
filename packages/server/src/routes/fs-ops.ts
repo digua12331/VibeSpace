@@ -24,6 +24,13 @@ const PathQuery = z.object({
   path: z.string().min(1).max(4096),
 });
 
+// Cap write payload to guard against pathological saves. 2MB comfortably
+// covers any hand-editable HTML page.
+const WriteFileBody = z.object({
+  path: z.string().min(1).max(4096),
+  content: z.string().max(2 * 1024 * 1024),
+});
+
 async function loadProjectOr404(
   reply: FastifyReply,
   id: string,
@@ -390,6 +397,73 @@ export async function registerFsOpsRoutes(app: FastifyInstance): Promise<void> {
           meta: {
             path: relPath,
             error: { message: (err as Error)?.message ?? String(err) },
+          },
+        });
+        return sendErr(reply, err);
+      }
+    },
+  );
+
+  // ---------- PUT /fs/write-file ----------
+  // Overwrite an EXISTING file inside the project worktree with new content.
+  // Used by the in-place HTML editor (FilePreview → HtmlPreview). Refuses to
+  // create new files, escape the project, or touch the hub workspace.
+  app.put<{ Params: { id: string }; Body: unknown }>(
+    "/api/projects/:id/fs/write-file",
+    async (req, reply) => {
+      if (req.params.id === HUB_PROJECT_ID) {
+        serverLog("warn", "hub", "拒绝在 __hub__ workspace 写文件", {
+          projectId: HUB_PROJECT_ID,
+        });
+        return reply.code(400).send({ error: "cannot_modify_hub_workspace" });
+      }
+      const proj = await loadProjectOr404(reply, req.params.id);
+      if (!proj) return;
+      const parsed = WriteFileBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+      }
+      const startedAt = Date.now();
+      const inputPath = parsed.data.path;
+      serverLog("info", "fs", "write-file 开始", {
+        projectId: proj.id,
+        meta: { path: inputPath, bytes: parsed.data.content.length },
+      });
+      try {
+        const abs = safeResolve(proj.path, inputPath);
+        const rel = toRepoRelative(proj.path, abs);
+        if (!rel) {
+          serverLog("warn", "fs", "write-file 拒绝: 不能写项目根", {
+            projectId: proj.id,
+            meta: { path: inputPath },
+          });
+          return reply
+            .code(400)
+            .send({ error: "invalid_path", message: "cannot write project root" });
+        }
+        // MVP overwrites in place only — refuse to create new files so this
+        // route can't be turned into an arbitrary file-creation primitive.
+        if (!existsSync(abs) || entryKind(abs) !== "file") {
+          serverLog("warn", "fs", "write-file 拒绝: 文件不存在", {
+            projectId: proj.id,
+            meta: { path: inputPath },
+          });
+          return reply.code(404).send({ error: "file_not_found" });
+        }
+        await writeFile(abs, parsed.data.content, "utf8");
+        bustStatusCache(proj.path);
+        serverLog("info", "fs", `write-file 成功 (${Date.now() - startedAt}ms)`, {
+          projectId: proj.id,
+          meta: { path: inputPath, bytes: parsed.data.content.length },
+        });
+        return reply.send({ ok: true, path: rel });
+      } catch (err) {
+        serverLog("error", "fs", `write-file 失败: ${(err as Error)?.message ?? String(err)}`, {
+          projectId: proj.id,
+          meta: {
+            path: inputPath,
+            ms: Date.now() - startedAt,
+            error: { name: (err as Error)?.name, message: (err as Error)?.message },
           },
         });
         return sendErr(reply, err);

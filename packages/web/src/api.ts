@@ -146,6 +146,24 @@ export function createProject(input: {
   return request<Project>('/api/projects', jsonInit('POST', input))
 }
 
+/** 一键启动脚本：resolved=要跑的绝对路径（无则 null），candidates=项目根目录下的 .bat/.cmd 文件名。 */
+export function getStartScript(
+  projectId: string,
+): Promise<{ resolved: string | null; candidates: string[] }> {
+  return request(`/api/projects/${encodeURIComponent(projectId)}/start-script`)
+}
+
+/** 设置/清空一键启动脚本（script=null 清空）。返回落库后的归一化值。 */
+export function setStartScript(
+  projectId: string,
+  script: string | null,
+): Promise<{ startScript: string | null }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/start-script`,
+    jsonInit('PUT', { script }),
+  )
+}
+
 export function applyWorkflow(
   projectId: string,
   opts: WorkflowApplyOptions = {},
@@ -180,6 +198,39 @@ export function getWorkflowStatus(projectId: string): Promise<WorkflowStatus> {
   return request<WorkflowStatus>(
     `/api/projects/${encodeURIComponent(projectId)}/workflow-status`,
   )
+}
+
+export interface DevDocsUpdateResult {
+  changed: boolean
+  reason?: 'claude_md_missing' | 'anchor_missing'
+  installedVersion: number | null
+  currentVersion: number
+}
+
+/** 把本项目的 Dev Docs 工作流段就地刷成最新母版。 */
+export function updateProjectWorkflow(
+  projectId: string,
+): Promise<DevDocsUpdateResult> {
+  return request<DevDocsUpdateResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/workflow/update`,
+    { method: 'POST' },
+  )
+}
+
+export interface RefreshAllResult {
+  updated: { id: string; name: string; from: number | null; to: number }[]
+  skipped: {
+    id: string
+    name: string
+    reason: 'up-to-date' | 'not-installed' | 'no-claude-md'
+  }[]
+}
+
+/** 一键把所有"已装且版本落后"的项目刷到最新母版。 */
+export function refreshAllWorkflows(): Promise<RefreshAllResult> {
+  return request<RefreshAllResult>('/api/workflow/refresh-all', {
+    method: 'POST',
+  })
 }
 
 // ---------- OpenSpec changes ----------
@@ -420,6 +471,18 @@ export function getProjectFile(
   if (ref) qs.set('ref', ref)
   return request<FileContent>(
     `/api/projects/${encodeURIComponent(projectId)}/file?${qs}`,
+  )
+}
+
+/** Overwrite an existing file in the project worktree (in-place HTML editor). */
+export function writeProjectFile(
+  projectId: string,
+  path: string,
+  content: string,
+): Promise<{ ok: boolean; path: string }> {
+  return request(
+    `/api/projects/${encodeURIComponent(projectId)}/fs/write-file`,
+    jsonInit('PUT', { path, content }),
   )
 }
 

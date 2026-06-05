@@ -14,12 +14,23 @@
  *   injection that could collide with the host page's CSS).
  * - Selector chain walks up until it finds an id, or reaches <body>. Uses
  *   nth-of-type so repeated siblings remain distinguishable.
+ *
+ * Edit mode (in-place HTML editing):
+ * - The parent posts {__aiCmd__:'enter-edit'|'exit-edit'|'request-save'} via
+ *   postMessage. enter-edit turns the body contentEditable on and suspends the
+ *   picker (no hover outline, no click-to-pick); exit-edit reverses it.
+ * - request-save clones the live document, strips the injected picker script
+ *   (id=__ai_picker__) and any contenteditable attributes, then posts the
+ *   serialized HTML back as {__aiSave__:true, html}. Serializing happens INSIDE
+ *   the iframe on purpose so the sandbox stays at allow-scripts only (no
+ *   allow-same-origin) — the parent never reads contentDocument directly.
  */
 export const HTML_PREVIEW_PICKER_SCRIPT = `
 (function () {
   if (window.__aiPickerInstalled__) return;
   window.__aiPickerInstalled__ = true;
 
+  var editMode = false;
   var prevOutline = null;
   var prevOutlineOffset = null;
   var prevEl = null;
@@ -79,6 +90,7 @@ export const HTML_PREVIEW_PICKER_SCRIPT = `
   }
 
   document.addEventListener('mouseover', function (e) {
+    if (editMode) return;
     setHover(e.target);
   }, true);
 
@@ -87,6 +99,9 @@ export const HTML_PREVIEW_PICKER_SCRIPT = `
   }, true);
 
   document.addEventListener('click', function (e) {
+    // In edit mode let the browser place the caret — don't preventDefault or
+    // hijack the click as an element pick.
+    if (editMode) return;
     e.preventDefault();
     e.stopPropagation();
     var el = e.target;
@@ -110,5 +125,43 @@ export const HTML_PREVIEW_PICKER_SCRIPT = `
     e.preventDefault();
     e.stopPropagation();
   }, true);
+
+  document.addEventListener('input', function () {
+    if (!editMode) return;
+    try { window.parent.postMessage({ __aiDirty__: true }, '*'); } catch (err) {}
+  }, true);
+
+  function serializeClean() {
+    var docEl = document.documentElement.cloneNode(true);
+    var inj = docEl.querySelector('#__ai_picker__');
+    if (inj && inj.parentNode) inj.parentNode.removeChild(inj);
+    var eds = docEl.querySelectorAll('[contenteditable]');
+    for (var i = 0; i < eds.length; i++) eds[i].removeAttribute('contenteditable');
+    var doctype = document.doctype ? '<!DOCTYPE ' + document.doctype.name + '>\\n' : '';
+    return doctype + docEl.outerHTML;
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent) return;
+    var data = e.data;
+    if (!data || typeof data.__aiCmd__ !== 'string') return;
+    if (data.__aiCmd__ === 'enter-edit') {
+      editMode = true;
+      clearHover();
+      if (document.body) document.body.contentEditable = 'true';
+    } else if (data.__aiCmd__ === 'exit-edit') {
+      editMode = false;
+      if (document.body) document.body.removeAttribute('contenteditable');
+    } else if (data.__aiCmd__ === 'request-save') {
+      var html;
+      try {
+        html = serializeClean();
+      } catch (err) {
+        try { window.parent.postMessage({ __aiSave__: true, error: String(err) }, '*'); } catch (e2) {}
+        return;
+      }
+      try { window.parent.postMessage({ __aiSave__: true, html: html }, '*'); } catch (e3) {}
+    }
+  });
 })();
 `

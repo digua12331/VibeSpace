@@ -287,6 +287,7 @@ export default function FilePreview({ projectId, path, ref, from, to }: Props) {
           path={path}
           content={file.content}
           truncated={file.truncated}
+          editable={isWorktree && !file.truncated}
         />
       )
     } else {

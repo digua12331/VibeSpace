@@ -1,0 +1,53 @@
+{
+  "task": "HTML页签就地编辑",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端新增写文件路由 PUT /fs/write-file",
+      "verify": "后端构建通过；curl 改真实文件落盘；越界路径被拒；不存在路径404；日志 scope=fs 起止配对",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/fs-ops.ts", "packages/server/src/git-service.ts", "packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/routes/fs-ops.ts"]
+    },
+    {
+      "id": 2,
+      "title": "前端 api 加 writeProjectFile",
+      "verify": "pnpm -F @aimon/web build 类型通过；签名与后端 body 对齐",
+      "status": "todo",
+      "read_files": ["packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/api.ts"]
+    },
+    {
+      "id": 3,
+      "title": "注入脚本加编辑模式与序列化回传",
+      "verify": "浏览器进编辑能打字；回传 HTML 不含注入脚本与 contenteditable 残留",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/htmlPreviewPicker.ts"],
+      "write_files": ["packages/web/src/components/htmlPreviewPicker.ts"]
+    },
+    {
+      "id": 4,
+      "title": "HtmlPreview 接编辑 UI + 保存 + 日志",
+      "verify": "build 通过；编辑→改字→保存→重开仍在；LogsView 见 html-preview save-file 起止；ERROR 人工触发",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/HtmlPreview.tsx", "packages/web/src/logs.ts", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/components/HtmlPreview.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "FilePreview 传 editable 信号",
+      "verify": "build 通过；历史版本/截断文件时编辑按钮消失",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/FilePreview.tsx"],
+      "write_files": ["packages/web/src/components/FilePreview.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "收尾构建与白名单比对",
+      "verify": "pnpm -F @aimon/web build 通过；git diff --name-only 仅白名单文件；失败分支 ERROR 已确认",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

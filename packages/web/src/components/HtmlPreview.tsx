@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { aimonWS } from '../ws'
 import { logAction } from '../logs'
+import { writeProjectFile } from '../api'
 import { dispatchClaude } from '../dispatchClaude'
 import { alertDialog } from './dialog/DialogHost'
 import { HTML_PREVIEW_PICKER_SCRIPT } from './htmlPreviewPicker'
@@ -11,6 +12,8 @@ interface Props {
   path: string
   content: string
   truncated?: boolean
+  /** Allow in-place editing + save. False for history refs / truncated files. */
+  editable?: boolean
 }
 
 interface Picked {
@@ -26,7 +29,13 @@ type DispatchTarget = 'new' | string
 const DIRECT_SEND_MAX = 8_000
 
 function wrapHtmlWithPicker(html: string): string {
-  return `${html}\n<script>${HTML_PREVIEW_PICKER_SCRIPT}</script>`
+  // id=__ai_picker__ lets the in-iframe serializer strip this script back out
+  // before saving, so our tooling code never lands in the user's file.
+  return `${html}\n<script id="__ai_picker__">${HTML_PREVIEW_PICKER_SCRIPT}</script>`
+}
+
+function hasUserScript(html: string): boolean {
+  return /<script[\s>]/i.test(html)
 }
 
 function buildPrompt(filePath: string, picked: Picked, userText: string): string {
@@ -49,12 +58,28 @@ function buildPrompt(filePath: string, picked: Picked, userText: string): string
   return lines.join('\n')
 }
 
-export default function HtmlPreview({ projectId, path, content, truncated }: Props) {
+export default function HtmlPreview({ projectId, path, content, truncated, editable }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const [picked, setPicked] = useState<Picked | null>(null)
   const [userText, setUserText] = useState('')
   const [target, setTarget] = useState<DispatchTarget>('new')
   const [dispatching, setDispatching] = useState(false)
+
+  // In-place editing state. liveContent drives srcDoc; it diverges from the
+  // `content` prop after a successful save (the parent doesn't re-fetch).
+  const [liveContent, setLiveContent] = useState(content)
+  const [editing, setEditing] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  // Resolver for the one-shot request-save round-trip with the iframe.
+  const pendingSaveRef = useRef<((html: string | null) => void) | null>(null)
+
+  // Reset edit state whenever a different file's content arrives.
+  useEffect(() => {
+    setLiveContent(content)
+    setEditing(false)
+    setDirty(false)
+  }, [content])
 
   const sessions = useStore((s) => s.sessions)
   const liveStatus = useStore((s) => s.liveStatus)
@@ -69,14 +94,30 @@ export default function HtmlPreview({ projectId, path, content, truncated }: Pro
       .sort((a, b) => a.started_at - b.started_at)
   }, [sessions, liveStatus, projectId])
 
-  const srcDoc = useMemo(() => wrapHtmlWithPicker(content), [content])
+  const srcDoc = useMemo(() => wrapHtmlWithPicker(liveContent), [liveContent])
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
       const iframeWin = iframeRef.current?.contentWindow
       if (!iframeWin || e.source !== iframeWin) return
-      const data = e.data as Partial<Picked> & { __aiPicker__?: boolean }
-      if (!data || data.__aiPicker__ !== true) return
+      const raw = e.data as
+        | (Partial<Picked> & { __aiPicker__?: boolean })
+        | { __aiSave__?: true; html?: string; error?: string }
+        | { __aiDirty__?: true }
+      if (!raw) return
+      if ((raw as { __aiSave__?: true }).__aiSave__ === true) {
+        const resolve = pendingSaveRef.current
+        pendingSaveRef.current = null
+        const m = raw as { html?: string }
+        resolve?.(typeof m.html === 'string' ? m.html : null)
+        return
+      }
+      if ((raw as { __aiDirty__?: true }).__aiDirty__ === true) {
+        setDirty(true)
+        return
+      }
+      const data = raw as Partial<Picked> & { __aiPicker__?: boolean }
+      if (data.__aiPicker__ !== true) return
       const payload: Picked = {
         selector: data.selector ?? null,
         outerHTML: data.outerHTML ?? '',
@@ -101,6 +142,54 @@ export default function HtmlPreview({ projectId, path, content, truncated }: Pro
   function closeDialog() {
     setPicked(null)
     setUserText('')
+  }
+
+  function postToIframe(cmd: 'enter-edit' | 'exit-edit' | 'request-save') {
+    iframeRef.current?.contentWindow?.postMessage({ __aiCmd__: cmd }, '*')
+  }
+
+  function toggleEdit() {
+    const next = !editing
+    setEditing(next)
+    postToIframe(next ? 'enter-edit' : 'exit-edit')
+  }
+
+  async function onSave() {
+    if (saving || !dirty) return
+    setSaving(true)
+    try {
+      const html = await new Promise<string | null>((resolve) => {
+        pendingSaveRef.current = resolve
+        postToIframe('request-save')
+        // Guard against a lost/late iframe reply so the button never wedges.
+        setTimeout(() => {
+          if (pendingSaveRef.current) {
+            pendingSaveRef.current = null
+            resolve(null)
+          }
+        }, 5000)
+      })
+      if (html == null) throw new Error('页面序列化失败或超时')
+      await logAction(
+        'html-preview',
+        'save-file',
+        async () => {
+          await writeProjectFile(projectId, path, html)
+        },
+        { projectId, meta: { path, bytes: html.length } },
+      )
+      // Reflect the saved result; reloading the iframe also exits edit mode.
+      setLiveContent(html)
+      setEditing(false)
+      setDirty(false)
+    } catch (e: unknown) {
+      await alertDialog(
+        `保存失败：${e instanceof Error ? e.message : String(e)}`,
+        { title: '保存失败', variant: 'danger' },
+      )
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function onDispatch() {
@@ -156,9 +245,40 @@ export default function HtmlPreview({ projectId, path, content, truncated }: Pro
           ⚠ 文件已截断；预览可能不完整
         </div>
       )}
-      <div className="px-3 py-1 text-[10px] text-subtle border-b border-border/40 bg-black/20">
-        沙箱预览（相对资源未处理）。点击任意元素 → 填写修改要求 → 派单给 Claude。
+      <div className="px-3 py-1 flex items-center justify-between gap-2 text-[10px] text-subtle border-b border-border/40 bg-black/20">
+        <span className="truncate">
+          {editing
+            ? '编辑模式：在页面上直接双击改文字，改完点保存。'
+            : '沙箱预览（相对资源未处理）。点击任意元素 → 填写修改要求 → 派单给 Claude。'}
+        </span>
+        {editable && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {dirty && <span className="text-amber-300" title="有未保存的修改">●</span>}
+            <button
+              onClick={toggleEdit}
+              className={`fluent-btn px-2 h-6 rounded border text-[11px] ${
+                editing
+                  ? 'bg-accent/15 border-accent/40 text-accent'
+                  : 'border-border text-muted hover:text-fg hover:bg-white/[0.06]'
+              }`}
+            >
+              {editing ? '退出编辑' : '编辑'}
+            </button>
+            <button
+              onClick={() => void onSave()}
+              disabled={!dirty || saving}
+              className="fluent-btn px-2 h-6 rounded border border-emerald-400/40 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20 disabled:opacity-40 text-[11px]"
+            >
+              {saving ? '保存中…' : '保存'}
+            </button>
+          </div>
+        )}
       </div>
+      {editing && hasUserScript(liveContent) && (
+        <div className="px-3 py-1 text-[10px] text-amber-300 bg-amber-500/10 border-b border-amber-600/40">
+          ⚠ 此页含脚本，就地编辑可能改变结构。复杂改动建议点元素派给 Claude 处理。
+        </div>
+      )}
       <iframe
         ref={iframeRef}
         title="html-preview"
