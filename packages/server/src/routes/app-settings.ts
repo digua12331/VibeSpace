@@ -40,6 +40,10 @@ const UpdateBody = z.object({
     .optional(),
   hibernation: HibernationSchema,
   terminalKeybindings: TerminalKeybindingsSchema,
+  // 漏了这条会被 zod 静默剥掉：前端传的新上限到不了 setAppSettings，既不存盘
+  // 也会让路由回传旧值把前端 store 打回去，表现为"改上限保存后不生效"。
+  // 范围与前端输入框 / clampMaxAiTerminals 对齐（1–50）。
+  maxAiTerminals: z.number().int().min(1).max(50).optional(),
 });
 
 export async function registerAppSettingsRoutes(
