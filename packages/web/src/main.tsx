@@ -64,9 +64,48 @@ if ('serviceWorker' in navigator) {
   })
 
   navigator.serviceWorker.addEventListener('message', (e) => {
-    const data = e.data as { type?: string; sessionId?: string; projectId?: string } | null
-    if (!data || data.type !== 'focus-session' || !data.sessionId) return
-    focusSession(data.sessionId, data.projectId)
+    const data = e.data as {
+      type?: string
+      sessionId?: string
+      projectId?: string
+      response?: string
+    } | null
+    if (!data || !data.sessionId) return
+    if (data.type === 'focus-session') {
+      focusSession(data.sessionId, data.projectId)
+      return
+    }
+    if (data.type === 'session-response') {
+      handleNotificationResponse(data.sessionId, data.response, data.projectId)
+      return
+    }
+  })
+}
+
+// 授权类通知上点"同意/拒绝"后，把对应按键发给该终端。
+// Claude 授权弹窗：默认高亮第一项 "Yes"，Enter 直接确认=同意；Esc=取消=No=拒绝。
+// 这两个按键依赖 Claude 弹窗的现有交互，Claude 大改交互时改这一处常量即可。
+const NOTIFY_RESPONSE_KEYS: Record<string, string> = {
+  approve: '\r',
+  reject: '\x1b',
+}
+
+function handleNotificationResponse(
+  sessionId: string,
+  response: string | undefined,
+  projectId?: string,
+) {
+  const key = response ? NOTIFY_RESPONSE_KEYS[response] : undefined
+  if (!key) return
+  aimonWS.sendInput(sessionId, key)
+  useStore.getState().clearNotify(sessionId)
+  pushLog({
+    level: 'info',
+    scope: 'session',
+    msg: `从通知${response === 'approve' ? '同意' : '拒绝'}授权`,
+    projectId,
+    sessionId,
+    meta: { response, via: 'notification' },
   })
 }
 

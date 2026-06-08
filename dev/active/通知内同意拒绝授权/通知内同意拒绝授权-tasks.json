@@ -1,0 +1,37 @@
+{
+  "task": "通知内同意拒绝授权",
+  "steps": [
+    {
+      "id": 1,
+      "title": "notify.ts 判定 kind 并传入 SW",
+      "verify": "类型检查过",
+      "status": "todo",
+      "read_files": ["packages/web/src/notify.ts", "packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/notify.ts"]
+    },
+    {
+      "id": 2,
+      "title": "sw.js 授权动作 + click 分支",
+      "verify": "授权通知显示同意/拒绝两按钮",
+      "status": "todo",
+      "read_files": ["packages/web/public/sw.js"],
+      "write_files": ["packages/web/public/sw.js"]
+    },
+    {
+      "id": 3,
+      "title": "main.tsx 处理 session-response 发按键",
+      "verify": "点同意/拒绝终端有反应，日志面板见条目",
+      "status": "todo",
+      "read_files": ["packages/web/src/main.tsx"],
+      "write_files": ["packages/web/src/main.tsx"]
+    },
+    {
+      "id": 4,
+      "title": "构建/类型检查",
+      "verify": "pnpm -F @aimon/web build 成功",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

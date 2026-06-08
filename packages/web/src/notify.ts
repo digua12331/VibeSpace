@@ -43,6 +43,19 @@ function hasServiceWorker(): boolean {
 }
 
 /**
+ * 区分两类 waiting_input 通知：
+ *  - 'permission'：Claude 在请求授权（Notification hook 文案固定为
+ *    "...needs your permission to use X"）→ 通知上给"同意/拒绝"快捷按钮。
+ *  - 'generic'：单纯等输入 / 对话结束 → 保持"打开会话 / 忽略 + 点击跳转"。
+ * 只靠文案关键字判定，足够稳且不引入额外结构数据。
+ */
+export type NotifyKind = 'permission' | 'generic'
+
+export function classifyNotification(detail?: string): NotifyKind {
+  return /permission/i.test(detail ?? '') ? 'permission' : 'generic'
+}
+
+/**
  * Fire the OS notification.
  *
  * When the Service Worker is registered, route through it so the notification
@@ -63,7 +76,11 @@ export function notifyWaitingInput(
   if (typeof Notification === 'undefined') return { shown: false, suppressedByFocus: false }
   if (Notification.permission !== 'granted') return { shown: false, suppressedByFocus: false }
 
-  const title = `aimon: ${projectName} 等待输入`
+  const kind = classifyNotification(detail)
+  const title =
+    kind === 'permission'
+      ? `aimon: ${projectName} 请求授权`
+      : `aimon: ${projectName} 等待输入`
   const body = detail || agent
 
   if (hasServiceWorker()) {
@@ -79,6 +96,7 @@ export function notifyWaitingInput(
             sessionId,
             projectId,
             projectName,
+            kind,
           })
         } else {
           showLegacyNotification(title, body, sessionId, projectId, onClick)
