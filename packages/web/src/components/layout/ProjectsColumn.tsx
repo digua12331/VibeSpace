@@ -32,6 +32,7 @@ export default function ProjectsColumn({
   const refreshProjects = useStore((s) => s.refreshProjects)
   const refreshSessions = useStore((s) => s.refreshSessions)
   const memByProject = useStore((s) => s.memByProject)
+  const notifyingSessions = useStore((s) => s.notifyingSessions)
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [permProjectId, setPermProjectId] = useState<string | null>(null)
@@ -55,6 +56,19 @@ export default function ProjectsColumn({
   }, [projects, sessions])
 
   const currentList = activeTab === 'active' ? activeProjects : inactiveProjects
+
+  // 哪些项目下有会话在"等授权/等输入"催人 → 在项目行点红点。由 notifyingSessions
+  // (会话级) 反查 projectId 聚合得出，不引后端字段。等待中的会话必是活的，所以这些
+  // 项目一定落在"激活"分页，但仍给激活标签加标记，避免你停在"未激活"分页漏看。
+  const notifyingProjectIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (notifyingSessions.size === 0) return ids
+    for (const s of sessions) {
+      if (notifyingSessions.has(s.id)) ids.add(s.projectId)
+    }
+    return ids
+  }, [notifyingSessions, sessions])
+  const hasActiveNotify = activeProjects.some((p) => notifyingProjectIds.has(p.id))
 
   useEffect(() => {
     if (!menu) {
@@ -222,13 +236,19 @@ export default function ProjectsColumn({
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`flex-1 text-xs py-1 rounded-sm transition-colors ${
+            className={`relative flex-1 text-xs py-1 rounded-sm transition-colors ${
               activeTab === t
                 ? 'bg-white/[0.08] text-fg font-medium'
                 : 'text-subtle hover:text-fg'
             }`}
           >
             {t === 'active' ? '激活' : '未激活'}
+            {t === 'active' && hasActiveNotify && (
+              <span
+                className="absolute top-0.5 right-1 w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"
+                title="有 AI 会话在等你授权/输入"
+              />
+            )}
           </button>
         ))}
       </div>
@@ -288,6 +308,12 @@ export default function ProjectsColumn({
             onContextMenu={(e) => openMenu(e, p.id, p.name)}
             title="右键可管理"
           >
+            {notifyingProjectIds.has(p.id) && (
+              <span
+                className="shrink-0 w-2 h-2 rounded-full bg-rose-500 animate-pulse"
+                title="该项目有 AI 会话在等你授权/输入"
+              />
+            )}
             <div className="flex-1 min-w-0">
               <div
                 className={`truncate ${selected === p.id ? 'text-fg font-medium' : 'text-fg'}`}

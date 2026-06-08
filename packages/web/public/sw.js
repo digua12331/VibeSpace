@@ -17,7 +17,7 @@ self.addEventListener('activate', (event) => {
 // 授权类通知（Claude 请求授权）给"同意/拒绝"快捷按钮，点了直接替大哥回答；
 // 其余通知保持"打开会话/忽略"。系统通知动作按钮通常上限 2 个，正好放满。
 const PERMISSION_ACTIONS = [
-  { action: 'approve', title: '✅ 同意' },
+  { action: 'approve', title: '✅ 同意并不再问' },
   { action: 'reject', title: '❌ 拒绝' },
 ]
 const GENERIC_ACTIONS = [
@@ -55,12 +55,13 @@ self.addEventListener('notificationclick', (event) => {
     event.waitUntil((async () => {
       const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       if (all.length > 0) {
-        for (const client of all) {
-          try {
-            client.postMessage({ type: 'session-response', sessionId, projectId, response: event.action })
-          } catch {
-            // ignore
-          }
+        // 只投递给一个页面（优先聚焦的那个，否则取第一个）。开多个标签页时全发
+        // 会让同一终端收到多组按键，授权框会乱跳——只发一次。
+        const target = all.find((c) => c.focused) ?? all[0]
+        try {
+          target.postMessage({ type: 'session-response', sessionId, projectId, response: event.action })
+        } catch {
+          // ignore
         }
         return
       }

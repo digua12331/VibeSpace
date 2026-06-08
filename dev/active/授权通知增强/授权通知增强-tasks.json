@@ -1,0 +1,69 @@
+{
+  "task": "授权通知增强",
+  "steps": [
+    {
+      "id": 1,
+      "title": "路B改键+文案",
+      "verify": "读改后两处常量正确；build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/public/sw.js", "packages/web/src/main.tsx"],
+      "write_files": ["packages/web/public/sw.js", "packages/web/src/main.tsx"]
+    },
+    {
+      "id": 2,
+      "title": "收窄SW投递为单client",
+      "verify": "approve/reject 不再 for 全发；build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/public/sw.js"],
+      "write_files": ["packages/web/public/sw.js"]
+    },
+    {
+      "id": 3,
+      "title": "通知信息加料(agent+detail)",
+      "verify": "body 组装含 agent+detail；build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/notify.ts"],
+      "write_files": ["packages/web/src/notify.ts"]
+    },
+    {
+      "id": 4,
+      "title": "跨项目抑制(suppress参数上移store)",
+      "verify": "build 通过；选中A前台B触发不被抑制",
+      "status": "todo",
+      "read_files": ["packages/web/src/notify.ts", "packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/notify.ts", "packages/web/src/store.ts"]
+    },
+    {
+      "id": 5,
+      "title": "焦点回归只清当前项目",
+      "verify": "build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/store.ts"]
+    },
+    {
+      "id": 6,
+      "title": "selectProject清该项目提醒",
+      "verify": "build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/store.ts"]
+    },
+    {
+      "id": 7,
+      "title": "项目列表红点+激活标签标记",
+      "verify": "build 通过；红点元素存在",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/layout/ProjectsColumn.tsx", "packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/components/layout/ProjectsColumn.tsx"]
+    },
+    {
+      "id": 8,
+      "title": "全量构建验收",
+      "verify": "pnpm -F @aimon/web build 通过；git diff 比对白名单",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

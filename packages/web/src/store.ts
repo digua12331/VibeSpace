@@ -351,8 +351,8 @@ interface State {
 
   /** Called when user interacts with a tile to clear nag state for that session. */
   clearNotify: (id: string) => void
-  /** Called by App when tab regains focus to clear all nags. */
-  clearAllNotify: () => void
+  /** Clear nag state for every notifying session belonging to a project (点进项目即已读)。 */
+  clearNotifyForProject: (projectId: string | null) => void
 
 }
 
@@ -713,6 +713,8 @@ export const useStore = create<State>((set, get) => ({
     if (id != null) {
       void get().refreshDocs(id).catch(() => {})
       void get().refreshSessions(id).catch(() => {})
+      // 点进项目即视为已读：清掉该项目下所有"等授权/等输入"的红点提醒。
+      get().clearNotifyForProject(id)
     }
   },
 
@@ -779,6 +781,9 @@ export const useStore = create<State>((set, get) => ({
       const sess = get().sessions.find((s) => s.id === id)
       const proj = sess ? get().projects.find((p) => p.id === sess.projectId) : undefined
       const projName = proj?.name ?? `…${id.slice(-6)}`
+      // 只有"页面聚焦 且 正看着这个会话所属的项目"才抑制通知——用户已在现场。
+      // 看别的项目 / "全部 sessions" 列表 / 窗口在后台都照常弹（跨项目提醒）。
+      const suppress = isPageFocused() && get().selectedProjectId === sess?.projectId
       const result = notifyWaitingInput(
         id,
         projName,
@@ -789,6 +794,7 @@ export const useStore = create<State>((set, get) => ({
           get().selectProject(sess?.projectId ?? null)
           get().clearNotify(id)
         },
+        suppress,
       )
       // Whether or not the OS notification fired, mark this session as nagging
       // so the tile and tab title visibly indicate attention is needed. If the
@@ -875,11 +881,20 @@ export const useStore = create<State>((set, get) => ({
     updateAppBadge(next.size)
   },
 
-  clearAllNotify: () => {
-    if (get().notifyingSessions.size === 0) return
-    set({ notifyingSessions: new Set() })
-    stopTitleFlash()
-    updateAppBadge(0)
+  clearNotifyForProject: (projectId) => {
+    if (projectId == null) return
+    const cur = get().notifyingSessions
+    if (cur.size === 0) return
+    const sessions = get().sessions
+    const next = new Set(cur)
+    for (const sid of cur) {
+      const sess = sessions.find((s) => s.id === sid)
+      if (sess && sess.projectId === projectId) next.delete(sid)
+    }
+    if (next.size === cur.size) return
+    set({ notifyingSessions: next })
+    if (next.size === 0) stopTitleFlash()
+    updateAppBadge(next.size)
   },
 
   appendLog: (entry) => {
@@ -1093,10 +1108,11 @@ export const useStore = create<State>((set, get) => ({
   },
 }))
 
-// When the user comes back to the tab, all nags are implicitly acknowledged.
+// 窗口回到前台时，只把"当前正看着的那个项目"的提醒当作已读；别的项目仍留红点，
+// 这样跨项目提醒不会因为你切回窗口就被一次清空。
 if (typeof document !== 'undefined') {
   const onVisibility = () => {
-    if (isPageFocused()) useStore.getState().clearAllNotify()
+    if (isPageFocused()) useStore.getState().clearNotifyForProject(useStore.getState().selectedProjectId)
   }
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('focus', onVisibility)

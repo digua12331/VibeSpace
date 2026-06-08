@@ -82,11 +82,14 @@ if ('serviceWorker' in navigator) {
   })
 }
 
-// 授权类通知上点"同意/拒绝"后，把对应按键发给该终端。
-// Claude 授权弹窗：默认高亮第一项 "Yes"，Enter 直接确认=同意；Esc=取消=No=拒绝。
-// 这两个按键依赖 Claude 弹窗的现有交互，Claude 大改交互时改这一处常量即可。
+// 授权类通知上点"同意并不再问/拒绝"后，把对应按键发给该终端。
+// Claude 授权弹窗是 numbered-select：默认高亮第 1 项 "Yes"，第 2 项 "Yes, and
+// don't ask again"，第 3 项 "No"。
+//  - approve（同意并不再问）= 下方向键把高亮移到第 2 项，再回车确认 = '\x1b[B\r'
+//  - reject（拒绝）= Esc 取消 = '\x1b'
+// 这些按键依赖 Claude 弹窗的现有布局，Claude 大改交互（如调整选项顺序）时改这一处常量即可。
 const NOTIFY_RESPONSE_KEYS: Record<string, string> = {
-  approve: '\r',
+  approve: '\x1b[B\r',
   reject: '\x1b',
 }
 

@@ -71,8 +71,11 @@ export function notifyWaitingInput(
   detail?: string,
   projectId?: string,
   onClick?: () => void,
+  suppress?: boolean,
 ): NotifyResult {
-  if (isPageFocused()) return { shown: false, suppressedByFocus: true }
+  // 是否抑制由调用方（store）决定：只有"页面聚焦 且 正看着触发通知的那个项目"
+  // 才算用户已在现场。看别的项目 / 全部列表 / 窗口在后台都照常弹（跨项目提醒）。
+  if (suppress) return { shown: false, suppressedByFocus: true }
   if (typeof Notification === 'undefined') return { shown: false, suppressedByFocus: false }
   if (Notification.permission !== 'granted') return { shown: false, suppressedByFocus: false }
 
@@ -81,7 +84,8 @@ export function notifyWaitingInput(
     kind === 'permission'
       ? `aimon: ${projectName} 请求授权`
       : `aimon: ${projectName} 等待输入`
-  const body = detail || agent
+  // 正文多带点信息：哪个 AI + Claude 给的提示文字（detail）。detail 缺失时退回只显示 agent。
+  const body = detail ? `${agent} · ${detail}` : agent
 
   if (hasServiceWorker()) {
     // Async path; we optimistically return `shown: true` — if the SW is not
