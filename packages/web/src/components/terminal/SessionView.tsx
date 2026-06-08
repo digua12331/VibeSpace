@@ -265,6 +265,9 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
   const terminalKeybindings = useStore((s) => s.terminalKeybindings)
   const project = projects.find((p) => p.id === session.projectId)
   const status = liveStatus ?? session.status
+  // 非 AI 终端（shell / cmd / pwsh，含一键启动脚本的 bat 页签）当作普通命令行窗口：
+  // 直接键盘输入、不挂悬浮输入框和 AI 快捷按钮。AI 终端（claude / codex / ...）保持原样。
+  const isShellAgent = (BUILTIN_SHELL_AGENTS as readonly string[]).includes(session.agent)
 
   const termHostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -379,11 +382,11 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
       convertEol: false,
       scrollback: 5000,
       allowProposedApi: true,
-      // 屏蔽终端内部的键盘输入：用户打字不会再直接流进 PTY。所有输入统一走
-      // 下方的悬浮输入框（见 attachCustomKeyEventHandler 的字符转发逻辑）。
-      // 副作用：xterm 的 Ctrl+C、Enter、方向键等都失效，我们在 handler 里按
-      // 需要手动补回（目前只保留 Ctrl+C 终止）。
-      disableStdin: true,
+      // AI 终端：屏蔽终端内部键盘输入，所有输入统一走下方悬浮输入框（见
+      // attachCustomKeyEventHandler 的字符转发逻辑）；副作用是 Ctrl+C/Enter/方向键
+      // 等需在 handler 里手动补回。非 AI 终端（shell/cmd/pwsh）放开 stdin，让它像
+      // 普通命令行窗口一样直接键盘输入，走 term.onData → sendInput。
+      disableStdin: !isShellAgent,
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -435,6 +438,10 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         }
         return false
       }
+      // 非 AI 终端：粘贴/复制/中断之外的所有按键直达 xterm → PTY（打字、回车、
+      // 方向键、退格等），表现为普通命令行窗口；不走下面那套"转发到悬浮输入框"
+      // 的 AI 专用逻辑。
+      if (isShellAgent) return true
       // 用户自定义的"强制中断"备用键 → 等同无选区 Ctrl+C，发 \x03。不受输入框
       // 焦点/空状态守卫（与默认 Ctrl+C 一致，跑飞时随时能中断）。
       if (matchCombo(ev, keybindingsRef.current.interruptAltKey)) {
@@ -659,6 +666,8 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
         fitRef.current?.fit()
         if (termRef.current) {
           aimonWS.sendResize(session.id, termRef.current.cols, termRef.current.rows)
+          // 非 AI 终端没有悬浮输入框，直接把焦点交给 xterm，切到该页签即可打字。
+          if (isShellAgent) termRef.current.focus()
         }
       } catch { /* ignore */ }
     })
@@ -1306,11 +1315,11 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
               })
               .catch(() => { /* clipboard blocked — silent */ })
           }}
-          style={{ bottom: 124, background: 'rgb(var(--color-xterm-bg))' }}
+          style={{ bottom: isShellAgent ? 0 : 124, background: 'rgb(var(--color-xterm-bg))' }}
           className={`absolute top-0 left-0 right-0 p-1 ${isDead ? 'opacity-60' : ''}`}
         />
 
-        {!isDead && (() => {
+        {!isShellAgent && !isDead && (() => {
           const visibleButtons = customButtons
             .filter((b) => b.showInTopbar)
             .map((b) => ({ btn: b, cmd: resolveCommand(b, session.agent) }))
@@ -1354,25 +1363,27 @@ export default function SessionView({ session, active, onClose, onRestart }: Pro
           )
         })()}
 
-        <div
-          ref={inputBarRef}
-          className="absolute bottom-[32px] left-3 right-3 min-h-10 z-10 flex items-start gap-2 px-3 py-2.5 rounded-win border border-border bg-card shadow-flyout"
-        >
-          <span className="text-subtle text-xs leading-5">{'>'}</span>
-          <textarea
-            ref={inputRef}
-            rows={1}
-            onKeyDown={onInputKey}
-            onCompositionStart={() => { composingRef.current = true }}
-            onCompositionEnd={() => { composingRef.current = false }}
-            onPaste={onInputPaste}
-            onInput={onInputChange}
-            disabled={isDead}
-            placeholder={isDead ? '会话已结束' : 'type to send (Enter, Shift+Enter 换行)'}
-            className="flex-1 bg-transparent text-sm font-mono leading-5 resize-none max-h-[100px] overflow-y-auto placeholder:text-subtle disabled:opacity-50 outline-none"
-            onMouseDown={() => setShowExitInfo(true)}
-          />
-        </div>
+        {!isShellAgent && (
+          <div
+            ref={inputBarRef}
+            className="absolute bottom-[32px] left-3 right-3 min-h-10 z-10 flex items-start gap-2 px-3 py-2.5 rounded-win border border-border bg-card shadow-flyout"
+          >
+            <span className="text-subtle text-xs leading-5">{'>'}</span>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              onKeyDown={onInputKey}
+              onCompositionStart={() => { composingRef.current = true }}
+              onCompositionEnd={() => { composingRef.current = false }}
+              onPaste={onInputPaste}
+              onInput={onInputChange}
+              disabled={isDead}
+              placeholder={isDead ? '会话已结束' : 'type to send (Enter, Shift+Enter 换行)'}
+              className="flex-1 bg-transparent text-sm font-mono leading-5 resize-none max-h-[100px] overflow-y-auto placeholder:text-subtle disabled:opacity-50 outline-none"
+              onMouseDown={() => setShowExitInfo(true)}
+            />
+          </div>
+        )}
       </div>
 
       {showPerm && project && (

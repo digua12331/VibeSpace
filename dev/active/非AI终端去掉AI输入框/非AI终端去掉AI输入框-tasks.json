@@ -1,0 +1,45 @@
+{
+  "task": "非AI终端去掉AI输入框",
+  "steps": [
+    {
+      "id": 1,
+      "title": "isShellAgent + disableStdin",
+      "verify": "类型检查过，cmd 终端能直接打字",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 2,
+      "title": "键盘 handler shell 放行",
+      "verify": "cmd 里方向键/退格/回车/Ctrl+C 正常，AI 不受影响",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 3,
+      "title": "JSX 条件隐藏输入框/按钮 + termHost bottom",
+      "verify": "cmd 底部干净占满，claude 照旧",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 4,
+      "title": "shell active 自动 focus",
+      "verify": "切到 cmd 页签直接可打字",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx"],
+      "write_files": ["packages/web/src/components/terminal/SessionView.tsx"]
+    },
+    {
+      "id": 5,
+      "title": "构建/类型检查",
+      "verify": "pnpm -F @aimon/web build 成功",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}
