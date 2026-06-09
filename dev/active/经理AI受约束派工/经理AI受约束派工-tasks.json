@@ -1,0 +1,93 @@
+{
+  "task": "经理AI受约束派工",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端 app-settings 加 6 个边界字段（四处同步）",
+      "verify": "pnpm -F @aimon/server build 过；删 app-settings.json 后 GET 返回全保守值",
+      "status": "todo",
+      "read_files": ["packages/server/src/app-settings.ts", "packages/server/src/routes/app-settings.ts"],
+      "write_files": ["packages/server/src/app-settings.ts", "packages/server/src/routes/app-settings.ts"]
+    },
+    {
+      "id": 2,
+      "title": "前端 types/store/App/api 同步边界字段",
+      "verify": "pnpm -F @aimon/web build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/types.ts", "packages/web/src/store.ts", "packages/web/src/App.tsx", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/types.ts", "packages/web/src/store.ts", "packages/web/src/App.tsx", "packages/web/src/api.ts"]
+    },
+    {
+      "id": 3,
+      "title": "SettingsDialog 加经理AI边界页签（危险项确认框）",
+      "verify": "build 过；浏览器看页签、改值保存刷新仍在、危险项确认取消不落盘",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/SettingsDialog.tsx", "packages/web/src/logs.ts"],
+      "write_files": ["packages/web/src/components/SettingsDialog.tsx"]
+    },
+    {
+      "id": 4,
+      "title": "确认凭证机制（dispatch 前置提交图拿 token）",
+      "verify": "裸 curl 不带/过期 token 被拒，匹配 token 放行",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/task-subtasks.ts", "packages/server/src/task-subtasks.ts"],
+      "write_files": ["packages/server/src/routes/task-subtasks.ts"]
+    },
+    {
+      "id": 5,
+      "title": "并发上限 enforce（managerConcurrency 项目级）",
+      "verify": "并发设 2，同项目多图同时只跑 2",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/task-subtasks.ts", "packages/server/src/app-settings.ts"],
+      "write_files": ["packages/server/src/routes/task-subtasks.ts"]
+    },
+    {
+      "id": 6,
+      "title": "危险动作硬检测（git diff 查删除/DB，fail-closed 阻断）",
+      "verify": "未标 danger 但真删文件/改 DB 的子任务被拦、进不了合并、日志 ERROR",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/task-subtasks.ts", "packages/server/src/issue-verify.ts", "packages/server/src/worktree-session-runner.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/routes/task-subtasks.ts"]
+    },
+    {
+      "id": 7,
+      "title": "跳过即阻塞下游（wireWaveAdvancer）",
+      "verify": "裸 curl 构造危险子任务被跳过，下游不被自动派",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/task-subtasks.ts"],
+      "write_files": ["packages/server/src/routes/task-subtasks.ts"]
+    },
+    {
+      "id": 8,
+      "title": "出错即停作用域 + SubtaskSpec 加 danger 字段",
+      "verify": "stopOnFailure 开停全图未派波次；SubtaskSpec 改动前后 grep 引用无残留",
+      "status": "todo",
+      "read_files": ["packages/server/src/task-subtasks.ts", "packages/server/src/routes/task-subtasks.ts"],
+      "write_files": ["packages/server/src/task-subtasks.ts", "packages/server/src/routes/task-subtasks.ts"]
+    },
+    {
+      "id": 9,
+      "title": "写经理 AI skill（SOP）",
+      "verify": "skill triggers 命中 经理/派工/拆活",
+      "status": "todo",
+      "read_files": [".aimon/skills"],
+      "write_files": [".aimon/skills/经理AI受约束派工.md"]
+    },
+    {
+      "id": 10,
+      "title": "端到端验证（2 子任务真实小目标）",
+      "verify": "出图→停确认→派工→并发≤2→停 review-ready→人工合并→写总结",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 11,
+      "title": "同步 blueprint s11 已劝退表述",
+      "verify": "grep 确认无残留 s11 已劝退旧表述",
+      "status": "todo",
+      "read_files": ["dev/agent-team-blueprint.md"],
+      "write_files": ["dev/agent-team-blueprint.md"]
+    }
+  ]
+}

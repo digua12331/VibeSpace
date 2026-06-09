@@ -26,7 +26,7 @@
 | **s08** Background Tasks | 异步守护 | JobsService（review）+ InstallJobManager（install）+ 📋 Jobs 面板 | ✅ 已做 | `harness-task绑定与jobs面板` |
 | **s09** Agent Teams | 邮箱协作 | mailbox + MCP server inbox_send/read | 🟦 拆出未来评估 | 见下"未来评估"|
 | **s10** Team Protocols | request/response 协议 | 与 s09 同步 | 🟦 拆出未来评估 | 与 s09 同 |
-| **s11** Autonomous Agents | 自主认领 | **劝退** | ❌ 不做 | 见下"劝退档"|
+| **s11** Autonomous Agents | 自主认领 | **半自动·受约束**（曾劝退，2026-06-09 重新评估复活） | 🟡 进行中 | `经理AI受约束派工` |
 | **s12** Worktree Isolation | 任务级 worktree | 完整 worktree + 独立分支 + DELETE gc | ✅ 已做 | `harness-worktree隔离` |
 
 **项目级 agent 团队配置**：12 层 harness 落到 VibeSpace 自身开发流程时的"角色 × 工作流 × skill 触发"映射见 `dev/agent-team-blueprint.md`。该文档跟本 roadmap 配套读：roadmap 是"系统层做了什么"，blueprint 是"大哥怎么使用"。
@@ -52,7 +52,9 @@
     ↓
 [未来评估] s09+s10 mailbox  🟦 spike → 立项
     ↓
-[劝退] s06 / s11
+[第四波·进行中] s11 半自动受约束派工  🟡 经理AI受约束派工（2026-06-09 复活）
+    ↓
+[劝退] s06
 ```
 
 ## 四、劝退档
@@ -78,6 +80,8 @@
 **已有替代**：DocsView 任务行右键"派 Claude 继续任务" + 当前已有的 task↔session 绑定按钮足够。
 
 **复活条件**：项目规模膨胀到一个人 review 不过来 + 有非常清晰的"agent 能完全独立完成不需 review 的任务类型"——比如纯文档同步、依赖版本 bump、机械重命名。这些场景出现时再立项。
+
+**【2026-06-09 复活 → 任务 `经理AI受约束派工`】** 大哥明确提出"我有新场景，重新评估"，触发本档复活条件。新场景三点：(1) **大哥是非程序员**——劝退理由里"失去代码级共创乐趣 / 三周后看不懂代码库"是从程序员视角写的，对一个从不读代码、只在任务/验收层把控的人不成立（他从第一天就不读代码）；(2) **子任务引擎已就位**——`大任务自拆并行` 任务后，"自拆图→自动派 worktree→波次推进→verify→停 review-ready 等人 approve"已存在，造经理 AI 的边际成本很低；(3) **只做半自动+闸口，不做全自动撒手**——worktree 隔离保护主仓、每个合并停下等人放行，化解了"误删数据库/烧 token"的大部分担忧。Claude + Codex 双模型评估一致结论：**值得做受限版实验，不值得做全自动项目经理**。决定性变量不是经理 AI 多聪明，而是"任务能否被准确拆开 + verify 能否识破假成功"。第一版克制为"受约束派工助理"：派工前给大哥看整张任务图确认、只允许可回滚无破坏性的活、并发≤2、绝不自动合并、危险动作（动 DB/删文件/自动合并/付费）默认锁死需确认才开。详见 `dev/active/经理AI受约束派工/`(plan/context/tasks + **`-roadmap.md` 第二~五版拓展规划**)。第一版代码已完成(后端硬约束 + 设置页签 + 经理 skill,smoke 全绿),端到端验收待大哥手动跑。
 
 ## 五、未来评估档
 

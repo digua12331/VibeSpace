@@ -722,11 +722,15 @@ export type SubtaskRunState =
   | 'merged'
   | 'unknown'
 
+export type SubtaskDanger = 'db' | 'delete'
+
 export interface SubtaskSpec {
   id: number
   title: string
   write_files: string[]
   depends_on: number[]
+  /** 经理 AI 自报的危险动作提示（可选，仅展示用；授权看后端实际 diff 检测）。 */
+  danger?: SubtaskDanger[]
 }
 
 export interface SubtaskGraph {
@@ -1005,12 +1009,28 @@ export interface TerminalKeybindings {
   interruptAltKey: KeyCombo | null
 }
 
+/**
+ * 「经理 AI 受约束派工」边界（镜像后端 ManagerBoundarySettings）。普通项是行为
+ * 调节；危险项 allow* 默认 false（锁死），真正的拦截在后端按实际 diff 硬检测，
+ * 这里只是放行总开关。
+ */
+export interface ManagerBoundarySettings {
+  concurrency: number
+  confirmGraph: boolean
+  stopOnFailure: boolean
+  autoWake: boolean
+  allowDbChanges: boolean
+  allowFileDelete: boolean
+  allowAutoMerge: boolean
+}
+
 export interface AppSettings {
   pasteImageRetentionDays: number
   hibernation: HibernationSettings
   terminalKeybindings: TerminalKeybindings
   /** Max concurrently open AI terminals before new-session start is blocked. Bounded [1,50], default 12. */
   maxAiTerminals: number
+  manager: ManagerBoundarySettings
 }
 
 /**

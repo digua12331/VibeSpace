@@ -14,8 +14,16 @@ import { ptyManager } from "./pty-manager.js";
  */
 export const JOB_SIGNAL_REL_PATH = ".aimon/runtime/job-signal";
 
+/**
+ * N4.1 子工反问经理:子工把"拿不准的问题"写进 ask 文件(非终止信号),runner 轮询到
+ * 后转给经理;经理把答复写进 answer 文件,子工轮询读取后继续。同样走带外文件,不扫 PTY。
+ */
+export const JOB_ASK_REL_PATH = ".aimon/runtime/ask";
+export const JOB_ANSWER_REL_PATH = ".aimon/runtime/answer";
+
 const SIGNAL_POLL_MS = 1000;
 const STUCK_REASON_MAX = 300;
+const ASK_MAX = 2000;
 
 export type WorktreeJobAgent = "claude" | "codex" | "shell";
 
@@ -40,6 +48,8 @@ export interface WorktreeJobSpawnInput {
   onSignalStuck: (info: WorktreeJobSpawnInfo, reason: string) => void;
   /** Called when PTY exits *before* either signal is written. */
   onSessionExitBeforeMarker?: (info: WorktreeJobSpawnInfo) => void;
+  /** N4.1: 子工写了 ask 文件(非终止)——把问题转给经理。runner 已消费(删 ask 文件)。 */
+  onQuestion?: (info: WorktreeJobSpawnInfo, question: string) => void;
 }
 
 const DEFAULT_PROMPT_DELAY_MS = 1500;
@@ -196,9 +206,36 @@ function wireSignalDetection(
     input.onSessionExitBeforeMarker?.(info);
   };
 
+  // N4.1: 非终止的"提问"通道。读到就转给经理并删文件(消费),不影响完成判定。
+  const askPath = join(info.worktreePath, JOB_ASK_REL_PATH);
+  const consumeAsk = (): void => {
+    if (!input.onQuestion) return;
+    let raw: string;
+    try {
+      if (!existsSync(askPath)) return;
+      raw = readFileSync(askPath, "utf8");
+    } catch {
+      return;
+    }
+    const q = raw.trim().slice(0, ASK_MAX);
+    try {
+      rmSync(askPath, { force: true });
+    } catch {
+      /* best-effort */
+    }
+    if (!q) return;
+    serverLog("info", "worktree-runner", `子工提问 (${input.jobLabel})`, {
+      projectId: input.projectId,
+      sessionId: info.sessionId,
+      meta: { jobLabel: input.jobLabel, q: q.slice(0, 120) },
+    });
+    input.onQuestion(info, q);
+  };
+
   timer = setInterval(() => {
     if (triggered) return;
-    consumeSignal();
+    if (consumeSignal()) return;
+    consumeAsk();
   }, SIGNAL_POLL_MS);
 
   ptyManager.on("exit", onExit);

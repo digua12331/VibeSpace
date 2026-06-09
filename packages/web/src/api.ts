@@ -869,7 +869,11 @@ export interface DispatchSubtasksResult {
 export function dispatchSubtasks(
   projectId: string,
   taskName: string,
-  opts?: { agent?: 'claude' | 'codex' | 'shell'; maxConcurrency?: number },
+  opts?: {
+    agent?: 'claude' | 'codex' | 'shell'
+    maxConcurrency?: number
+    confirmToken?: string
+  },
 ): Promise<DispatchSubtasksResult> {
   const body = opts ?? {}
   return request<DispatchSubtasksResult>(
@@ -879,6 +883,41 @@ export function dispatchSubtasks(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     },
+  )
+}
+
+export interface PrepareDispatchResult {
+  ok: true
+  token: string
+  graphHash: string
+  graph: SubtaskGraph
+}
+
+export interface ManagerMetrics {
+  batches: number
+  dispatched: number
+  merged: number
+  rejected: number
+  dangerBlocked: number
+  mergeConflict: number
+  updatedAt: number | null
+}
+
+/** 经理战绩(N2.3 价值闸门):该项目累计派工/合并/返工/拦截计数。 */
+export function getManagerMetrics(projectId: string): Promise<ManagerMetrics> {
+  return request<ManagerMetrics>(
+    `/api/projects/${encodeURIComponent(projectId)}/manager-metrics`,
+  )
+}
+
+/** 派工前拿确认凭证(绑当前任务图 hash)。UI 确认任务图后调用,再带 token 调 dispatch。 */
+export function prepareDispatch(
+  projectId: string,
+  taskName: string,
+): Promise<PrepareDispatchResult> {
+  return request<PrepareDispatchResult>(
+    `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskName)}/prepare-dispatch`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
   )
 }
 

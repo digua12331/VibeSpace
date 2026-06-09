@@ -20,6 +20,12 @@
 
 import { serverLog } from "./log-bus.js";
 
+/** 危险动作类别。仅作 UI 提示/排序，**不作授权依据**——真正放不放行由后端按
+ * 子任务实际 git diff 硬检测决定（见 routes/task-subtasks.ts 的危险检测）。 */
+export type SubtaskDanger = "db" | "delete";
+
+const DANGER_KINDS: readonly SubtaskDanger[] = ["db", "delete"];
+
 export interface SubtaskSpec {
   id: number;
   title: string;
@@ -27,6 +33,8 @@ export interface SubtaskSpec {
   write_files: string[];
   /** Hard dependencies (must merge before this one). */
   depends_on: number[];
+  /** 经理 AI 自报的危险动作提示（可选）。仅展示用，授权看后端实际 diff 检测。 */
+  danger?: SubtaskDanger[];
 }
 
 export interface SubtaskGraph {
@@ -166,11 +174,22 @@ function validateSchema(input: unknown): SchemaCheckOk | SchemaCheckFail {
         dependsOn.push(d);
       }
     }
+    // danger 是可选提示：宽松解析，只收已知类别，未知值丢弃（它不决定授权，
+    // 真正的拦截在后端按实际 diff 做，所以这里不必 fail-closed）。
+    let danger: SubtaskDanger[] | undefined;
+    if (Array.isArray(raw.danger)) {
+      const kinds = raw.danger.filter(
+        (d): d is SubtaskDanger =>
+          typeof d === "string" && (DANGER_KINDS as readonly string[]).includes(d),
+      );
+      if (kinds.length > 0) danger = [...new Set(kinds)];
+    }
     subtasks.push({
       id: raw.id,
       title: raw.title,
       write_files: writeFiles,
       depends_on: dependsOn,
+      ...(danger ? { danger } : {}),
     });
   }
   return { ok: true, schema_version, subtasks };

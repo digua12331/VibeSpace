@@ -267,6 +267,75 @@ try {
     "runs empty before dispatch",
   );
 
+  // ----- Case 2b: 确认凭证闸口(经理 AI 边界 managerConfirmGraph) -----
+  // 存原值,强制 confirmGraph=on,测拒绝路径(不 spawn claude),最后还原。
+  const settBefore = await jsonFetch("GET", "/api/app-settings");
+  const origConfirm = settBefore.body?.manager?.confirmGraph;
+  await jsonFetch("PUT", "/api/app-settings", { manager: { confirmGraph: true } });
+  try {
+    // 裸调 dispatch 不带 token → 409 confirm_required
+    const noToken = await jsonFetch(
+      "POST",
+      `/api/projects/${projectId}/tasks/${encTask}/dispatch-subtasks`,
+      {},
+    );
+    assert(
+      noToken.status === 409 && noToken.body?.error === "confirm_required",
+      `confirmGraph on + 无 token → 409 confirm_required (got ${noToken.status}/${noToken.body?.error})`,
+    );
+    // prepare-dispatch 发凭证
+    const prep = await jsonFetch(
+      "POST",
+      `/api/projects/${projectId}/tasks/${encTask}/prepare-dispatch`,
+      {},
+    );
+    assert(
+      prep.status === 200 &&
+        typeof prep.body?.token === "string" &&
+        typeof prep.body?.graphHash === "string",
+      `prepare-dispatch 发 token+graphHash (got status=${prep.status})`,
+    );
+    // 带错 token → 仍 409
+    const wrongToken = await jsonFetch(
+      "POST",
+      `/api/projects/${projectId}/tasks/${encTask}/dispatch-subtasks`,
+      { confirmToken: "definitely-wrong" },
+    );
+    assert(
+      wrongToken.status === 409 && wrongToken.body?.error === "confirm_required",
+      `错 token → 409 confirm_required (got ${wrongToken.status}/${wrongToken.body?.error})`,
+    );
+  } finally {
+    // 还原大哥原设置(只动 confirmGraph 一项)
+    if (typeof origConfirm === "boolean") {
+      await jsonFetch("PUT", "/api/app-settings", {
+        manager: { confirmGraph: origConfirm },
+      });
+    }
+  }
+
+  // ----- Case 2c: 自动合并闸口(allowAutoMerge 默认关 → 403) -----
+  const amBefore = await jsonFetch("GET", "/api/app-settings");
+  const origAutoMerge = amBefore.body?.manager?.allowAutoMerge;
+  await jsonFetch("PUT", "/api/app-settings", { manager: { allowAutoMerge: false } });
+  try {
+    const autoOff = await jsonFetch(
+      "POST",
+      `/api/projects/${projectId}/tasks/${encTask}/auto-approve-all`,
+      {},
+    );
+    assert(
+      autoOff.status === 403 && autoOff.body?.error === "auto_merge_disabled",
+      `allowAutoMerge 关 → auto-approve-all 403 (got ${autoOff.status}/${autoOff.body?.error})`,
+    );
+  } finally {
+    if (typeof origAutoMerge === "boolean") {
+      await jsonFetch("PUT", "/api/app-settings", {
+        manager: { allowAutoMerge: origAutoMerge },
+      });
+    }
+  }
+
   // ----- Case 3: write_files overlap → auto-edge -----
   const overlapPlan = planWithGraph(
     JSON.stringify({
@@ -382,6 +451,19 @@ try {
     dispatchBadBody.status === 400,
     `dispatch maxConcurrency=999 -> 400 (got ${dispatchBadBody.status})`,
   );
+
+  // ----- Case 9: 经理战绩指标端点(新项目应全零) -----
+  const metrics = await jsonFetch("GET", `/api/projects/${projectId}/manager-metrics`);
+  assert(
+    metrics.status === 200 &&
+      typeof metrics.body?.dispatched === "number" &&
+      typeof metrics.body?.merged === "number" &&
+      metrics.body.dispatched === 0 &&
+      metrics.body.batches === 0,
+    `manager-metrics 新项目全零 (got status=${metrics.status} dispatched=${metrics.body?.dispatched})`,
+  );
+  const metrics404 = await jsonFetch("GET", `/api/projects/nope/manager-metrics`);
+  assert(metrics404.status === 404, `unknown project metrics -> 404 (got ${metrics404.status})`);
 
   console.log("[ts] all assertions passed");
 } catch (err) {

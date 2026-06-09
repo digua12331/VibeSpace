@@ -14,10 +14,12 @@ import {
 import { logAction } from '../logs'
 import { currentPermission, requestPermission } from '../notify'
 import { useStore } from '../store'
+import { confirmDialog } from './dialog/DialogHost'
 import type {
   AppSettings,
   HibernationSettings,
   KeyCombo,
+  ManagerBoundarySettings,
   TerminalKeybindings,
   FeishuStatus,
   FeishuTestResult,
@@ -51,13 +53,24 @@ const RETENTION_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: '不清理' },
 ]
 
-type SettingsTab = 'general' | 'terminal' | 'feishu'
+type SettingsTab = 'general' | 'terminal' | 'manager' | 'feishu'
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: '通用' },
   { id: 'terminal', label: '终端' },
+  { id: 'manager', label: '经理 AI 边界' },
   { id: 'feishu', label: '飞书机器人' },
 ]
+
+const DEFAULT_MANAGER: ManagerBoundarySettings = {
+  concurrency: 2,
+  confirmGraph: true,
+  stopOnFailure: true,
+  autoWake: false,
+  allowDbChanges: false,
+  allowFileDelete: false,
+  allowAutoMerge: false,
+}
 
 const DEFAULT_HIBERNATION: HibernationSettings = {
   enabled: false,
@@ -143,6 +156,7 @@ export default function SettingsDialog() {
   const [hibernation, setHibernation] =
     useState<HibernationSettings>(DEFAULT_HIBERNATION)
   const [maxAiTerminals, setMaxAiTerminalsLocal] = useState<number>(12)
+  const [manager, setManager] = useState<ManagerBoundarySettings>(DEFAULT_MANAGER)
   const [requestingNotify, setRequestingNotify] = useState(false)
   const [keybindings, setKeybindings] =
     useState<TerminalKeybindings>(DEFAULT_KEYBINDINGS)
@@ -194,6 +208,7 @@ export default function SettingsDialog() {
         setHibernation(s.hibernation ?? DEFAULT_HIBERNATION)
         setKeybindings(s.terminalKeybindings ?? DEFAULT_KEYBINDINGS)
         setMaxAiTerminalsLocal(s.maxAiTerminals ?? 12)
+        setManager(s.manager ?? DEFAULT_MANAGER)
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e))
@@ -351,6 +366,7 @@ export default function SettingsDialog() {
             hibernation,
             terminalKeybindings: keybindings,
             maxAiTerminals,
+            manager,
           }),
         {
           meta: {
@@ -358,6 +374,7 @@ export default function SettingsDialog() {
             hibernation,
             terminalKeybindings: keybindings,
             maxAiTerminals,
+            manager,
           },
         },
       )
@@ -371,6 +388,29 @@ export default function SettingsDialog() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // 危险边界开关：想打开时先弹白话风险确认，取消则保持原值。改动只进本地 state，
+  // 点「保存」才落盘——所以取消 + 关掉设置 = 什么都没变。
+  async function toggleDanger(
+    key: 'allowDbChanges' | 'allowFileDelete' | 'allowAutoMerge',
+    label: string,
+    consequence: string,
+  ) {
+    const turningOn = !manager[key]
+    if (turningOn) {
+      const ok = await confirmDialog(
+        `打开「${label}」后，经理 AI 的子任务${consequence}，而且不再逐个停下来问你。一旦放行可能造成无法撤销的损失。确定打开吗？`,
+        {
+          title: '危险操作确认',
+          variant: 'danger',
+          confirmLabel: '我知道风险，打开',
+          cancelLabel: '取消',
+        },
+      )
+      if (!ok) return
+    }
+    setManager((m) => ({ ...m, [key]: !m[key] }))
   }
 
   async function onRequestNotify() {
@@ -529,6 +569,99 @@ export default function SettingsDialog() {
             ))}
           </select>
         </section>
+        )}
+
+        {activeTab === 'manager' && (
+        <>
+        <section className="mb-4 border-b border-border/40 pb-4">
+          <div className="text-sm text-fg/90 mb-1">普通设置</div>
+          <div className="text-xs text-muted mb-3 leading-relaxed">
+            「项目经理 AI」把一个大目标拆成几张任务卡、分给几个隔离的 AI 并行干。下面这几项随手调，调错了顶多效率差点，不会出事。
+          </div>
+          <div className="flex items-center gap-2 mb-3">
+            <label className="text-xs text-muted">同时并行（个，1–3）</label>
+            <input
+              type="number"
+              min={1}
+              max={3}
+              step={1}
+              disabled={loading || saving}
+              value={manager.concurrency}
+              onChange={(e) => {
+                const n = Math.max(1, Math.min(3, Math.floor(Number(e.target.value) || 2)))
+                setManager((m) => ({ ...m, concurrency: n }))
+              }}
+              className="w-16 px-2 py-1 bg-white/[0.04] border border-border rounded text-sm focus:border-accent focus:bg-white/[0.06] disabled:opacity-60"
+            />
+          </div>
+          <label className="flex items-start gap-2 mb-2 cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={loading || saving}
+              checked={manager.confirmGraph}
+              onChange={(e) => setManager((m) => ({ ...m, confirmGraph: e.target.checked }))}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-fg/90">
+              派工前先给我看整张任务图、停下等我点「开始」
+              <span className="text-muted">（关掉则经理 AI 拆完直接派，不等你确认）</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 mb-2 cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={loading || saving}
+              checked={manager.stopOnFailure}
+              onChange={(e) => setManager((m) => ({ ...m, stopOnFailure: e.target.checked }))}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-fg/90">
+              有一个任务失败就停下，不再往下派
+              <span className="text-muted">（关掉则没出错的分支继续干）</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={loading || saving}
+              checked={manager.autoWake}
+              onChange={(e) => setManager((m) => ({ ...m, autoWake: e.target.checked }))}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-fg/90">
+              让经理 AI 定时自己醒来盯进度
+              <span className="text-amber-300/80">（实验·默认关：子任务待合并/失败时自动提醒经理处理；仍会停在确认/合并闸口，不替你拍板）</span>
+            </span>
+          </label>
+        </section>
+        <section className="mb-4">
+          <div className="text-sm text-rose-300 mb-1">危险设置（默认全锁死）</div>
+          <div className="text-xs text-muted mb-3 leading-relaxed">
+            下面这些默认关着。<span className="text-rose-300/80">就算你不开，后端也会按 AI 实际改了什么自动拦截</span>——比如它真删了文件、真碰了数据库，没开对应开关就不让合并。打开等于把这道保险拆掉。
+          </div>
+          {([
+            ['allowDbChanges', '允许动数据库', '可以改你的数据库（增删改数据、改表结构）'],
+            ['allowFileDelete', '允许删文件', '可以删除项目里的文件'],
+            ['allowAutoMerge', '允许自动合并代码', '可以不经你点击就把子任务的改动合并进主分支'],
+          ] as const).map(([key, label, consequence]) => (
+            <div key={key} className="flex items-center justify-between gap-3 py-1.5">
+              <span className="text-xs text-fg/90">{label}</span>
+              <button
+                type="button"
+                disabled={loading || saving}
+                onClick={() => void toggleDanger(key, label, consequence)}
+                className={`shrink-0 px-2.5 py-1 rounded text-xs border transition-colors disabled:opacity-60 ${
+                  manager[key]
+                    ? 'bg-rose-500/20 text-rose-200 border-rose-400/50'
+                    : 'bg-white/[0.04] text-muted border-border hover:text-fg'
+                }`}
+              >
+                {manager[key] ? '已打开' : '已锁死'}
+              </button>
+            </div>
+          ))}
+        </section>
+        </>
         )}
 
         {activeTab === 'terminal' && (

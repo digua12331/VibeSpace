@@ -1,8 +1,12 @@
 import { spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import { getProject } from "../db.js";
+import { getAppSettings } from "../app-settings.js";
+import { bumpManagerMetric, getManagerMetrics } from "../manager-metrics.js";
+import { addManagerQuestion } from "../manager-tick.js";
 import { serverLog } from "../log-bus.js";
 import { readDocFile } from "../docs-service.js";
 import { runVerify } from "../issue-verify.js";
@@ -22,6 +26,8 @@ import {
   type SubtaskRunState,
 } from "../task-subtasks-store.js";
 import {
+  JOB_ANSWER_REL_PATH,
+  JOB_ASK_REL_PATH,
   JOB_SIGNAL_REL_PATH,
   spawnWorktreeJob,
   type WorktreeJobAgent,
@@ -32,12 +38,47 @@ import { broadcast } from "../ws-hub.js";
 import { existsSync } from "node:fs";
 
 const MAX_CONCURRENCY = 5;
-const DEFAULT_CONCURRENCY = 3;
 
 const DispatchSchema = z.object({
   agent: z.enum(["claude", "codex", "shell"]).optional(),
   maxConcurrency: z.number().int().min(1).max(MAX_CONCURRENCY).optional(),
+  /** 任务图确认凭证。managerConfirmGraph 开时必填,且必须与当前任务图 hash 匹配。 */
+  confirmToken: z.string().optional(),
 });
+
+/**
+ * 派工前确认凭证。`managerConfirmGraph` 开时,dispatch 必须带一个由
+ * `prepare-dispatch` 发放、且绑定**当前任务图内容 hash** 的 token。用户在 UI
+ * 改了任务图(hash 变)→ 旧 token 对不上 → 作废,杜绝"确认 A 图却派 B 图"。
+ * 进程内存即可(会话级确认,server 重启需重新确认是合理预期)。
+ */
+const dispatchTokens = new Map<string, { graphHash: string; token: string }>();
+
+/**
+ * N3.3 预算熔断:同一子任务被反复重派的次数上限。失败的子任务允许重派(修了再跑),
+ * 但反复失败重派会烧 token、可能死循环。超过这个数就硬停,要人介入。
+ * (对齐 CLAUDE.md"同一步骤连续失败 2–3 次就停手"的熔断精神。)
+ */
+const MAX_REDISPATCH = 3;
+const redispatchCounts = new Map<string, number>();
+
+function tokenKey(projectId: string, taskName: string): string {
+  return `${projectId}::${taskName}`;
+}
+
+/** 任务图内容指纹:只取决定"派什么活"的字段,与展示无关的顺序无关。 */
+function computeGraphHash(graph: SubtaskGraph): string {
+  const norm = [...graph.subtasks]
+    .sort((a, b) => a.id - b.id)
+    .map((s) => ({
+      id: s.id,
+      title: s.title,
+      write_files: [...s.write_files].sort(),
+      depends_on: [...s.depends_on].sort((x, y) => x - y),
+      danger: s.danger ? [...s.danger].sort() : [],
+    }));
+  return createHash("sha1").update(JSON.stringify(norm)).digest("hex");
+}
 
 interface GitCmdResult {
   ok: boolean;
@@ -59,6 +100,58 @@ function runGit(cwd: string, args: string[]): Promise<GitCmdResult> {
       resolve({ ok: code === 0, stdout, stderr });
     });
   });
+}
+
+/**
+ * 危险动作硬检测:按子任务在它 worktree 分支上**实际改了什么**判断,不信经理 AI
+ * 自报的 danger 字段。比对基准 = 该分支与项目基分支的 merge-base(分叉点),这样
+ * 只看本子任务自己的改动,不受其它已合并子任务干扰。
+ *
+ * **fail-closed**:任何 git 命令失败 / 拿不到分叉点 → `error=true`,调用方按"命中
+ * 危险"处理(宁可错拦不可放过)。
+ */
+interface DangerScan {
+  error: boolean;
+  deletes: string[];
+  dbTouch: string[];
+}
+
+const DB_PATH_RE = /(^|\/)(db\.ts|.*\.(db|sqlite|sqlite3)(-journal|-wal|-shm)?|.*\.sql)$|(^|\/)(migrations?|migrate)\//i;
+const DB_DDL_RE = /^\+.*\b(CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|DROP\s+COLUMN|ADD\s+COLUMN|CREATE\s+INDEX)\b/im;
+
+export async function scanDangerousChanges(
+  worktreePath: string,
+  projectPath: string,
+): Promise<DangerScan> {
+  const baseRef = await runGit(projectPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (!baseRef.ok) return { error: true, deletes: [], dbTouch: [] };
+  const base = baseRef.stdout.trim() || "HEAD";
+  const mb = await runGit(worktreePath, ["merge-base", base, "HEAD"]);
+  if (!mb.ok) return { error: true, deletes: [], dbTouch: [] };
+  const forkPoint = mb.stdout.trim();
+  if (!forkPoint) return { error: true, deletes: [], dbTouch: [] };
+
+  // --name-status 比对分叉点 → worktree 当前(含未提交改动)。D 行 = 删除。
+  const nameStatus = await runGit(worktreePath, ["diff", "--name-status", forkPoint]);
+  if (!nameStatus.ok) return { error: true, deletes: [], dbTouch: [] };
+  const deletes: string[] = [];
+  const dbTouch: string[] = [];
+  for (const line of nameStatus.stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const [status, ...rest] = trimmed.split(/\t/);
+    const path = rest.join("\t");
+    if (!path) continue;
+    if (status.startsWith("D")) deletes.push(path);
+    if (DB_PATH_RE.test(path)) dbTouch.push(path);
+  }
+  // 内容扫一遍 SQL DDL(只看新增行),抓"改 db.ts 加表/列"这种路径名兜不住的。
+  const content = await runGit(worktreePath, ["diff", "-U0", forkPoint]);
+  if (!content.ok) return { error: true, deletes, dbTouch };
+  if (DB_DDL_RE.test(content.stdout) && dbTouch.length === 0) {
+    dbTouch.push("(diff 内含建表/改表 SQL)");
+  }
+  return { error: false, deletes, dbTouch };
 }
 
 function buildSubtaskPrompt(opts: {
@@ -88,6 +181,11 @@ ${fileLines}
 
 ## 主任务 plan 摘要
 ${opts.planExcerpt}
+
+## 遇到拿不准时：问经理（不要瞎猜）
+- 卡在歧义（接口要哪种、目标不明确、边界拿不准）时，把问题写进 worktree 内文件 \`${JOB_ASK_REL_PATH}\`（一行），然后**轮询** \`${JOB_ANSWER_REL_PATH}\` 直到出现经理的答复再继续。
+- 另外每完成一个小阶段，**瞄一眼** \`${JOB_ANSWER_REL_PATH}\`：经理可能主动写了纠偏/追加约束，有就照办。
+- 这是带外文件通信，不要在终端里喊话。
 
 ## 完成约定
 - 完成后把完成信号写入 worktree 内文件 \`${JOB_SIGNAL_REL_PATH}\`（目录不存在就创建），内容只写一行：
@@ -135,6 +233,50 @@ async function runVerifyPipeline(
     subtaskRuns.appendVerifyLog(runId, chunk);
   });
   if (result.ok) {
+    // 危险动作硬拦:verify 过了还要看它实际改了什么。删文件 / 动 DB 且对应边界
+    // 没开 → 不进 review-ready,直接 markFailed,合并闸口拿不到它。fail-closed:
+    // 检测本身出错也拦(error=true 视同命中)。
+    const mgr = getAppSettings().manager;
+    const scan = await scanDangerousChanges(worktreePath, projectPath);
+    const blocks: string[] = [];
+    if (scan.error) {
+      blocks.push("危险检测失败(git diff 拿不到改动,按保险起见拦截)");
+    } else {
+      if (scan.deletes.length > 0 && !mgr.allowFileDelete) {
+        blocks.push(`删除了文件但「允许删文件」未开启: ${scan.deletes.slice(0, 8).join(", ")}`);
+      }
+      if (scan.dbTouch.length > 0 && !mgr.allowDbChanges) {
+        blocks.push(`改动了数据库但「允许动数据库」未开启: ${scan.dbTouch.slice(0, 8).join(", ")}`);
+      }
+    }
+    if (blocks.length > 0) {
+      const reason = `危险动作被边界拦截: ${blocks.join("; ")}`;
+      subtaskRuns.markFailed(runId, reason);
+      const run = subtaskRuns.get(runId);
+      if (run) bumpManagerMetric(run.projectId, "dangerBlocked");
+      serverLog("error", "manager", `子任务危险动作被拦截`, {
+        projectId: run?.projectId,
+        meta: {
+          runId,
+          subtaskId: run?.subtaskId,
+          blocks,
+          deletes: scan.deletes,
+          dbTouch: scan.dbTouch,
+          detectError: scan.error,
+        },
+      });
+      if (run) {
+        await appendStatusEntry(projectPath, run.taskName, {
+          kind: "STEP_FAIL",
+          at: Date.now(),
+          sessionId: run.sessionId,
+          subtaskId: run.subtaskId,
+          reason: "danger-blocked",
+          message: reason,
+        });
+      }
+      return;
+    }
     subtaskRuns.markReviewReady(runId);
     const run = subtaskRuns.get(runId);
     if (run) {
@@ -179,6 +321,18 @@ async function dispatchOneSubtask(
     return { ok: false, reason: "already-live" };
   }
 
+  // N3.3 熔断:同一子任务重派次数上限,防反复失败重派死循环烧 token。
+  const rkey = `${projectId}::${taskName}::${spec.id}`;
+  const tries = (redispatchCounts.get(rkey) ?? 0) + 1;
+  redispatchCounts.set(rkey, tries);
+  if (tries > MAX_REDISPATCH) {
+    serverLog("error", "manager", "熔断:子任务重派次数超上限,已停止", {
+      projectId,
+      meta: { taskName, subtaskId: spec.id, tries, limit: MAX_REDISPATCH },
+    });
+    return { ok: false, reason: `redispatch-limit(${MAX_REDISPATCH})` };
+  }
+
   const planExcerpt = await readPlanExcerpt(projectPath, taskName);
   const doneSubtasks = getMergedSubtaskIds(projectId, taskName);
   const prompt = buildSubtaskPrompt({
@@ -216,6 +370,16 @@ async function dispatchOneSubtask(
       subtaskRuns.markCancelled(registeredRunId, "session ended before marker");
     }
   };
+  // N4.1: 子工卡在歧义时写 ask 文件 → 转给经理回答。
+  const onQuestion = (info: WorktreeJobSpawnInfo, question: string): void => {
+    addManagerQuestion({
+      projectId,
+      taskName,
+      subtaskId: spec.id,
+      worktreePath: info.worktreePath,
+      question,
+    });
+  };
 
   const spawnResult = await spawnWorktreeJob({
     app,
@@ -227,6 +391,7 @@ async function dispatchOneSubtask(
     onSignalDone,
     onSignalStuck,
     onSessionExitBeforeMarker: onSessionExit,
+    onQuestion,
   });
 
   if (!spawnResult.ok) {
@@ -268,6 +433,7 @@ async function dispatchOneSubtask(
   // (No-op here; routes layer keeps the graph in caller scope.)
   void graph;
 
+  bumpManagerMetric(projectId, "dispatched");
   return { ok: true, runId: run.runId };
 }
 
@@ -357,6 +523,40 @@ export async function registerTaskSubtaskRoutes(
     },
   );
 
+  // 经理战绩指标(N2.3 价值闸门):返回该项目累计计数,前端算"省手/一次通过率/返工率"。
+  app.get<{ Params: { id: string } }>(
+    "/api/projects/:id/manager-metrics",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "project_not_found" });
+      return reply.send(getManagerMetrics(proj.id));
+    },
+  );
+
+  // 派工前:解析任务图、发放绑定其 hash 的确认凭证。UI「派工」按钮(=用户本人)
+  // 先弹确认框给大哥看图,确认后调本接口拿 token,再带 token 调 dispatch。
+  app.post<{ Params: { id: string; task: string } }>(
+    "/api/projects/:id/tasks/:task/prepare-dispatch",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "project_not_found" });
+      const taskName = decodeURIComponent(req.params.task);
+      const doc = await readDocFile(proj.path, taskName, "plan");
+      if (!doc) return reply.code(404).send({ error: "plan_not_found" });
+      const result = parseSubtasksFromPlan(doc.content);
+      if (!result.ok) {
+        return reply
+          .code(400)
+          .send({ error: result.reason, detail: result.detail ?? null });
+      }
+      const graph = result.graph;
+      const graphHash = computeGraphHash(graph);
+      const token = randomUUID();
+      dispatchTokens.set(tokenKey(proj.id, taskName), { graphHash, token });
+      return reply.send({ ok: true, token, graphHash, graph });
+    },
+  );
+
   app.post<{
     Params: { id: string; task: string };
     Body: unknown;
@@ -373,8 +573,13 @@ export async function registerTaskSubtaskRoutes(
           .send({ error: "invalid_body", detail: parsed.error.issues });
       }
       const agent = parsed.data.agent ?? "claude";
-      const concurrency =
-        parsed.data.maxConcurrency ?? DEFAULT_CONCURRENCY;
+      // 并发上限以「经理 AI 边界」设置为权威;请求体可再调低但不能超过它。
+      const mgr = getAppSettings().manager;
+      const cap = mgr.concurrency;
+      const concurrency = Math.min(
+        parsed.data.maxConcurrency ?? cap,
+        cap,
+      );
 
       const doc = await readDocFile(proj.path, taskName, "plan");
       if (!doc) {
@@ -392,6 +597,38 @@ export async function registerTaskSubtaskRoutes(
       }
 
       const graph = result.graph;
+
+      // 派工前确认凭证:confirmGraph 开时必须带与当前任务图 hash 匹配的 token。
+      // 裸 curl 不带 token / token 过期 / 任务图已变 → 一律拒,杜绝绕过用户确认。
+      if (mgr.confirmGraph) {
+        const key = tokenKey(proj.id, taskName);
+        const pending = dispatchTokens.get(key);
+        const currentHash = computeGraphHash(graph);
+        const provided = parsed.data.confirmToken;
+        if (
+          !provided ||
+          !pending ||
+          pending.token !== provided ||
+          pending.graphHash !== currentHash
+        ) {
+          serverLog("warn", "manager", "派工被拒:确认凭证缺失/失效/任务图已变", {
+            projectId: proj.id,
+            meta: {
+              taskName,
+              hasToken: Boolean(provided),
+              hasPending: Boolean(pending),
+              graphChanged: pending ? pending.graphHash !== currentHash : null,
+            },
+          });
+          return reply.code(409).send({
+            error: "confirm_required",
+            detail:
+              "派工前需在面板确认任务图(确认凭证缺失、已失效,或任务图已变更)",
+          });
+        }
+        dispatchTokens.delete(key); // 一次性消费
+      }
+
       const waves = topologicalWaves(graph);
 
       const active = subtaskRuns.countActive(proj.id);
@@ -424,8 +661,10 @@ export async function registerTaskSubtaskRoutes(
         reason?: string;
       }> = [];
 
-      // Apply concurrency cap to the first wave only.
-      const firstSlice = firstWave.slice(0, concurrency);
+      // 项目级并发:初始只派"剩余空位"个(已被别的图占用的算进去)。
+      // 没派完的(本波剩余 + 后续波)交给 advancer 在空位释放/上游就绪时补派。
+      const slots = Math.max(0, concurrency - subtaskRuns.countActive(proj.id));
+      const firstSlice = firstWave.slice(0, slots);
       for (const id of firstSlice) {
         const spec = specsById.get(id);
         if (!spec) continue;
@@ -445,8 +684,10 @@ export async function registerTaskSubtaskRoutes(
         }
       }
 
-      // Wire a wave advancer if there are more waves.
-      if (waves.length > 1) {
+      // 只要还有没派出去的子任务(本波因并发没派满 / 后续波),就挂 advancer。
+      // 它监听全局 state-change,在空位释放或上游就绪时补派,并执行下游阻塞 /
+      // 出错即停 / 每波重读并发设置。
+      if (firstSlice.length < graph.subtasks.length) {
         wireWaveAdvancer({
           app,
           projectId: proj.id,
@@ -454,11 +695,11 @@ export async function registerTaskSubtaskRoutes(
           taskName,
           graph,
           agent,
-          concurrency,
         });
       }
 
       const okCount = results.filter((r) => r.ok).length;
+      bumpManagerMetric(proj.id, "batches");
       serverLog(
         "info",
         "subtasks",
@@ -535,6 +776,7 @@ export async function registerTaskSubtaskRoutes(
             run.runId,
             (mergeRes.stderr || mergeRes.stdout).slice(-500),
           );
+          bumpManagerMetric(proj.id, "mergeConflict");
           failed.push({
             subtaskId: id,
             reason: `merge-conflict: ${(mergeRes.stderr || mergeRes.stdout).slice(-300)}`,
@@ -572,6 +814,7 @@ export async function registerTaskSubtaskRoutes(
         }
 
         subtaskRuns.markMerged(run.runId);
+        bumpManagerMetric(proj.id, "merged");
         await deleteSubtaskMeta(proj.path, taskName, id);
         await appendStatusEntry(proj.path, taskName, {
           kind: "STEP_DONE",
@@ -594,6 +837,33 @@ export async function registerTaskSubtaskRoutes(
         merged,
         failed,
       });
+    },
+  );
+
+  // 经理 AI 自动合并:仅在「允许自动合并」边界开启时放行,否则 403。
+  // 复用人工 approve-all 的合并逻辑(只合 review-ready 的;危险动作早在进
+  // review-ready 前就被硬拦,所以这里合的都是已过验证+危险检测的安全子任务)。
+  app.post<{ Params: { id: string; task: string } }>(
+    "/api/projects/:id/tasks/:task/auto-approve-all",
+    async (req, reply) => {
+      const proj = getProject(req.params.id);
+      if (!proj) return reply.code(404).send({ error: "project_not_found" });
+      if (!getAppSettings().manager.allowAutoMerge) {
+        serverLog("warn", "manager", "自动合并被拒:allowAutoMerge 未开启", {
+          projectId: proj.id,
+          meta: { taskName: decodeURIComponent(req.params.task) },
+        });
+        return reply.code(403).send({
+          error: "auto_merge_disabled",
+          detail:
+            "「允许自动合并」未开启,经理 AI 不能自动合并;请人工在面板放行,或去设置开启该边界",
+        });
+      }
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/projects/${encodeURIComponent(proj.id)}/tasks/${encodeURIComponent(decodeURIComponent(req.params.task))}/approve-all`,
+      });
+      return reply.code(res.statusCode).send(res.json());
     },
   );
 
@@ -629,6 +899,7 @@ export async function registerTaskSubtaskRoutes(
           run.runId,
           (mergeRes.stderr || mergeRes.stdout).slice(-500),
         );
+        bumpManagerMetric(proj.id, "mergeConflict");
         return reply.code(409).send({
           error: "merge_conflict",
           detail: (mergeRes.stderr || mergeRes.stdout).slice(-500),
@@ -652,6 +923,7 @@ export async function registerTaskSubtaskRoutes(
         );
       }
       subtaskRuns.markMerged(run.runId);
+      bumpManagerMetric(proj.id, "merged");
       await deleteSubtaskMeta(proj.path, taskName, subtaskId);
       return reply.send({ ok: true });
     },
@@ -686,6 +958,8 @@ export async function registerTaskSubtaskRoutes(
       }
       await deleteSubtaskMeta(proj.path, taskName, subtaskId);
       subtaskRuns.remove(run.runId);
+      redispatchCounts.delete(`${proj.id}::${taskName}::${subtaskId}`);
+      bumpManagerMetric(proj.id, "rejected");
       return reply.send({ ok: true });
     },
   );
@@ -700,7 +974,6 @@ interface WaveAdvancerOpts {
   taskName: string;
   graph: SubtaskGraph;
   agent: WorktreeJobAgent;
-  concurrency: number;
 }
 
 const advancersByTask = new Map<string, (...args: unknown[]) => void>();
@@ -722,29 +995,58 @@ function wireWaveAdvancer(opts: WaveAdvancerOpts): void {
     advancersByTask.delete(key);
   }
 
-  const specsById = new Map(opts.graph.subtasks.map((s) => [s.id, s]));
   let active = true;
+  // 函数声明(而非 const 箭头)以规避 detach/handler 互相引用的 TDZ。
+  function detach(): void {
+    active = false;
+    subtaskRuns.off("state-change", handler);
+    advancersByTask.delete(key);
+  }
 
-  const handler = (..._args: unknown[]): void => {
+  function handler(..._args: unknown[]): void {
     if (!active) return;
+    // 每 tick 重读设置:中途改并发 / 出错即停能即时生效。
+    const mgr = getAppSettings().manager;
     const runs = subtaskRuns.listByTask(opts.projectId, opts.taskName);
-    const readyIds = new Set(
+    // 失败集合:这些子任务的下游永远不该再派(下游阻塞)。merge-conflict 也算失败,
+    // 不能像旧代码那样当 ready 放行下游。
+    const failedIds = new Set(
       runs
         .filter(
           (r) =>
-            r.state === "review-ready" ||
-            r.state === "merged" ||
+            r.state === "failed" ||
+            r.state === "cancelled" ||
             r.state === "merge-conflict",
         )
+        .map((r) => r.subtaskId),
+    );
+
+    // 出错即停:开了就停掉本图所有未派发波次。
+    if (mgr.stopOnFailure && failedIds.size > 0) {
+      serverLog("warn", "manager", "出错即停:停止该任务图未派发的后续波次", {
+        projectId: opts.projectId,
+        meta: { taskName: opts.taskName, failed: [...failedIds] },
+      });
+      detach();
+      return;
+    }
+
+    const readyIds = new Set(
+      runs
+        .filter((r) => r.state === "review-ready" || r.state === "merged")
         .map((r) => r.subtaskId),
     );
     const dispatchedIds = new Set(runs.map((r) => r.subtaskId));
 
     for (const spec of opts.graph.subtasks) {
       if (dispatchedIds.has(spec.id)) continue;
-      // All deps must be review-ready or merged.
+      // 下游阻塞:任一依赖已失败 → 该子任务不派(等于阻塞,留在未派发集合)。
+      if (spec.depends_on.some((d) => failedIds.has(d))) continue;
+      // 依赖必须全部 review-ready / merged 才能派。
       const ready = spec.depends_on.every((d) => readyIds.has(d));
       if (!ready) continue;
+      // 项目级并发上限:满了就停,下次 state-change 再补派。
+      if (subtaskRuns.countActive(opts.projectId) >= mgr.concurrency) break;
       void dispatchOneSubtask(
         opts.app,
         opts.projectId,
@@ -757,17 +1059,16 @@ function wireWaveAdvancer(opts: WaveAdvancerOpts): void {
       dispatchedIds.add(spec.id);
     }
 
-    // Detach when everything dispatched.
-    if (dispatchedIds.size === opts.graph.subtasks.length) {
-      active = false;
-      subtaskRuns.off("state-change", handler);
-      advancersByTask.delete(key);
+    // 剩下没派的若全都卡在"失败依赖"上(再也不会就绪),就收摊。
+    const remaining = opts.graph.subtasks.filter((s) => !dispatchedIds.has(s.id));
+    const allBlocked =
+      remaining.length > 0 &&
+      remaining.every((s) => s.depends_on.some((d) => failedIds.has(d)));
+    if (remaining.length === 0 || allBlocked) {
+      detach();
     }
-  };
+  }
 
   subtaskRuns.on("state-change", handler);
   advancersByTask.set(key, handler);
-
-  // Mark unused parameter for tooling.
-  void specsById;
 }

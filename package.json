@@ -24,6 +24,7 @@
     "smoke:issues-jobs": "node scripts/issues-jobs-smoke.mjs",
     "smoke:budget-cutoff": "node scripts/budget-cutoff-smoke.mjs",
     "smoke:task-subtasks": "node scripts/task-subtasks-smoke.mjs",
+    "smoke:manager-danger": "node scripts/manager-danger-smoke.mjs",
     "smoke:memory-parse": "node scripts/memory-parse-smoke.mjs",
     "smoke:global-skills": "node scripts/global-skills-smoke.mjs",
     "smoke:error-pattern": "node scripts/error-pattern-smoke.mjs",

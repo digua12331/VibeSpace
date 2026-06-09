@@ -355,6 +355,17 @@ export default function DocsView() {
     return `继续 ${task}\n\n任务文档：dev/active/${task}/`
   }
 
+  function buildManagerPrompt(task: string): string {
+    return [
+      `你现在是「项目经理 AI」。请先读本项目 .aimon/skills/经理AI受约束派工.md，严格按它的 SOP 工作。`,
+      ``,
+      `本次接手任务：${task}（文档在 dev/active/${task}/）。`,
+      `把目标拆成几张子任务卡写进该任务 plan.md 的「## 自拆与依赖」JSON 块（每张标 write_files / depends_on / 可选 danger），`,
+      `然后停下，让我在 Dev Docs 子任务面板点「派工」确认后再开跑——绝不绕过确认、默认绝不自动合并。`,
+      `先用白话告诉我你打算怎么拆、每张卡做完我在哪能看到效果，等我确认目标。`,
+    ].join('\n')
+  }
+
   function buildAllIssuesPrompt(items: IssueItem[]): string {
     const lines = [
       '请依次处理 dev/issues.md 里以下未处理的问题，每处理完一条就把对应行的 [ ] 改成 [x]：',
@@ -587,6 +598,13 @@ export default function DocsView() {
         disabled: dispatching,
         onSelect: () =>
           runDispatch(buildContinueTaskPrompt(task), '已派 Claude 继续任务'),
+      },
+      {
+        label: '召唤经理 AI 接手',
+        icon: '🧑‍💼',
+        disabled: dispatching,
+        onSelect: () =>
+          runDispatch(buildManagerPrompt(task), '已召唤经理 AI'),
       },
       {
         label: owner
@@ -1218,6 +1236,21 @@ function SubtasksPanel({
   onRefresh,
 }: SubtasksPanelProps) {
   const [busy, setBusy] = useState(false)
+  const [metrics, setMetrics] = useState<api.ManagerMetrics | null>(null)
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    api
+      .getManagerMetrics(projectId)
+      .then((m) => {
+        if (!cancelled) setMetrics(m)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // overview 变化(派工/合并后 onRefresh 重拉)时一并刷新战绩
+  }, [projectId, overview])
   if (!projectId) return null
   if (!overview) {
     return (
@@ -1248,13 +1281,28 @@ function SubtasksPanel({
 
   const onDispatch = async (): Promise<void> => {
     if (!projectId) return
+    // 派工前把整张任务图摆给大哥看、停下等确认(「派工前确认任务图」边界)。
+    // 确认后拿一次性凭证(绑当前任务图 hash)再派——图变则凭证失效,后端会拒。
+    const lines = graph.subtasks.map((s) => {
+      const dep = s.depends_on.length ? `（依赖 #${s.depends_on.join(', ')}）` : ''
+      const dg = s.danger?.length ? ` ⚠${s.danger.join('/')}` : ''
+      return `#${s.id} ${s.title}${dep}${dg}`
+    })
+    const sure = await confirmDialog(
+      `经理 AI 拆出 ${total} 个任务，确认后将并行派给隔离副本里的 AI 执行：\n\n${lines.join('\n')}`,
+      { title: '确认任务图并派工', confirmLabel: '确认派工', cancelLabel: '取消' },
+    )
+    if (!sure) return
     setBusy(true)
     try {
       await logAction(
         'subtasks',
         'dispatch',
         async () => {
-          await api.dispatchSubtasks(projectId, taskName)
+          const prep = await api.prepareDispatch(projectId, taskName)
+          await api.dispatchSubtasks(projectId, taskName, {
+            confirmToken: prep.token,
+          })
         },
         { projectId, meta: { taskName, total } },
       )
@@ -1338,6 +1386,31 @@ function SubtasksPanel({
           自动新增 {graph.auto_edges.length} 条依赖边（write_files 重叠）
         </div>
       )}
+      {metrics && metrics.dispatched > 0 && (() => {
+        const handled =
+          metrics.merged +
+          metrics.rejected +
+          metrics.dangerBlocked +
+          metrics.mergeConflict
+        const passRate = handled > 0 ? Math.round((metrics.merged / handled) * 100) : null
+        const reworkRate =
+          metrics.dispatched > 0
+            ? Math.round((metrics.rejected / metrics.dispatched) * 100)
+            : null
+        const saved = Math.max(0, metrics.dispatched - metrics.batches)
+        return (
+          <div
+            className="mb-1 text-[10px] text-cyan-200/70 tabular-nums"
+            title="经理战绩(本项目累计)：派工/合并/返工/危险拦截的实测数字。这三个数证明它有没有替你省时间——是开放第三版自主化的闸门。"
+          >
+            经理战绩：省手 {saved} 次 · 一次通过率 {passRate === null ? '—' : `${passRate}%`} · 返工率{' '}
+            {reworkRate === null ? '—' : `${reworkRate}%`}
+            <span className="text-cyan-200/40">
+              {' '}（派 {metrics.dispatched}／合 {metrics.merged}／返 {metrics.rejected}／拦 {metrics.dangerBlocked}）
+            </span>
+          </div>
+        )
+      })()}
       <div className="space-y-0.5">
         {graph.subtasks.map((spec) => {
           const run = runsBySubtaskId.get(spec.id)
@@ -1366,10 +1439,23 @@ function SubtasksPanel({
   )
 }
 
+// danger 是经理 AI 自报的危险提示，仅展示用——真正放行由后端按实际 diff 硬检测，
+// 所以 chip 文案别写成"安全/已检查"，只说"会动什么"。
+const DANGER_CHIP: Record<string, { label: string; cls: string; title: string }> = {
+  db: { label: '库', cls: 'border-amber-500/50 bg-amber-500/15 text-amber-200', title: '可能动数据库（默认锁死，需在设置开启才放行）' },
+  delete: { label: '删', cls: 'border-rose-500/50 bg-rose-500/15 text-rose-200', title: '可能删文件（默认锁死，需在设置开启才放行）' },
+}
+
 interface SubtaskRowProps {
   projectId: string
   taskName: string
-  spec: { id: number; title: string; write_files: string[]; depends_on: number[] }
+  spec: {
+    id: number
+    title: string
+    write_files: string[]
+    depends_on: number[]
+    danger?: Array<'db' | 'delete'>
+  }
   run: SubtaskRun | undefined
   state: string
   style: string
@@ -1447,6 +1533,19 @@ function SubtaskRow({
       <span className="flex-1 truncate text-[11px]" title={`write_files:\n  ${spec.write_files.join('\n  ')}`}>
         {spec.title}
       </span>
+      {spec.danger?.map((d) => {
+        const chip = DANGER_CHIP[d]
+        if (!chip) return null
+        return (
+          <span
+            key={d}
+            className={`inline-flex items-center text-[9px] px-1 py-0 rounded border shrink-0 ${chip.cls}`}
+            title={chip.title}
+          >
+            ⚠{chip.label}
+          </span>
+        )
+      })}
       <span className="text-[10px] text-subtle shrink-0">{depLabel}</span>
       <span
         className={`inline-flex items-center text-[10px] px-1 py-0.5 rounded border tabular-nums shrink-0 font-mono ${style}`}

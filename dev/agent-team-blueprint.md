@@ -169,6 +169,6 @@ context.md 要列"关键文件清单 + 决策"——**清单部分**适合并发
 
 ## 七、不在 blueprint 范围
 
-- 自动派工（s11 已劝退）—— 大哥手动起 session 派 task 是 feature 不是 bug
+- ~~自动派工（s11 已劝退）~~ —— **2026-06-09 复活为 `经理AI受约束派工`**（半自动+关键闸口停，非全自动撒手）；详见 `dev/harness-roadmap.md` s11 条 + `dev/active/经理AI受约束派工/`。手动起 session 派 task 仍保留为常规路径。
 - agent 间邮箱（s09 拆出）—— 等单独 spike 验完 MCP 协议链再说
 - AI 自动 review 大哥代码（系统级 hook）—— 跟 blueprint 是不同方向，留给将来

@@ -31,6 +31,20 @@ const TerminalKeybindingsSchema = z
   })
   .optional();
 
+// 经理 AI 边界。同样：字段漏进 schema 会被 zod 静默剥掉，保存即"不生效"。
+// 危险项是布尔总开关（后端按实际 diff 硬检测才是真护栏，见 routes/task-subtasks.ts）。
+const ManagerSchema = z
+  .object({
+    concurrency: z.number().int().min(1).max(3).optional(),
+    confirmGraph: z.boolean().optional(),
+    stopOnFailure: z.boolean().optional(),
+    autoWake: z.boolean().optional(),
+    allowDbChanges: z.boolean().optional(),
+    allowFileDelete: z.boolean().optional(),
+    allowAutoMerge: z.boolean().optional(),
+  })
+  .optional();
+
 const UpdateBody = z.object({
   pasteImageRetentionDays: z
     .number()
@@ -44,6 +58,7 @@ const UpdateBody = z.object({
   // 也会让路由回传旧值把前端 store 打回去，表现为"改上限保存后不生效"。
   // 范围与前端输入框 / clampMaxAiTerminals 对齐（1–50）。
   maxAiTerminals: z.number().int().min(1).max(50).optional(),
+  manager: ManagerSchema,
 });
 
 export async function registerAppSettingsRoutes(

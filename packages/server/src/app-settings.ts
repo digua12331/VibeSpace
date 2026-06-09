@@ -41,6 +41,31 @@ export interface TerminalKeybindings {
   interruptAltKey: KeyCombo | null;
 }
 
+/**
+ * 「经理 AI 受约束派工」边界设置。普通项(concurrency/confirmGraph/stopOnFailure)
+ * 是行为调节;危险项(allow*)默认 false(锁死)。**危险项不靠经理 AI 自报判定**——
+ * 后端在子任务跑完后按实际 git diff 硬检测(见 routes/task-subtasks.ts),
+ * 这里只是"是否放行"的总开关。
+ */
+export interface ManagerBoundarySettings {
+  /** 经理 AI 可同时派发的 worktree 子任务上限。Bounded to [1, 3]; 默认 2。 */
+  concurrency: number;
+  /** true 时 dispatch 必须带与任务图绑定的确认凭证(派工前给大哥看图确认)。 */
+  confirmGraph: boolean;
+  /** true 时某子任务失败/被阻断会停掉该图所有未派发波次。 */
+  stopOnFailure: boolean;
+  /** 【实验·默认关】true 时后端定时唤醒空闲的经理会话去盯进度(子任务待合并/失败时)。
+   *  这是半自主循环,仍严格保留确认/危险/合并三闸口;未经活模型充分验证,谨慎开启。 */
+  autoWake: boolean;
+  /** 允许子任务改动落到数据库(默认 false,后端按实际 diff 拦截)。 */
+  allowDbChanges: boolean;
+  /** 允许子任务删除文件(默认 false,后端按 git diff --name-status 拦截)。 */
+  allowFileDelete: boolean;
+  /** 允许经理 AI 自动合并(默认 false)。开时经理可调 auto-approve-all,
+   *  仅合并 verify 过+危险无命中+无冲突的子任务;关时只能人工合并。 */
+  allowAutoMerge: boolean;
+}
+
 export interface AppSettings {
   /**
    * Days to keep pasted images under each project's `.vibespace/pasted-images/`.
@@ -56,6 +81,7 @@ export interface AppSettings {
    * Bounded to [1, 50] at the REST boundary; 12 is the engineering default.
    */
   maxAiTerminals: number;
+  manager: ManagerBoundarySettings;
 }
 
 const DEFAULTS: AppSettings = {
@@ -71,6 +97,16 @@ const DEFAULTS: AppSettings = {
   terminalKeybindings: {
     abortAltKey: null,
     interruptAltKey: null,
+  },
+  manager: {
+    concurrency: 2,
+    confirmGraph: true,
+    stopOnFailure: true,
+    autoWake: false,
+    // 危险项默认全锁死。
+    allowDbChanges: false,
+    allowFileDelete: false,
+    allowAutoMerge: false,
   },
 };
 
@@ -88,6 +124,29 @@ function clampMaxAiTerminals(n: unknown): number {
   if (v < 1) return 1;
   if (v > 50) return 50;
   return v;
+}
+
+function clampConcurrency(n: unknown): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULTS.manager.concurrency;
+  const v = Math.floor(n);
+  if (v < 1) return 1;
+  if (v > 3) return 3;
+  return v;
+}
+
+function readManager(raw: unknown): ManagerBoundarySettings {
+  if (!raw || typeof raw !== "object") return { ...DEFAULTS.manager };
+  const o = raw as Record<string, unknown>;
+  const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+  return {
+    concurrency: clampConcurrency(o.concurrency),
+    confirmGraph: bool(o.confirmGraph, DEFAULTS.manager.confirmGraph),
+    stopOnFailure: bool(o.stopOnFailure, DEFAULTS.manager.stopOnFailure),
+    autoWake: bool(o.autoWake, DEFAULTS.manager.autoWake),
+    allowDbChanges: bool(o.allowDbChanges, DEFAULTS.manager.allowDbChanges),
+    allowFileDelete: bool(o.allowFileDelete, DEFAULTS.manager.allowFileDelete),
+    allowAutoMerge: bool(o.allowAutoMerge, DEFAULTS.manager.allowAutoMerge),
+  };
 }
 
 function clampIdleMinutes(n: unknown): number {
@@ -136,6 +195,7 @@ function freshDefaults(): AppSettings {
     ...DEFAULTS,
     hibernation: { ...DEFAULTS.hibernation },
     terminalKeybindings: { ...DEFAULTS.terminalKeybindings },
+    manager: { ...DEFAULTS.manager },
   };
 }
 
@@ -191,6 +251,7 @@ function readFromDisk(): AppSettings {
       hibernation: readHibernation(obj.hibernation),
       terminalKeybindings: readTerminalKeybindings(obj.terminalKeybindings),
       maxAiTerminals: clampMaxAiTerminals(obj.maxAiTerminals),
+      manager: readManager(obj.manager),
     };
   } catch {
     return freshDefaults();
@@ -215,6 +276,7 @@ export interface AppSettingsPatch {
   hibernation?: Partial<HibernationSettings>;
   terminalKeybindings?: Partial<TerminalKeybindings>;
   maxAiTerminals?: number;
+  manager?: Partial<ManagerBoundarySettings>;
 }
 
 export function setAppSettings(patch: AppSettingsPatch): AppSettings {
@@ -247,6 +309,18 @@ export function setAppSettings(patch: AppSettingsPatch): AppSettings {
             : current.terminalKeybindings.interruptAltKey,
       }
     : current.terminalKeybindings;
+  const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+  const mergedManager: ManagerBoundarySettings = patch.manager
+    ? {
+        concurrency: clampConcurrency(patch.manager.concurrency ?? current.manager.concurrency),
+        confirmGraph: bool(patch.manager.confirmGraph, current.manager.confirmGraph),
+        stopOnFailure: bool(patch.manager.stopOnFailure, current.manager.stopOnFailure),
+        autoWake: bool(patch.manager.autoWake, current.manager.autoWake),
+        allowDbChanges: bool(patch.manager.allowDbChanges, current.manager.allowDbChanges),
+        allowFileDelete: bool(patch.manager.allowFileDelete, current.manager.allowFileDelete),
+        allowAutoMerge: bool(patch.manager.allowAutoMerge, current.manager.allowAutoMerge),
+      }
+    : current.manager;
   const next: AppSettings = {
     pasteImageRetentionDays: clampRetentionDays(
       patch.pasteImageRetentionDays ?? current.pasteImageRetentionDays,
@@ -256,6 +330,7 @@ export function setAppSettings(patch: AppSettingsPatch): AppSettings {
     maxAiTerminals: clampMaxAiTerminals(
       patch.maxAiTerminals ?? current.maxAiTerminals,
     ),
+    manager: mergedManager,
   };
   const tmp = `${SETTINGS_PATH}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2), "utf8");
