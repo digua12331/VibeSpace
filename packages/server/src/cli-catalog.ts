@@ -95,6 +95,15 @@ export const CLI_CATALOG: CliEntry[] = [
     homepage: "https://kilo.ai/cli",
   },
   {
+    id: "mimo",
+    label: "MiMo Code",
+    bin: ["mimo"],
+    install: { all: "npm i -g @mimo-ai/cli" },
+    description: "小米 MiMo 团队开源 · OpenCode 改进版",
+    requires: ["npm"],
+    homepage: "https://github.com/XiaomiMiMo/MiMo-Code",
+  },
+  {
     id: "browser-use",
     label: "browser-use",
     kind: "mcp-tool",

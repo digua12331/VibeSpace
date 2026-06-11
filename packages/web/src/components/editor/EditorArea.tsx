@@ -42,6 +42,7 @@ function agentIcon(a: AgentKind): string {
     case 'opencode': return '🧠'
     case 'qoder': return '🧩'
     case 'kilo': return '🐤'
+    case 'mimo': return '🍙'
     case 'claude':
     case 'codex':
     default: return '🤖'

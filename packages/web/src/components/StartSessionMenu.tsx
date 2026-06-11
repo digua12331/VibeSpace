@@ -34,6 +34,7 @@ const EMOJI_BY_ID: Record<string, string> = {
   opencode: '🧠',
   qoder: '🧩',
   kilo: '🐤',
+  mimo: '🍙',
 }
 
 export default function StartSessionMenu({
