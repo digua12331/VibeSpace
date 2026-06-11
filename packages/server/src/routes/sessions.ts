@@ -35,7 +35,7 @@ import {
 } from "../worktree-paths.js";
 import { serverLog } from "../log-bus.js";
 import { injectMcpForAgent } from "../mcp-bridge.js";
-import { mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { join as pathJoin } from "node:path";
 import { buildRuntimePrompt, pickSkillsForTask } from "../skills-service.js";
 
@@ -451,6 +451,33 @@ async function startSession(
     logSpawnSubstep(projectId, sessionId, "addWorktree", wtMs);
     setSessionWorktree(sessionId, worktreePath, worktreeBranch);
     cwd = worktreePath;
+
+    // `.claude/settings.local.json` is gitignored, so the worktree checkout
+    // lacks the per-project permissions written by the 权限设置 UI and the
+    // session would re-prompt for everything. Copy it in; best-effort —
+    // a failure only falls back to the old re-prompting behaviour.
+    const tCopy = Date.now();
+    try {
+      const srcLocal = pathJoin(proj.path, ".claude", "settings.local.json");
+      const dstClaudeDir = pathJoin(worktreePath, ".claude");
+      const dstLocal = pathJoin(dstClaudeDir, "settings.local.json");
+      await copyFile(srcLocal, dstLocal).catch(async (err: NodeJS.ErrnoException) => {
+        if (err.code !== "ENOENT") throw err;
+        // Either the source doesn't exist (nothing to inherit) or the
+        // worktree's .claude/ dir is missing — create it and retry once.
+        const hasSrc = await stat(srcLocal).then(() => true, () => false);
+        if (!hasSrc) return;
+        await mkdir(dstClaudeDir, { recursive: true });
+        await copyFile(srcLocal, dstLocal);
+      });
+      logSpawnSubstep(projectId, sessionId, "copyLocalSettings", Date.now() - tCopy);
+    } catch (err) {
+      serverLog("warn", "session", `copy settings.local.json 失败 (non-fatal): ${(err as Error).message}`, {
+        projectId,
+        sessionId,
+        meta: { worktreePath },
+      });
+    }
   }
 
   // Skills: if the session is bound to a task, see if any project skill

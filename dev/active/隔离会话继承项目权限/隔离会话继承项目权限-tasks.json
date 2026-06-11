@@ -1,0 +1,19 @@
+{
+  "task": "隔离会话继承项目权限",
+  "steps": [
+    {
+      "id": 1,
+      "title": "sessions.ts 在 addWorktree 成功后复制 settings.local.json 进 worktree",
+      "verify": "pnpm --filter @aimon/server build 通过；diff 只含 sessions.ts",
+      "status": "todo",
+      "read_files": [
+        "packages/server/src/routes/sessions.ts",
+        "packages/server/src/worktree-paths.ts",
+        "packages/server/src/worktree-session-runner.ts",
+        "scripts/lib/cli-configs-core.mjs",
+        ".gitignore"
+      ],
+      "write_files": ["packages/server/src/routes/sessions.ts"]
+    }
+  ]
+}
