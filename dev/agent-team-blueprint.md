@@ -167,7 +167,18 @@ context.md 要列"关键文件清单 + 决策"——**清单部分**适合并发
 4. **不想被 skill 影响**的临时任务：task name 里别用 trigger 关键词，或干脆不绑 task（直接 spawn）
 5. **agent 没读 skill 怎么办**：现在 `CLAUDE.md` 已经要求主 claude 在 `AIMON_SESSION_PROMPT_PATH` 存在时先读它。若仍没读，优先检查 session 启动时是否绑定 task、`.aimon/runtime/<sessionId>-prompt.md` 是否生成、LogsView 是否有 `skills injected` 日志。
 
-## 七、不在 blueprint 范围
+## 七、通用团队的母版回写约定（借鉴 luban skill 的"事故喂养规则"）
+
+`templates/agent-team/` 的 team-* 通用团队（2026-06-12 起随工作流装配到所有项目）靠两条腿进化：
+
+1. **上报腿（各项目侧）**：team-usage.md 已写明——目标项目的主 AI 发现团队成员的**通用**缺陷时，不就地私改，而是在交付摘要里向大哥上报"这是母版级问题"。
+2. **回写腿（本仓库侧）**：大哥把上报带回本仓库后，在这里改 `templates/agent-team/` 母版（走正常 Dev Docs 流程），改完跑 `pnpm smoke:agent-team`；各项目**重新应用工作流**即自动刷新（指纹机制保证只刷用户没本地化改过的文件）。
+
+判断"通用 vs 项目特有"的标准与跨任务知识沉淀一致：**换一个项目还会不会再犯？** 会 → 母版；只在这个项目犯 → 就地改该项目的角色文件（代价是该文件从此脱离母版升级，这是预期行为）。
+
+来源：四条借鉴（派工填空模板 / 疑问句≠授权 / 首单小卡信任阶梯 / 子工心跳）均出自 `~/.claude/skills/luban` 的方法论，2026-06-12 评估后采纳。
+
+## 八、不在 blueprint 范围
 
 - ~~自动派工（s11 已劝退）~~ —— **2026-06-09 复活为 `经理AI受约束派工`**（半自动+关键闸口停，非全自动撒手）；详见 `dev/harness-roadmap.md` s11 条 + `dev/active/经理AI受约束派工/`。手动起 session 派 task 仍保留为常规路径。
 - agent 间邮箱（s09 拆出）—— 等单独 spike 验完 MCP 协议链再说

@@ -1,0 +1,9 @@
+{
+  "task": "团队模板借鉴鲁班四条",
+  "steps": [
+    { "id": 1, "title": "team-usage.md 加派工模板/心跳/回写上报三段", "verify": "pnpm smoke:agent-team 全过", "status": "todo" },
+    { "id": 2, "title": "经理AI受约束派工.md 加授权语义铁律 + 首单小卡阶梯", "verify": "通读与现有铁律无冲突", "status": "todo" },
+    { "id": 3, "title": "blueprint 加母版回写约定节", "verify": "与 team-usage 上报路径呼应", "status": "todo" },
+    { "id": 4, "title": "交付 handoff", "verify": "首行为验收指引", "status": "todo" }
+  ]
+}
