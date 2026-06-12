@@ -1,9 +1,8 @@
 import { randomInt } from "node:crypto";
 import { nanoid } from "nanoid";
-import { ptyManager } from "../pty-manager.js";
 import { statusManager } from "../status.js";
 import { serverLog } from "../log-bus.js";
-import { ensureHubSession, getHubSessionId } from "../hub-session.js";
+import { ensureHubSession, getHubSessionId, writeHubInput } from "../hub-session.js";
 import { wechatClient, type WechatInboundMessage } from "./client.js";
 import { getWechatConfig, setWechatConfig } from "./config.js";
 
@@ -295,7 +294,7 @@ async function handleInbound(msg: WechatInboundMessage): Promise<void> {
         serverLog("warn", "wechat", "inbound 总控台就绪超时，仍尝试写入", { sessionId });
       }
     }
-    const ok = ptyManager.write(sessionId, `[微信 requestId=${requestId}] ${text}\r`);
+    const ok = await writeHubInput(sessionId, `[微信 requestId=${requestId}] ${text}`);
     if (!ok) throw new Error("总控台 PTY 写入失败（会话可能已退出）");
     serverLog("info", "wechat", `inbound 成功 (${Date.now() - t0}ms)`, {
       sessionId,

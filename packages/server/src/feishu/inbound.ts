@@ -1,12 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ptyManager } from "../pty-manager.js";
 import { statusManager } from "../status.js";
 import { serverLog } from "../log-bus.js";
 import { feishuClient, type FeishuInboundMessage } from "./client.js";
 import { getFeishuConfig, isSenderAllowed } from "./config.js";
-import { ensureHubSession } from "../hub-session.js";
+import { ensureHubSession, writeHubInput } from "../hub-session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -151,7 +150,7 @@ async function handleInbound(msg: FeishuInboundMessage): Promise<void> {
         serverLog("warn", "feishu", "inbound 总控台就绪超时，仍尝试写入", { sessionId });
       }
     }
-    const ok = ptyManager.write(sessionId, text + "\r");
+    const ok = await writeHubInput(sessionId, text);
     if (!ok) throw new Error("总控台 PTY 写入失败（会话可能已退出）");
     serverLog("info", "feishu", `inbound 成功 (${Date.now() - startedAt}ms)`, {
       sessionId,

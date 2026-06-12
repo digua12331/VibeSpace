@@ -1,0 +1,21 @@
+{
+  "task": "微信消息回车被吞",
+  "steps": [
+    {
+      "id": 1,
+      "title": "hub-session.ts 新增 writeHubInput()",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/terminal/SessionView.tsx", "packages/server/src/hub-session.ts"],
+      "write_files": ["packages/server/src/hub-session.ts"]
+    },
+    {
+      "id": 2,
+      "title": "微信/飞书入站改用 writeHubInput",
+      "verify": "build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts", "packages/server/src/feishu/inbound.ts"],
+      "write_files": ["packages/server/src/wechat/inbound.ts", "packages/server/src/feishu/inbound.ts"]
+    }
+  ]
+}

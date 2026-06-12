@@ -22,6 +22,26 @@ export function setHubRestartNotifier(fn: (text: string) => void): void {
   restartNotifier = fn;
 }
 
+// claude 的 ink TUI 会把同一 chunk 里 `text\r` 的 \r 当成文本中的回车字符而
+// 不是提交信号——表现为消息停在输入框没执行。与前端 SessionView.tsx 同款修
+// 法：bracketed paste（终端标准的"我在粘贴"标记）包住正文，隔一拍再发独立
+// 的 \r 让 ink 当 Enter 处理。后端写入发生在会话刚 spawn 后，延迟取 50ms
+// 比前端的 16ms 留更多余量。
+const BRACKETED_PASTE_BEGIN = "\x1b[200~";
+const BRACKETED_PASTE_END = "\x1b[201~";
+const SUBMIT_ENTER_DELAY_MS = 50;
+
+/**
+ * 把一条消息写进总控台 PTY 并真正提交。供微信/飞书入站共用——两条通道必须
+ * 保持同一提交语义。返回 false 表示 PTY 写入失败（会话可能已退出）。
+ */
+export async function writeHubInput(sessionId: string, text: string): Promise<boolean> {
+  const ok = ptyManager.write(sessionId, BRACKETED_PASTE_BEGIN + text + BRACKETED_PASTE_END);
+  if (!ok) return false;
+  await new Promise((r) => setTimeout(r, SUBMIT_ENTER_DELAY_MS));
+  return ptyManager.write(sessionId, "\r");
+}
+
 /** The live hub session id, or null if none is currently alive. */
 export function getHubSessionId(): string | null {
   if (currentHubSessionId && ptyManager.has(currentHubSessionId)) return currentHubSessionId;
