@@ -87,6 +87,7 @@ import type {
   LocalAiModelsResult,
   CommitMessageResult,
   RadarDailyBrief,
+  RadarArticle,
 } from './types'
 
 const BASE: string =
@@ -1388,5 +1389,11 @@ export function localAiCommitMessage(
 export function getRadarDailyBrief(force?: boolean): Promise<RadarDailyBrief> {
   return request<RadarDailyBrief>(
     `/api/radar/daily-brief${force ? '?force=1' : ''}`,
+  )
+}
+
+export function getRadarArticle(storyId: string): Promise<RadarArticle> {
+  return request<RadarArticle>(
+    `/api/radar/article?storyId=${encodeURIComponent(storyId)}`,
   )
 }

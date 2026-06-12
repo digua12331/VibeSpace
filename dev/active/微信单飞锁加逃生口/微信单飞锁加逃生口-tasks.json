@@ -1,0 +1,14 @@
+{
+  "task": "微信单飞锁加逃生口",
+  "steps": [
+    { "id": 1, "title": "逃生指令 CANCEL_WORDS", "verify": "build 通过", "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts"], "write_files": ["packages/server/src/wechat/inbound.ts"] },
+    { "id": 2, "title": "状态感知即时孤儿判定 + 话术", "verify": "build 通过", "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts"], "write_files": ["packages/server/src/wechat/inbound.ts"] },
+    { "id": 3, "title": "idle 事件订阅自动解锁", "verify": "build 通过", "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts", "packages/server/src/status.ts"], "write_files": ["packages/server/src/wechat/inbound.ts"] },
+    { "id": 4, "title": "wechat-deadlock smoke", "verify": "pnpm smoke:wechat-deadlock 通过", "status": "todo",
+      "read_files": [], "write_files": ["scripts/wechat-deadlock-smoke.mjs", "package.json"] },
+    { "id": 5, "title": "交付 handoff", "verify": "首行为验收指引", "status": "todo", "read_files": [], "write_files": [] }
+  ]
+}

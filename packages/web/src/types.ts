@@ -1336,3 +1336,15 @@ export interface RadarDailyBrief {
   cached: boolean
   items: RadarStory[]
 }
+
+export interface RadarArticle {
+  storyId: string
+  sourceUrl: string
+  title: string | null
+  /** 纯文本正文，段落以 \n\n 分隔；不含任何 HTML。 */
+  textContent: string
+  charCount: number
+  truncated: boolean
+  fetchedAt: number
+  cached: boolean
+}

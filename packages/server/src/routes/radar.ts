@@ -8,6 +8,7 @@
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { serverLog } from "../log-bus.js";
+import { fetchRadarArticle } from "../radar-article.js";
 
 const UPSTREAM_URL =
   "https://learnprompt.github.io/ai-news-radar/data/daily-brief.json";
@@ -145,6 +146,15 @@ export function resetRadarCache(): void {
   _cache = null;
 }
 
+/**
+ * 从最近一次成功的 daily-brief 结果里按 storyId 找故事（过期缓存也算——
+ * _cache 过期后不清空，旧 tab 仍能解析；服务器重启后才真正找不到）。
+ * 原文抓取的 URL 只能来自这里，客户端无法传任意地址。
+ */
+export function findCachedStory(storyId: string): RadarStory | null {
+  return _cache?.items.find((s) => s.storyId === storyId) ?? null;
+}
+
 export async function fetchDailyBrief(opts: {
   force: boolean;
   fetchImpl?: FetchLike;
@@ -233,6 +243,65 @@ export async function registerRadarRoutes(app: FastifyInstance): Promise<void> {
           },
         },
       });
+      return sendError(reply, err);
+    }
+  });
+
+  // ---------- GET /api/radar/article ----------
+  // 只接收 storyId；URL 由 daily-brief 缓存解析（SSRF 授权第一道闸）。
+  // 日志只记 host/耗时/字数，不落盘完整 URL、正文、HTML。
+  app.get("/api/radar/article", async (req, reply) => {
+    const storyId = (req.query as Record<string, unknown> | undefined)?.storyId;
+    if (typeof storyId !== "string" || storyId.length === 0) {
+      return reply
+        .code(400)
+        .send({ error: "radar_bad_request", message: "缺少 storyId" });
+    }
+    const t0 = Date.now();
+    serverLog("info", "radar", "radar-article 开始", { meta: { storyId } });
+    try {
+      let story = findCachedStory(storyId);
+      if (!story) {
+        // 服务器刚重启缓存为空时，先拉一次列表再找，旧 tab 不至于全部 404
+        await fetchDailyBrief({ force: false }).catch(() => undefined);
+        story = findCachedStory(storyId);
+      }
+      if (!story) {
+        throw new RadarError(
+          "该资讯不在当前列表缓存中，无法抓取原文",
+          "radar_story_not_found",
+          404,
+        );
+      }
+      if (!story.primaryUrl) {
+        throw new RadarError("该资讯没有可用的原文地址", "radar_article_failed", 502);
+      }
+      const article = await fetchRadarArticle({ storyId, url: story.primaryUrl });
+      serverLog("info", "radar", `radar-article 成功 (${Date.now() - t0}ms)`, {
+        meta: {
+          storyId,
+          host: new URL(story.primaryUrl).hostname,
+          cached: article.cached,
+          chars: article.charCount,
+          truncated: article.truncated,
+        },
+      });
+      return reply.send(article);
+    } catch (err: unknown) {
+      serverLog(
+        "error",
+        "radar",
+        `radar-article 失败: ${(err as Error)?.message}`,
+        {
+          meta: {
+            storyId,
+            error: {
+              name: (err as Error)?.name,
+              message: (err as Error)?.message,
+            },
+          },
+        },
+      );
       return sendError(reply, err);
     }
   });

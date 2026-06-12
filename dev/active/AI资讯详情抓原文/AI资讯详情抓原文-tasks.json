@@ -1,0 +1,64 @@
+{
+  "task": "AI资讯详情抓原文",
+  "steps": [
+    {
+      "id": 1,
+      "title": "装依赖 @mozilla/readability + linkedom",
+      "verify": "pnpm install 成功，package.json 出现两条依赖",
+      "status": "todo",
+      "read_files": ["packages/server/package.json"],
+      "write_files": ["packages/server/package.json", "pnpm-lock.yaml"]
+    },
+    {
+      "id": 2,
+      "title": "后端核心模块 radar-article.ts",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/radar.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/radar-article.ts"]
+    },
+    {
+      "id": 3,
+      "title": "radar.ts 注册 article 路由 + findCachedStory + 日志",
+      "verify": "build 通过；curl 真实 storyId 返回正文 JSON，非法 storyId 返回 404",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/radar.ts"],
+      "write_files": ["packages/server/src/routes/radar.ts"]
+    },
+    {
+      "id": 4,
+      "title": "自测脚本 radar-article-test.ts",
+      "verify": "pnpm -F @aimon/server exec tsx scripts/radar-article-test.ts 全绿",
+      "status": "todo",
+      "read_files": ["packages/server/scripts/radar-test.ts", "packages/server/src/radar-article.ts"],
+      "write_files": ["packages/server/scripts/radar-article-test.ts"]
+    },
+    {
+      "id": 5,
+      "title": "前端 RadarStoryView + EditorArea 接入 + api/types",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": [
+        "packages/web/src/components/editor/EditorArea.tsx",
+        "packages/web/src/components/sidebar/RadarView.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts",
+        "packages/web/src/logs.ts"
+      ],
+      "write_files": [
+        "packages/web/src/components/editor/RadarStoryView.tsx",
+        "packages/web/src/components/editor/EditorArea.tsx",
+        "packages/web/src/api.ts",
+        "packages/web/src/types.ts"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "全链路人工验证 + 白名单核对",
+      "verify": "浏览器正文可见；失败分支 ERROR；LogsView 起止配对；落盘日志无完整 URL；git diff --name-only HEAD 在白名单内",
+      "status": "todo",
+      "read_files": ["packages/server/data/logs/*.log"],
+      "write_files": []
+    }
+  ]
+}

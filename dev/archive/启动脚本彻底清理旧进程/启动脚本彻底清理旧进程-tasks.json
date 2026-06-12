@@ -1,0 +1,29 @@
+{
+  "task": "启动脚本彻底清理旧进程",
+  "steps": [
+    {
+      "id": 1,
+      "title": "新建 scripts/start-cleanup.ps1",
+      "verify": "powershell -File 手工跑一遍，不报错、不杀当前窗口",
+      "status": "todo",
+      "read_files": ["start.bat", "package.json"],
+      "write_files": ["scripts/start-cleanup.ps1"]
+    },
+    {
+      "id": 2,
+      "title": "改 start.bat 调用 ps1 并把清理挪到 install 前",
+      "verify": "模拟旧实例后跑清理，旧进程被杀、新链存活",
+      "status": "todo",
+      "read_files": ["start.bat"],
+      "write_files": ["start.bat"]
+    },
+    {
+      "id": 3,
+      "title": "端到端连续启动两次验证",
+      "verify": "第二次启动输出 killing stale 行，端口无占用",
+      "status": "todo",
+      "read_files": ["start.bat", "scripts/start-cleanup.ps1"],
+      "write_files": []
+    }
+  ]
+}

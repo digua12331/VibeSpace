@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import {
   getAppSettings,
   updateAppSettings,
@@ -6,6 +7,13 @@ import {
   updateFeishuConfig,
   getFeishuStatus,
   testFeishu,
+  getWechatConfig,
+  updateWechatConfig,
+  getWechatStatus,
+  wechatLogin,
+  wechatBindStart,
+  wechatLogout,
+  wechatResetBinding,
   getLocalAiProviders,
   getLocalAiModels,
   LS_LOCALAI_PROVIDER,
@@ -23,6 +31,7 @@ import type {
   TerminalKeybindings,
   FeishuStatus,
   FeishuTestResult,
+  WechatStatus,
   LocalAiProvider,
   LocalAiProviderId,
 } from '../types'
@@ -53,13 +62,14 @@ const RETENTION_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: '不清理' },
 ]
 
-type SettingsTab = 'general' | 'terminal' | 'manager' | 'feishu'
+type SettingsTab = 'general' | 'terminal' | 'manager' | 'feishu' | 'wechat'
 
 const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: '通用' },
   { id: 'terminal', label: '终端' },
   { id: 'manager', label: '经理 AI 边界' },
   { id: 'feishu', label: '飞书机器人' },
+  { id: 'wechat', label: '微信机器人' },
 ]
 
 const DEFAULT_MANAGER: ManagerBoundarySettings = {
@@ -183,6 +193,15 @@ export default function SettingsDialog() {
   const [feishuTestResult, setFeishuTestResult] =
     useState<FeishuTestResult | null>(null)
   const [feishuError, setFeishuError] = useState<string | null>(null)
+  // 微信桥（独立加载/操作，走 /api/wechat/*）
+  const [wechatEnabled, setWechatEnabled] = useState(false)
+  const [wechatOwner, setWechatOwner] = useState('')
+  const [wechatHasToken, setWechatHasToken] = useState(false)
+  const [wechatStatus, setWechatStatus] = useState<WechatStatus | null>(null)
+  const [wechatQrDataUrl, setWechatQrDataUrl] = useState<string | null>(null)
+  const [wechatBindCode, setWechatBindCode] = useState<string | null>(null)
+  const [wechatBusy, setWechatBusy] = useState(false)
+  const [wechatError, setWechatError] = useState<string | null>(null)
   const notifyPerm = useStore((s) => s.notifyPerm)
   const setNotifyPerm = useStore((s) => s.setNotifyPerm)
   const setTerminalKeybindings = useStore((s) => s.setTerminalKeybindings)
@@ -235,7 +254,46 @@ export default function SettingsDialog() {
     getFeishuStatus()
       .then(setFeishuStatus)
       .catch(() => setFeishuStatus(null))
+    // 微信配置独立加载（失败不挡其它设置）
+    setWechatError(null)
+    setWechatQrDataUrl(null)
+    setWechatBindCode(null)
+    getWechatConfig()
+      .then((c) => {
+        setWechatEnabled(c.enabled)
+        setWechatOwner(c.ownerUserId)
+        setWechatHasToken(c.hasToken)
+      })
+      .catch((e: unknown) =>
+        setWechatError(e instanceof Error ? e.message : String(e)),
+      )
+    getWechatStatus()
+      .then(setWechatStatus)
+      .catch(() => setWechatStatus(null))
   }, [open, setNotifyPerm])
+
+  // 微信页签打开期间轮询状态（扫码确认、绑定完成都靠它反映到界面）。
+  useEffect(() => {
+    if (!open || activeTab !== 'wechat') return
+    const timer = window.setInterval(() => {
+      getWechatStatus()
+        .then((s) => {
+          setWechatStatus(s)
+          // 扫码确认后后端自动转入轮询：收起二维码，刷新已存凭证标记
+          if (s.state === 'logged_in') {
+            setWechatQrDataUrl(null)
+            setWechatHasToken(true)
+            setWechatEnabled((prev) => prev || s.configured)
+          }
+          if (!s.binding.active) setWechatBindCode(null)
+          if (s.ownerBound && !wechatOwner) {
+            void getWechatConfig().then((c) => setWechatOwner(c.ownerUserId))
+          }
+        })
+        .catch(() => {})
+    }, 2500)
+    return () => window.clearInterval(timer)
+  }, [open, activeTab, wechatOwner])
 
   useEffect(() => {
     if (!open) return
@@ -495,6 +553,97 @@ export default function SettingsDialog() {
       setFeishuError(e instanceof Error ? e.message : String(e))
     } finally {
       setFeishuTesting(false)
+    }
+  }
+
+  async function onWechatLogin() {
+    setWechatBusy(true)
+    setWechatError(null)
+    try {
+      const { loginUrl } = await logAction('wechat', 'login', () => wechatLogin())
+      const dataUrl = await QRCode.toDataURL(loginUrl, { width: 220, margin: 1 })
+      setWechatQrDataUrl(dataUrl)
+      const s = await getWechatStatus().catch(() => null)
+      if (s) setWechatStatus(s)
+    } catch (e: unknown) {
+      setWechatError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWechatBusy(false)
+    }
+  }
+
+  async function onWechatBindStart() {
+    setWechatBusy(true)
+    setWechatError(null)
+    try {
+      const r = await logAction('wechat', 'bind-start', () => wechatBindStart())
+      setWechatBindCode(r.code)
+    } catch (e: unknown) {
+      setWechatError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWechatBusy(false)
+    }
+  }
+
+  async function onWechatLogout() {
+    const ok = await confirmDialog(
+      '会清掉登录凭证并停止收消息（已绑定的本人账号保留）。之后想再用需要重新取码扫码。',
+      { title: '退出微信连接', confirmLabel: '退出' },
+    )
+    if (!ok) return
+    setWechatBusy(true)
+    setWechatError(null)
+    try {
+      const c = await logAction('wechat', 'logout', () => wechatLogout())
+      setWechatEnabled(c.enabled)
+      setWechatHasToken(c.hasToken)
+      setWechatQrDataUrl(null)
+      setWechatBindCode(null)
+      const s = await getWechatStatus().catch(() => null)
+      if (s) setWechatStatus(s)
+    } catch (e: unknown) {
+      setWechatError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWechatBusy(false)
+    }
+  }
+
+  async function onWechatResetBinding() {
+    const ok = await confirmDialog(
+      '解除当前绑定的微信号，它将立即无法再指挥总控台。之后需要重新「开始绑定」。',
+      { title: '重置绑定', confirmLabel: '重置' },
+    )
+    if (!ok) return
+    setWechatBusy(true)
+    setWechatError(null)
+    try {
+      await logAction('wechat', 'reset-binding', () => wechatResetBinding())
+      setWechatOwner('')
+      setWechatBindCode(null)
+    } catch (e: unknown) {
+      setWechatError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWechatBusy(false)
+    }
+  }
+
+  async function onWechatToggleEnabled(next: boolean) {
+    setWechatBusy(true)
+    setWechatError(null)
+    try {
+      const c = await logAction(
+        'wechat',
+        'save-config',
+        () => updateWechatConfig({ enabled: next }),
+        { meta: { enabled: next } },
+      )
+      setWechatEnabled(c.enabled)
+      const s = await getWechatStatus().catch(() => null)
+      if (s) setWechatStatus(s)
+    } catch (e: unknown) {
+      setWechatError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWechatBusy(false)
     }
   }
 
@@ -1058,6 +1207,142 @@ export default function SettingsDialog() {
               {feishuSaving ? '保存中…' : '保存飞书配置'}
             </button>
           </div>
+        </section>
+        )}
+
+        {activeTab === 'wechat' && (
+        <section className="mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm text-fg/90">微信机器人</div>
+            {wechatStatus && (
+              <span
+                className={`text-xs px-2 py-0.5 rounded border ${
+                  wechatStatus.state === 'logged_in'
+                    ? 'text-emerald-300 border-emerald-600/40 bg-emerald-500/10'
+                    : wechatStatus.state === 'error'
+                      ? 'text-rose-300 border-rose-600/40 bg-rose-500/10'
+                      : wechatStatus.state === 'scanning'
+                        ? 'text-amber-300 border-amber-600/40 bg-amber-500/10'
+                        : 'text-muted border-border'
+                }`}
+              >
+                {wechatStatus.state === 'logged_in'
+                  ? '● 已连接'
+                  : wechatStatus.state === 'scanning'
+                    ? '● 等待扫码'
+                    : wechatStatus.state === 'error'
+                      ? '● 连接异常'
+                      : '○ 未连接'}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-muted mb-3 leading-relaxed">
+            用你自己的微信跟「总控台 AI」一问一答（查项目、派任务、问进度）。
+            <span className="text-amber-300/80">
+              {' '}
+              限制：微信只能即时回话，不能主动找你——任务完成提醒仍走飞书。
+              收不到回复时，回这里重新取码连接即可。
+            </span>
+          </div>
+
+          <label className="inline-flex items-center gap-2 text-sm mb-3 cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={wechatBusy}
+              checked={wechatEnabled}
+              onChange={(e) => void onWechatToggleEnabled(e.target.checked)}
+            />
+            <span>启用微信桥</span>
+          </label>
+
+          {/* 连接区：取码 / 二维码 / 退出 */}
+          <div className="space-y-2 mb-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={wechatBusy}
+                onClick={() => void onWechatLogin()}
+                className="fluent-btn px-3 py-1.5 text-xs rounded-md border border-accent/60 bg-accent text-on-accent font-medium hover:bg-accent-2 disabled:opacity-60"
+              >
+                {wechatBusy ? '处理中…' : wechatHasToken ? '重新取码' : '取码连接'}
+              </button>
+              {wechatHasToken && (
+                <button
+                  type="button"
+                  disabled={wechatBusy}
+                  onClick={() => void onWechatLogout()}
+                  className="fluent-btn px-3 py-1.5 text-xs rounded-md border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+                >
+                  退出连接
+                </button>
+              )}
+            </div>
+            {wechatQrDataUrl && wechatStatus?.state === 'scanning' && (
+              <div className="flex flex-col items-center gap-1 p-3 bg-white rounded-md w-[244px]">
+                <img src={wechatQrDataUrl} alt="微信登录二维码" width={220} height={220} />
+                <div className="text-[11px] text-black/70">
+                  用手机微信扫码（约 3 分钟内有效）
+                </div>
+              </div>
+            )}
+            {wechatStatus?.state === 'error' && wechatStatus.lastError && (
+              <div className="px-3 py-1.5 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
+                {wechatStatus.lastError}
+              </div>
+            )}
+          </div>
+
+          {/* 绑定区：只有绑定的本人微信号能指挥总控台 */}
+          <div className="space-y-2 mb-3 border-t border-border/40 pt-3">
+            <div className="text-xs text-muted">
+              绑定本人：
+              {wechatOwner ? (
+                <span className="text-emerald-300/90"> 已绑定（{wechatOwner.slice(0, 10)}…）</span>
+              ) : (
+                <span className="text-amber-300/90"> 未绑定——连接后点「开始绑定」，把口令发给机器人</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={wechatBusy || !wechatHasToken}
+                onClick={() => void onWechatBindStart()}
+                className="fluent-btn px-3 py-1.5 text-xs rounded-md border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+              >
+                开始绑定
+              </button>
+              {wechatOwner && (
+                <button
+                  type="button"
+                  disabled={wechatBusy}
+                  onClick={() => void onWechatResetBinding()}
+                  className="fluent-btn px-3 py-1.5 text-xs rounded-md border border-border text-muted hover:text-fg hover:bg-white/[0.04] disabled:opacity-50"
+                >
+                  重置绑定
+                </button>
+              )}
+            </div>
+            {wechatBindCode && wechatStatus?.binding.active && (
+              <div className="px-3 py-2 text-sm rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-200">
+                在微信里把口令 <span className="font-mono font-bold text-base">{wechatBindCode}</span>{' '}
+                发给机器人完成绑定（2 分钟内有效）
+              </div>
+            )}
+          </div>
+
+          {/* 最近收发时间（发送成功仅代表请求被微信受理，以手机实际收到为准） */}
+          {wechatStatus && (wechatStatus.lastInboundAt || wechatStatus.lastOutboundAt) && (
+            <div className="text-[11px] text-muted">
+              最近收到：{wechatStatus.lastInboundAt ? new Date(wechatStatus.lastInboundAt).toLocaleTimeString() : '—'}
+              {' · '}
+              最近发出：{wechatStatus.lastOutboundAt ? new Date(wechatStatus.lastOutboundAt).toLocaleTimeString() : '—'}
+            </div>
+          )}
+          {wechatError && (
+            <div className="mt-2 px-3 py-1.5 text-xs text-rose-200 bg-rose-500/15 border border-rose-500/40 rounded-md">
+              {wechatError}
+            </div>
+          )}
         </section>
         )}
           </div>

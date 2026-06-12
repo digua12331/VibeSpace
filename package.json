@@ -30,7 +30,8 @@
     "smoke:error-pattern": "node scripts/error-pattern-smoke.mjs",
     "smoke:error-pattern-e2e": "node scripts/error-pattern-e2e-smoke.mjs",
     "smoke:agent-team": "node scripts/agent-team-smoke.mjs",
-    "smoke:wechat": "node scripts/wechat-smoke.mjs"
+    "smoke:wechat": "node scripts/wechat-smoke.mjs",
+    "smoke:wechat-deadlock": "node scripts/wechat-deadlock-smoke.mjs"
   },
   "packageManager": "pnpm@10.20.0",
   "engines": {

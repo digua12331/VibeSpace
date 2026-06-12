@@ -15,7 +15,7 @@ import type { AgentKind, DocTaskSummary } from '../../types'
 // 弹出），后者负责终端 keep-alive。
 const FilePreview = lazy(() => import('../FilePreview'))
 const CommitDetailView = lazy(() => import('../CommitDetailView'))
-const MarkdownView = lazy(() => import('../MarkdownView'))
+const RadarStoryView = lazy(() => import('./RadarStoryView'))
 
 function FileTabFallback() {
   return (
@@ -361,16 +361,13 @@ export default function EditorArea() {
           <div className="absolute inset-0 flex flex-col bg-bg">
             <Suspense fallback={<FileTabFallback />}>
               {activeFile.kind === 'radar' ? (
-                // radar 详情：内容快照在 tab 上（radarMarkdown），只读渲染，
-                // 不走 FilePreview（那套是磁盘/git 文件语义）。
-                <div className="flex-1 overflow-auto">
-                  <div className="px-4 py-4">
-                    <MarkdownView
-                      source={activeFile.radarMarkdown ?? '（内容缺失，请回到 AI资讯 列表重新打开）'}
-                      readOnly
-                    />
-                  </div>
-                </div>
+                // radar 详情：快照（radarMarkdown）+ 按 storyId（存在 path 上）
+                // 异步抓原文正文，不走 FilePreview（那套是磁盘/git 文件语义）。
+                <RadarStoryView
+                  key={activeFile.key}
+                  storyId={activeFile.path}
+                  fallbackMarkdown={activeFile.radarMarkdown}
+                />
               ) : activeFile.kind === 'commit' && activeFile.commitSha ? (
                 <CommitDetailView
                   key={activeFile.key}

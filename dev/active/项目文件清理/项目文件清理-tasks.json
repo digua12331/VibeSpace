@@ -1,0 +1,37 @@
+{
+  "task": "项目文件清理",
+  "steps": [
+    {
+      "id": 1,
+      "title": "删除 A 类垃圾文件",
+      "verify": "文件不存在，grep 无残留引用，git status 显示预期删除",
+      "status": "todo",
+      "read_files": [],
+      "write_files": ["_tp.bat", "dev/_run_test.py", "docs/1.md", "docs/1.md.comments.json", "output/示例功能/*", "dev/active/修复后端启动/*.log", "dev/active/修复后端启动/*.err"]
+    },
+    {
+      "id": 2,
+      "title": "删除 _design-explorations/",
+      "verify": "目录不存在，git status 显示删除",
+      "status": "todo",
+      "read_files": [],
+      "write_files": ["_design-explorations/*"]
+    },
+    {
+      "id": 3,
+      "title": "dev/active 已完成任务目录批量移到 dev/archive",
+      "verify": "dev/active 只剩白名单 10 个目录，archive 数量对得上",
+      "status": "todo",
+      "read_files": ["dev/active/*"],
+      "write_files": ["dev/active/*", "dev/archive/*"]
+    },
+    {
+      "id": 4,
+      "title": "类型检查/构建确认无误伤",
+      "verify": "pnpm build/typecheck 通过",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}
