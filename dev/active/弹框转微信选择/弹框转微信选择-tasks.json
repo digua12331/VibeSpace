@@ -1,0 +1,45 @@
+{
+  "task": "弹框转微信选择",
+  "steps": [
+    {
+      "id": 1,
+      "title": "hub-session.ts 新增 writeHubAnswer()",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/hub-session.ts"],
+      "write_files": ["packages/server/src/hub-session.ts"]
+    },
+    {
+      "id": 2,
+      "title": "stripAnsi/detectHubPrompt 纯函数 + import ptyManager",
+      "verify": "build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts", "packages/server/src/pty-manager.ts"],
+      "write_files": ["packages/server/src/wechat/inbound.ts"]
+    },
+    {
+      "id": 3,
+      "title": "PendingRequest 加 awaitingChoice/promptFingerprint",
+      "verify": "build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts"],
+      "write_files": ["packages/server/src/wechat/inbound.ts"]
+    },
+    {
+      "id": 4,
+      "title": "onHubStatusChange 弹框推送分支",
+      "verify": "build 通过 + 手动触发弹框微信收到推送",
+      "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts"],
+      "write_files": ["packages/server/src/wechat/inbound.ts"]
+    },
+    {
+      "id": 5,
+      "title": "handleInbound 答案分支 + 日志",
+      "verify": "build 通过 + 微信回数字终端选中 + LogsView 见 prompt-forward/prompt-answer",
+      "status": "todo",
+      "read_files": ["packages/server/src/wechat/inbound.ts"],
+      "write_files": ["packages/server/src/wechat/inbound.ts"]
+    }
+  ]
+}

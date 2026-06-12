@@ -1,8 +1,9 @@
 import { randomInt } from "node:crypto";
 import { nanoid } from "nanoid";
+import { ptyManager } from "../pty-manager.js";
 import { statusManager } from "../status.js";
 import { serverLog } from "../log-bus.js";
-import { ensureHubSession, getHubSessionId, writeHubInput } from "../hub-session.js";
+import { ensureHubSession, getHubSessionId, writeHubInput, writeHubAnswer } from "../hub-session.js";
 import { wechatClient, type WechatInboundMessage } from "./client.js";
 import { getWechatConfig, setWechatConfig } from "./config.js";
 
@@ -55,6 +56,79 @@ export function classifyPendingGate(opts: {
   return "reject";
 }
 
+// ---- 弹框检测（纯函数，扫总控台 PTY buffer 尾部判断 claude 是否在等你选）----
+
+// 去掉终端转义序列（CSI 颜色/光标、OSC 标题）+ 裸控制字符后才好按行扫文本。
+// 用 charCode 扫描而非正则，避免源码里出现裸 ESC 字节。保留 制表/换行/回车。
+export function stripAnsi(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s.charCodeAt(i);
+    if (c === 0x1b) {
+      const next = s[i + 1];
+      if (next === "[") {
+        // CSI：吃到第一个 ASCII 字母（终止符）为止。
+        i += 2;
+        while (i < s.length && !/[A-Za-z]/.test(s[i])) i += 1;
+        continue;
+      }
+      if (next === "]") {
+        // OSC：吃到 BEL(0x07) 或下一个 ESC 为止。
+        i += 2;
+        while (i < s.length && s.charCodeAt(i) !== 0x07 && s.charCodeAt(i) !== 0x1b) i += 1;
+        continue;
+      }
+      i += 1; // 其它 ESC x：跳过 ESC + 一个字节。
+      continue;
+    }
+    if (c === 0x09 || c === 0x0a || c === 0x0d) {
+      out += s[i];
+      continue;
+    }
+    if (c < 0x20 || c === 0x7f) continue; // 丢弃其余控制字符
+    out += s[i];
+  }
+  return out;
+}
+
+export interface HubPromptDetection {
+  isPrompt: boolean;
+  /** 推给 owner 的可读文本（已去 ANSI、取尾部若干行、限长）。 */
+  text: string;
+  /** 同一弹框去重指纹（归一化的选项行）。 */
+  fingerprint: string;
+}
+
+/**
+ * 从 PTY 原始缓冲判断 claude 是否停在一个「需要你选/确认」的弹框上，并提取
+ * 可读文本 + 去重指纹。启发式：扫尾部约 20 行，命中选择光标 `❯`、编号选项
+ * `1. 2.`、`(y/n)`、`Do you want|trust`、`是否` 等特征即判为弹框。
+ * 刻意不穷举所有 TUI 样式——先覆盖 claude 最常见的几种确认框。
+ */
+export function detectHubPrompt(buffer: string): HubPromptDetection {
+  const clean = stripAnsi(buffer);
+  const lines = clean
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+$/, ""))
+    .filter((l) => l.trim().length > 0);
+  const tail = lines.slice(-20);
+  const tailText = tail.join("\n");
+  const isPrompt =
+    /❯/.test(tailText) ||
+    /\(\s*y\s*\/\s*n\s*\)/i.test(tailText) ||
+    /\[\s*y\s*\/\s*n\s*\]/i.test(tailText) ||
+    /do you (want|trust|wish)/i.test(tailText) ||
+    /是否|继续吗|确认吗|请选择/.test(tailText) ||
+    (/(^|\s)1\.\s/.test(tailText) && /(^|\s)2\.\s/.test(tailText));
+  const optionLines = tail.filter((l) =>
+    /❯|^\s*\d+\.\s|\(\s*y\s*\/\s*n\s*\)|是否|do you/i.test(l),
+  );
+  const fingerprint = (optionLines.join("|") || tailText.slice(-200)).slice(0, 200);
+  let text = tailText;
+  if (text.length > 1200) text = "…\n" + text.slice(-1200);
+  return { isPrompt, text, fingerprint };
+}
+
 interface BindingWindow {
   code: string;
   expiresAt: number;
@@ -65,6 +139,10 @@ interface PendingRequest {
   fromUserId: string;
   contextToken: string;
   createdAt: number;
+  /** 总控台弹出选择框、已推给 owner、正等他回数字时为 true。 */
+  awaitingChoice: boolean;
+  /** 已推送弹框的去重指纹，防同一框的 Notification 连发重复刷屏。 */
+  promptFingerprint: string | null;
 }
 
 let binding: BindingWindow | null = null;
@@ -87,17 +165,64 @@ function hubStatus(): string | undefined {
 }
 
 /**
+ * 把总控台的弹框推给 owner 微信。best-effort，失败只记日志不抛
+ * （contextToken 可能已过期；解锁/重发由 owner 决定）。
+ */
+function forwardPromptToOwner(target: PendingRequest, promptText: string): void {
+  const t0 = Date.now();
+  serverLog("info", "wechat", "prompt-forward 开始", {
+    meta: { requestId: target.requestId },
+  });
+  void wechatClient
+    .sendReply(
+      target.fromUserId,
+      target.contextToken,
+      `⚠️ 总控台在等你选择，回复对应数字或一句话即可：\n\n${promptText}\n\n（卡住就发「取消」解锁）`,
+    )
+    .then(() => {
+      serverLog("info", "wechat", `prompt-forward 成功 (${Date.now() - t0}ms)`, {
+        meta: { requestId: target.requestId },
+      });
+    })
+    .catch((err: unknown) => {
+      const e = err as Error;
+      serverLog("error", "wechat", `prompt-forward 失败: ${e.message}`, {
+        meta: { requestId: target.requestId, error: { name: e.name, message: e.message } },
+      });
+    });
+}
+
+/**
  * 总控台状态变化回调（registerWechatInbound 里挂到 statusManager）：
- *   - 转 working/starting：AI 又在干活，撤销待放行定时器，继续等它回传。
- *   - 转 idle/waiting_input 且仍有 pending：宽限后自动放行 + 通知 owner，
- *     这样即使 owner 不发任何消息，卡死的锁也会自己解开。
+ *   - 转 working/starting：AI 又在干活，撤销待放行定时器；若刚才在等回答说明
+ *     选择已被消费，清掉 awaitingChoice/指纹，让下一个弹框能重新被识别。
+ *   - 转 waiting_input 且有 pending：先判这是不是真弹框（扫 PTY 选项特征）。
+ *       · 是真弹框 → 把问题+选项推给 owner，置 awaitingChoice，等他回数字；
+ *         **不**走孤儿解锁（否则会误报「已处理完」）。
+ *       · 不是弹框（claude 答完停在主输入框）→ 维持原孤儿宽限自动解锁。
+ *   - 转 idle 且有 pending → 同样走孤儿宽限自动解锁。
  */
 function onHubStatusChange(sessionId: string, status: string): void {
   const hubId = getHubSessionId();
   if (!hubId || sessionId !== hubId) return;
   if (status === "working" || status === "starting" || status === "running") {
     clearOrphanTimer();
+    if (pending) {
+      pending.awaitingChoice = false;
+      pending.promptFingerprint = null;
+    }
     return;
+  }
+  if (status === "waiting_input" && pending) {
+    const detected = detectHubPrompt(ptyManager.getBuffer(hubId));
+    if (detected.isPrompt) {
+      if (pending.promptFingerprint === detected.fingerprint) return; // 同一框已推过
+      clearOrphanTimer();
+      pending.awaitingChoice = true;
+      pending.promptFingerprint = detected.fingerprint;
+      forwardPromptToOwner(pending, detected.text);
+      return;
+    }
   }
   if ((status === "idle" || status === "waiting_input") && pending) {
     clearOrphanTimer();
@@ -261,6 +386,38 @@ async function handleInbound(msg: WechatInboundMessage): Promise<void> {
     return;
   }
 
+  // 3.6) 总控台正等你回答弹框：本条消息当「选择」敲回终端，不当新指令。
+  if (pending && pending.awaitingChoice) {
+    pending.awaitingChoice = false;
+    const hubId = getHubSessionId();
+    if (!hubId) {
+      pending = null;
+      await replyBestEffort(msg, "⚠️ 总控台会话已不在，发「取消」后重新发问即可。");
+      return;
+    }
+    const t0 = Date.now();
+    serverLog("info", "wechat", "prompt-answer 开始", {
+      sessionId: hubId,
+      meta: { requestId: pending.requestId, len: text.length },
+    });
+    try {
+      const ok = await writeHubAnswer(hubId, text);
+      if (!ok) throw new Error("总控台 PTY 写入失败（会话可能已退出）");
+      serverLog("info", "wechat", `prompt-answer 成功 (${Date.now() - t0}ms)`, {
+        sessionId: hubId,
+        meta: { requestId: pending.requestId },
+      });
+      await replyBestEffort(msg, "✅ 已把你的选择回给总控台。");
+    } catch (err) {
+      const e = err as Error;
+      serverLog("error", "wechat", `prompt-answer 失败: ${e.message}`, {
+        meta: { requestId: pending?.requestId, error: { name: e.name, message: e.message } },
+      });
+      await replyBestEffort(msg, `⚠️ 回传选择失败：${e.message}（发「取消」可解锁）`);
+    }
+    return;
+  }
+
   // 4) 串行单请求闸口。三道放行：超时兜底 / 总控台已空闲的孤儿请求 / 否则拒绝。
   if (pending) {
     const verdict = classifyPendingGate({
@@ -283,7 +440,14 @@ async function handleInbound(msg: WechatInboundMessage): Promise<void> {
 
   // 5) 写入总控台
   const requestId = nanoid(8);
-  pending = { requestId, fromUserId: msg.fromUserId, contextToken: msg.contextToken, createdAt: Date.now() };
+  pending = {
+    requestId,
+    fromUserId: msg.fromUserId,
+    contextToken: msg.contextToken,
+    createdAt: Date.now(),
+    awaitingChoice: false,
+    promptFingerprint: null,
+  };
   const t0 = Date.now();
   serverLog("info", "wechat", "inbound 开始", { meta: { requestId, len: text.length } });
   try {

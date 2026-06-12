@@ -42,6 +42,18 @@ export async function writeHubInput(sessionId: string, text: string): Promise<bo
   return ptyManager.write(sessionId, "\r");
 }
 
+/**
+ * 写一个「弹框答案」进总控台。与 writeHubInput 不同：**不**走 bracketed paste。
+ * claude 的选择框（ink select）对"直接敲数字跳到对应选项"更友好，paste 包裹
+ * 反而可能被当成普通文本。所以这里发原始字符 + 隔一拍再发独立 \r 确认。
+ */
+export async function writeHubAnswer(sessionId: string, text: string): Promise<boolean> {
+  const ok = ptyManager.write(sessionId, text);
+  if (!ok) return false;
+  await new Promise((r) => setTimeout(r, SUBMIT_ENTER_DELAY_MS));
+  return ptyManager.write(sessionId, "\r");
+}
+
 /** The live hub session id, or null if none is currently alive. */
 export function getHubSessionId(): string | null {
   if (currentHubSessionId && ptyManager.has(currentHubSessionId)) return currentHubSessionId;
