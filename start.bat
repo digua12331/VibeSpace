@@ -26,6 +26,33 @@ echo [VibeSpace] identity=!VIBE_ID!  backend=!VIBE_BACKEND!  web=!VIBE_WEB!  scr
 echo [VibeSpace] project root: %~dp0
 echo.
 
+REM project root without the trailing backslash (a trailing \" breaks
+REM powershell argument parsing) + pid file recording the owner console.
+REM NOTE: keep this file ASCII -- cmd mis-parses non-ASCII chars in .bat.
+set "VIBE_ROOT=%~dp0"
+if "!VIBE_ROOT:~-1!"=="\" set "VIBE_ROOT=!VIBE_ROOT:~0,-1!"
+set "VIBE_PIDFILE=!VIBE_ROOT!\.vibespace\start-bat.pid"
+
+echo [VibeSpace] cleaning processes left over from the previous run ...
+REM WMI-free cleanup (Get-CimInstance Win32_Process times out on this
+REM machine, so the old command-line-matching kill silently did nothing).
+REM start-cleanup.ps1 kills the previous run's whole process tree via the
+REM pid file + a Toolhelp snapshot, then records THIS console as the new
+REM owner. Runs BEFORE pnpm install: stale processes hold file locks
+REM (esbuild.exe, conpty.node) that make install/rebuild fail.
+powershell -NoProfile -ExecutionPolicy Bypass -File "!VIBE_ROOT!\scripts\start-cleanup.ps1" -Root "!VIBE_ROOT!" -PidFile "!VIBE_PIDFILE!"
+
+echo [VibeSpace] cleaning any stale listeners on !VIBE_BACKEND! / !VIBE_WEB! ...
+for %%P in (!VIBE_BACKEND! !VIBE_WEB!) do (
+  for /f "tokens=5" %%A in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":%%P "') do (
+    echo [VibeSpace]   killing PID %%A on port %%P
+    taskkill /F /T /PID %%A >nul 2>&1
+  )
+)
+
+REM small delay so Windows releases file locks / sockets
+powershell -NoProfile -Command "Start-Sleep -Milliseconds 800" >nul 2>&1
+
 echo [VibeSpace] running pnpm install (refresh workspace symlinks) ...
 call pnpm install
 if errorlevel 1 (
@@ -33,26 +60,6 @@ if errorlevel 1 (
   pause >nul
   exit /b 1
 )
-
-echo [VibeSpace] cleaning residual node processes under this project ...
-REM Single CIM query + 30s timeout. The old version walked every node
-REM process up its parent chain, firing one WMI query per hop -- on a busy
-REM machine that stalls for a very long time, and a PID-reuse cycle could
-REM even spin forever. This does ONE query, kills node.exe whose command
-REM line contains the project root. -OperationTimeoutSec guards a wedged WMI.
-REM NOTE: keep this file ASCII -- cmd mis-parses non-ASCII chars in .bat.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = '%~dp0'.TrimEnd('\'); Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -OperationTimeoutSec 30 -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($root) } | ForEach-Object { Write-Host ('[VibeSpace]   killing node PID ' + $_.ProcessId); Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-
-echo [VibeSpace] cleaning any stale listeners on !VIBE_BACKEND! / !VIBE_WEB! ...
-for %%P in (!VIBE_BACKEND! !VIBE_WEB!) do (
-  for /f "tokens=5" %%A in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":%%P "') do (
-    echo [VibeSpace]   killing PID %%A on port %%P
-    taskkill /F /PID %%A >nul 2>&1
-  )
-)
-
-REM small delay so Windows releases file locks / sockets
-powershell -NoProfile -Command "Start-Sleep -Milliseconds 800" >nul 2>&1
 
 REM Rebuild native modules when the better-sqlite3 .node binding is missing
 REM (covers fresh install, Node ABI upgrade, pnpm cache wipe, cross-machine sync).
@@ -75,6 +82,13 @@ echo ----------------------------------------
 echo.
 
 call pnpm !VIBE_SCRIPT!
+
+REM if a newer start.bat run has taken over the pid file, this window is a
+REM leftover whose services were just killed -- close it silently instead
+REM of leaving a stale "press any key" window behind. exit /b only ends the
+REM script, so an interactive terminal the user typed start.bat into stays open.
+powershell -NoProfile -ExecutionPolicy Bypass -File "!VIBE_ROOT!\scripts\start-cleanup.ps1" -Root "!VIBE_ROOT!" -PidFile "!VIBE_PIDFILE!" -CheckOwner
+if errorlevel 1 exit /b 0
 
 echo.
 echo ----------------------------------------
