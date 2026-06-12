@@ -1,0 +1,29 @@
+{
+  "task": "总控台权限全开",
+  "steps": [
+    {
+      "id": 1,
+      "title": "hub-workspace.ts 新增 ensureHubBypassPermissions()",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/hub-workspace.ts"],
+      "write_files": ["packages/server/src/hub-workspace.ts"]
+    },
+    {
+      "id": 2,
+      "title": "mcp-bridge.ts hub 分支调用该函数",
+      "verify": "build 通过 + 手动验证 settings.local.json 合并正确",
+      "status": "todo",
+      "read_files": ["packages/server/src/mcp-bridge.ts"],
+      "write_files": ["packages/server/src/mcp-bridge.ts"]
+    },
+    {
+      "id": 3,
+      "title": "验收：已有文件合并 + 坏 JSON 备份重建",
+      "verify": "文件内容检查",
+      "status": "todo",
+      "read_files": ["packages/server/data/hub-workspace/.claude/settings.local.json"],
+      "write_files": []
+    }
+  ]
+}

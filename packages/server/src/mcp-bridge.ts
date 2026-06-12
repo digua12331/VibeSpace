@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 import { serverLog } from "./log-bus.js";
 import { HUB_PROJECT_ID } from "./hub-project.js";
 import { getHubToken } from "./hub-token.js";
-import { getHubWorkspaceDir } from "./hub-workspace.js";
+import { getHubWorkspaceDir, ensureHubBypassPermissions } from "./hub-workspace.js";
 
 const MCP_KEY = "browser-use";
 const HUB_MCP_KEY = "aimon-hub";
@@ -79,6 +79,9 @@ export async function injectMcpForAgent(
       // Hub project: merge browser-use + aimon-hub into hub-workspace/.mcp.json.
       // Both claude & codex inside hub workspace pick the same file up (claude
       // via cwd auto-discovery, codex via --mcp-config CLI flag).
+      // 总控台权限全开——微信/飞书通道里用户点不了权限确认，hub claude 必须
+      // bypassPermissions 才能跑通指令。
+      ensureHubBypassPermissions();
       await injectHubMcps(sessionId);
       return;
     }

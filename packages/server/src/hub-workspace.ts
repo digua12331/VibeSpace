@@ -10,7 +10,7 @@
  * writeHubMcpConfig 重写 .mcp.json（含当前进程的 HUB_TOKEN）。目录本身只
  * 创建一次。
  */
-import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { mkdirSync, existsSync, writeFileSync, readFileSync, copyFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serverLog } from "./log-bus.js";
@@ -60,3 +60,47 @@ export function ensureHubWorkspace(): void {
 
 // writeHubMcpConfig 已删除——hub-workspace/.mcp.json 现在由 mcp-bridge.ts 的
 // injectHubMcps() 写入（含 aimon-hub + browser-use merge + 幂等检查）。
+
+/**
+ * 总控台权限全开：往 hub-workspace/.claude/settings.local.json 幂等合并
+ * `permissions.defaultMode = "bypassPermissions"`，让 hub claude 不再弹权限
+ * 确认（微信/飞书通道里用户无法点确认，会把整条指令卡死）。
+ *
+ * - 保留文件里已有内容（claude 自己写的 allow 列表等）。
+ * - 坏 JSON 先备份成 .bak 再重建最小配置，不阻塞 hub 启动。
+ * - 失败只记 error 日志不抛——与 injectHubMcps 同一容错姿态。
+ */
+export function ensureHubBypassPermissions(): void {
+  const claudeDir = resolve(HUB_WORKSPACE_DIR, ".claude");
+  const file = resolve(claudeDir, "settings.local.json");
+  const fileForLog = file.replace(/\\/g, "/");
+  try {
+    mkdirSync(claudeDir, { recursive: true });
+    let existing: Record<string, unknown> = {};
+    if (existsSync(file)) {
+      try {
+        const raw = readFileSync(file, "utf8");
+        if (raw.trim()) existing = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        copyFileSync(file, file + ".bak");
+        serverLog("error", "hub", "hub settings.local.json 解析失败，已备份 .bak 后重建", {
+          meta: { file: fileForLog },
+        });
+        existing = {};
+      }
+    }
+    const permissions = (existing.permissions ?? {}) as Record<string, unknown>;
+    if (permissions.defaultMode === "bypassPermissions") return; // 幂等：已是全开
+    permissions.defaultMode = "bypassPermissions";
+    existing.permissions = permissions;
+    writeFileSync(file, JSON.stringify(existing, null, 2) + "\n", "utf8");
+    serverLog("info", "hub", "hub 权限全开配置已写入 (defaultMode=bypassPermissions)", {
+      meta: { file: fileForLog },
+    });
+  } catch (err) {
+    const e = err as Error;
+    serverLog("error", "hub", `hub 权限全开配置写入失败: ${e.message}`, {
+      meta: { file: fileForLog, error: { name: e.name, message: e.message } },
+    });
+  }
+}
