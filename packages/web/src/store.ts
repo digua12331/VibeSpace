@@ -59,6 +59,7 @@ const ACTIVITIES = [
   'projectdocs',
   'appearance',
   'skills',
+  'radar',
   'hub-dashboard',
 ] as const
 export type Activity = (typeof ACTIVITIES)[number]
@@ -66,7 +67,10 @@ export type Activity = (typeof ACTIVITIES)[number]
 /** Special system project id for 总控台 (D1 翻转, 总控台体验对齐 plan). */
 export const HUB_PROJECT_ID = '__hub__'
 
-export type EditorTabKind = 'file' | 'commit'
+export type EditorTabKind = 'file' | 'commit' | 'radar'
+
+/** radar 页签是全局页签（不属于任何项目），projectId 用此哨兵值。 */
+export const RADAR_TAB_PROJECT_ID = '__radar__'
 
 export interface EditorTab {
   /** Stable id = `${projectId}:${path}:${ref}:${from ?? ''}:${to ?? ''}:${kind}` */
@@ -82,6 +86,10 @@ export interface EditorTab {
   status?: string
   /** Discriminator for EditorArea; default 'file'. */
   kind?: EditorTabKind
+  /** radar 页签：标签栏显示的资讯标题（path 存 storyId，参与 key 去重）。 */
+  radarTitle?: string
+  /** radar 页签：打开时组装好的 markdown 内容快照——上游列表刷新或条目消失后，已打开的详情仍可读。 */
+  radarMarkdown?: string
 }
 
 function editorTabKey(
@@ -656,7 +664,10 @@ export const useStore = create<State>((set, get) => ({
 
     set((st) => {
       const nextOpenFiles =
-        id != null ? st.openFiles.filter((f) => f.projectId === id) : st.openFiles
+        id != null
+          ? // radar 资讯页签是全局页签，不随项目切换关闭；文件/commit 页签仍按原规则只保留当前项目的。
+            st.openFiles.filter((f) => f.kind === 'radar' || f.projectId === id)
+          : st.openFiles
       const fileDropped = nextOpenFiles.length !== st.openFiles.length
       const nextActiveFileKey = fileDropped
         ? (nextOpenFiles[0]?.key ?? null)

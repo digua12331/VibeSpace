@@ -1,0 +1,23 @@
+{
+  "task": "工作流装配agent团队",
+  "steps": [
+    { "id": 1, "title": "issues.md 记 skills 错拷遗留", "verify": "issues.md 末尾多一条单行条目", "status": "todo",
+      "read_files": ["dev/issues.md"], "write_files": ["dev/issues.md"] },
+    { "id": 2, "title": "写 templates/agent-team/ 五份模板", "verify": "grep 断言协议段存在、禁词不存在", "status": "todo",
+      "read_files": [".claude/agents/*.md"], "write_files": ["templates/agent-team/*.md"] },
+    { "id": 3, "title": "harness-template-service.ts 改造", "verify": "pnpm -F @aimon/server build 通过", "status": "todo",
+      "read_files": ["packages/server/src/harness-template-service.ts"], "write_files": ["packages/server/src/harness-template-service.ts"] },
+    { "id": 4, "title": "apply/remove 日志 meta 加团队数量", "verify": "server build + 冒烟断言", "status": "todo",
+      "read_files": ["packages/server/src/routes/projects.ts"], "write_files": ["packages/server/src/routes/projects.ts"] },
+    { "id": 5, "title": "install.sh agents 段同步换源", "verify": "bash -n 通过", "status": "todo",
+      "read_files": ["templates/harness/install.sh"], "write_files": ["templates/harness/install.sh"] },
+    { "id": 6, "title": "agent-team-smoke 四条路径", "verify": "pnpm smoke:agent-team 通过", "status": "todo",
+      "read_files": ["scripts/worktree-smoke.mjs"], "write_files": ["scripts/agent-team-smoke.mjs", "package.json"] },
+    { "id": 7, "title": "WorkflowTab 团队状态提示", "verify": "pnpm -F @aimon/web build 通过", "status": "todo",
+      "read_files": ["packages/web/src/components/PermissionsDrawer.tsx"], "write_files": ["packages/web/src/components/PermissionsDrawer.tsx"] },
+    { "id": 8, "title": "真机验收四条路径", "verify": "非 node 项目磁盘结果符合预期", "status": "todo",
+      "read_files": [], "write_files": [] },
+    { "id": 9, "title": "交付 handoff", "verify": "首行为验收指引", "status": "todo",
+      "read_files": [], "write_files": [] }
+  ]
+}

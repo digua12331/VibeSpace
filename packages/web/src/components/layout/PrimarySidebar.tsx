@@ -13,6 +13,7 @@ const ProjectDocsView = lazy(() => import('../sidebar/ProjectDocsView'))
 const AppearanceView = lazy(() => import('../sidebar/AppearanceView'))
 const SkillsView = lazy(() => import('../sidebar/SkillsView'))
 const HubDashboardView = lazy(() => import('../sidebar/HubDashboardView'))
+const RadarView = lazy(() => import('../sidebar/RadarView'))
 
 const STATIC_TITLES: Record<string, string> = {
   scm: '源代码更改',
@@ -21,6 +22,7 @@ const STATIC_TITLES: Record<string, string> = {
   logs: '日志',
   appearance: '外观',
   skills: '技能',
+  radar: 'AI资讯',
   'hub-dashboard': '总控台看板',
 }
 
@@ -89,6 +91,9 @@ export default function PrimarySidebar() {
       break
     case 'skills':
       body = <SkillsView />
+      break
+    case 'radar':
+      body = <RadarView />
       break
     case 'hub-dashboard':
       body = <HubDashboardView />

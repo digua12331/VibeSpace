@@ -1,0 +1,13 @@
+{
+  "task": "微信ilink可行性试点",
+  "steps": [
+    { "id": 1, "title": "留存 ilink 接口参考文档", "verify": "weixin-bot-api-参考.md 存在", "status": "done" },
+    { "id": 2, "title": "写试点脚本 ilink-poc.mjs", "verify": "node --check 通过", "status": "todo" },
+    { "id": 3, "title": ".gitignore 追加运行期文件忽略", "verify": "git status 不出现运行期文件", "status": "todo" },
+    { "id": 4, "title": "探测接口连通性", "verify": "接口返回合理 JSON 并落出 qr.png", "status": "todo" },
+    { "id": 5, "title": "大哥扫码登录", "verify": "登录成功且 state 文件有 token", "status": "todo" },
+    { "id": 6, "title": "收/回消息测试", "verify": "终端打印入站消息，微信收到自动回复", "status": "todo" },
+    { "id": 7, "title": "主动推送测试（两种发法）", "verify": "记录复用旧令牌与不带令牌的结果", "status": "todo" },
+    { "id": 8, "title": "写试点结论", "verify": "试点结论.md 回答三个验收问题", "status": "todo" }
+  ]
+}

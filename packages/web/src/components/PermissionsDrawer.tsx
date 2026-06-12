@@ -66,6 +66,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
   const [customEntries, setCustomEntries] = useState<{ allow: string[]; ask: string[]; deny: string[] }>(
     { allow: [], ask: [], deny: [] },
   )
+  const [bypassOn, setBypassOn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -87,6 +88,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
         setSelections(st.claude.selections)
         setCodexValues(st.codex.values)
         setCustomEntries(st.claude.custom)
+        setBypassOn(st.claude.defaultMode === 'bypassPermissions')
         setInitNeeded(!st.probe.claudeDir.exists || !st.probe.codexDir.exists)
         setDirty(false)
       })
@@ -179,6 +181,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
       setSelections(st.claude.selections)
       setCodexValues(st.codex.values)
       setCustomEntries(st.claude.custom)
+      setBypassOn(st.claude.defaultMode === 'bypassPermissions')
       setInitNeeded(false)
     } catch (e: unknown) {
       await alertDialog(
@@ -194,10 +197,20 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
     setSaving(true)
     setError(null)
     try {
-      await api.saveProjectCliConfig(project.id, {
-        claude: { selections, custom: customEntries },
-        codex: { values: codexValues },
-      })
+      await logAction(
+        'project',
+        'save-cli-config',
+        () =>
+          api.saveProjectCliConfig(project.id, {
+            claude: {
+              selections,
+              custom: customEntries,
+              defaultMode: bypassOn ? 'bypassPermissions' : null,
+            },
+            codex: { values: codexValues },
+          }),
+        { projectId: project.id, meta: { bypass: bypassOn } },
+      )
       setDirty(false)
       // Re-fetch so selections reflect the normalized state from server
       const st = await api.getProjectCliConfig(project.id)
@@ -205,6 +218,7 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
       setSelections(st.claude.selections)
       setCodexValues(st.codex.values)
       setCustomEntries(st.claude.custom)
+      setBypassOn(st.claude.defaultMode === 'bypassPermissions')
       // If any sessions alive, open restart prompt
       if (projectSessions.length > 0) {
         setPostSaveDialog({ sessions: projectSessions })
@@ -330,6 +344,11 @@ export default function PermissionsDrawer({ project, onClose }: Props) {
                       selections={selections}
                       onSet={setItemState}
                       onApplyPreset={applyClaudePreset}
+                      bypassOn={bypassOn}
+                      onSetBypass={(v) => {
+                        setBypassOn(v)
+                        markDirty()
+                      }}
                       sharedInfo={state?.claude.shared ?? null}
                       sharedError={state?.claude.sharedError ?? null}
                       custom={customEntries}
@@ -414,6 +433,8 @@ function ClaudeTab({
   selections,
   onSet,
   onApplyPreset,
+  bypassOn,
+  onSetBypass,
   sharedInfo,
   sharedError,
   custom,
@@ -428,6 +449,8 @@ function ClaudeTab({
   selections: Record<string, TriState>
   onSet: (id: string, v: TriState) => void
   onApplyPreset: (p: ClaudePreset) => void
+  bypassOn: boolean
+  onSetBypass: (v: boolean) => void
   sharedInfo: { allow: string[]; ask: string[]; deny: string[] } | null
   sharedError: string | null
   custom: { allow: string[]; ask: string[]; deny: string[] }
@@ -440,6 +463,37 @@ function ClaudeTab({
 }) {
   return (
     <div className="p-4 space-y-6">
+      <section
+        className={`rounded border p-3 ${
+          bypassOn ? 'border-rose-700/70 bg-rose-950/30' : 'border-border/60 bg-bg/30'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-fg">⛔ 完全不问模式</div>
+            <div className="text-xs text-muted mt-0.5 leading-relaxed">
+              开启后此项目新开的 Claude 会话跳过所有权限确认（bypassPermissions），
+              下方白名单不再起作用。保存并重启会话后生效。
+            </div>
+          </div>
+          <button
+            onClick={() => onSetBypass(!bypassOn)}
+            className={`px-3 py-1 text-xs rounded border shrink-0 transition-colors ${
+              bypassOn
+                ? 'bg-rose-900/60 text-rose-200 border-rose-700'
+                : 'bg-bg/60 text-muted border-border hover:text-fg'
+            }`}
+          >
+            {bypassOn ? '已开启' : '已关闭'}
+          </button>
+        </div>
+        {bypassOn && (
+          <div className="mt-2 text-xs text-rose-300">
+            ⚠ 删除文件、推送代码等危险操作也不会再询问，风险自担，建议只在可信项目开启。
+          </div>
+        )}
+      </section>
+
       {catalog.claude.presets && catalog.claude.presets.length > 0 && (
         <PresetBar
           presets={catalog.claude.presets.map((p) => ({
@@ -1491,6 +1545,22 @@ function WorkflowTab({
                   )}
               </div>
             )}
+
+            {(() => {
+              // 通用团队 agent 装态：直接数磁盘探测结果（kind=agent 现在只有 team-* 条目）
+              const teamEntries = status.harness.entries.filter((e) => e.kind === 'agent')
+              if (teamEntries.length === 0) return null
+              const installed = teamEntries.filter((e) => e.exists).length
+              return (
+                <div className="text-[11px] text-muted">
+                  团队 agent：
+                  <span className={installed === teamEntries.length ? 'text-emerald-300' : installed > 0 ? 'text-amber-300' : 'text-muted'}>
+                    {' '}已装 {installed}/{teamEntries.length}
+                  </span>
+                  <span className="ml-1">（调研 / 实施 / 验收 / 审稿，随工作流应用安装，自带项目大脑读取协议）</span>
+                </div>
+              )
+            })()}
 
             <label className="block">
               <span className="block text-xs text-muted mb-1">规范工作流</span>

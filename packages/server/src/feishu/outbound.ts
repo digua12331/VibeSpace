@@ -9,7 +9,7 @@ import { statusManager } from "../status.js";
 import { serverLog } from "../log-bus.js";
 import { feishuClient } from "./client.js";
 import { getFeishuConfig, isFeishuConfigured } from "./config.js";
-import { setHubRestartNotifier } from "./hub-session.js";
+import { setHubRestartNotifier } from "../hub-session.js";
 
 const SHELL_AGENTS = new Set<string>(BUILTIN_SHELL_AGENTS);
 // 同一 session 同一状态在窗口内只通知一次，避免刷屏。

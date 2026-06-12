@@ -240,6 +240,7 @@
           "cli-where": "allow",
           "win-findstr": "allow",
           "win-wmic": "allow",
+          "tool-powershell": "allow",
           "pwsh-getchild": "allow",
           "pwsh-getcmd": "allow",
           "pwsh-newitem": "allow",
@@ -276,6 +277,7 @@
         "description": "整个工具级别的 allow / ask / deny。细粒度模式请用下方分组。",
         "items": [
           { "id": "tool-bash",          "label": "Bash (任意命令)",          "value": "Bash" },
+          { "id": "tool-powershell",    "label": "PowerShell (任意命令)",    "value": "PowerShell" },
           { "id": "tool-read",          "label": "Read",                     "value": "Read" },
           { "id": "tool-edit",          "label": "Edit",                     "value": "Edit" },
           { "id": "tool-write",         "label": "Write",                    "value": "Write" },

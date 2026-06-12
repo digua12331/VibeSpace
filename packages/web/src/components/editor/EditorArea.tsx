@@ -15,6 +15,7 @@ import type { AgentKind, DocTaskSummary } from '../../types'
 // 弹出），后者负责终端 keep-alive。
 const FilePreview = lazy(() => import('../FilePreview'))
 const CommitDetailView = lazy(() => import('../CommitDetailView'))
+const MarkdownView = lazy(() => import('../MarkdownView'))
 
 function FileTabFallback() {
   return (
@@ -202,13 +203,20 @@ export default function EditorArea() {
         {openFiles.map((f) => {
           const active = activeTabKind === 'file' && f.key === activeFileKey
           const isCommit = f.kind === 'commit'
+          const isRadar = f.kind === 'radar'
           const commitSubject = f.commitSubject || '(无提交说明)'
-          const basename = isCommit ? commitSubject : f.path.split('/').pop() ?? f.path
+          const basename = isCommit
+            ? commitSubject
+            : isRadar
+              ? f.radarTitle ?? 'AI资讯'
+              : f.path.split('/').pop() ?? f.path
           const title = isCommit
             ? `${commitSubject} @ ${f.commitSha?.slice(0, 7) ?? ''}`
-            : f.commitSha
-              ? `${f.path} @ ${f.commitSha.slice(0, 7)}`
-              : f.path
+            : isRadar
+              ? f.radarTitle ?? 'AI资讯'
+              : f.commitSha
+                ? `${f.path} @ ${f.commitSha.slice(0, 7)}`
+                : f.path
           return (
             <div
               key={`f:${f.key}`}
@@ -223,7 +231,9 @@ export default function EditorArea() {
                   : 'bg-transparent text-muted hover:text-fg hover:bg-white/[0.04]'
               }`}
             >
-              <span className="text-[12px] opacity-70">{isCommit ? '🔵' : '📄'}</span>
+              <span className="text-[12px] opacity-70">
+                {isCommit ? '🔵' : isRadar ? '📡' : '📄'}
+              </span>
               <span className="font-mono truncate max-w-[220px]">{basename}</span>
               {f.commitSha && (
                 <span className="text-[10px] font-mono text-subtle">
@@ -350,7 +360,18 @@ export default function EditorArea() {
         {activeFile ? (
           <div className="absolute inset-0 flex flex-col bg-bg">
             <Suspense fallback={<FileTabFallback />}>
-              {activeFile.kind === 'commit' && activeFile.commitSha ? (
+              {activeFile.kind === 'radar' ? (
+                // radar 详情：内容快照在 tab 上（radarMarkdown），只读渲染，
+                // 不走 FilePreview（那套是磁盘/git 文件语义）。
+                <div className="flex-1 overflow-auto">
+                  <div className="px-4 py-4">
+                    <MarkdownView
+                      source={activeFile.radarMarkdown ?? '（内容缺失，请回到 AI资讯 列表重新打开）'}
+                      readOnly
+                    />
+                  </div>
+                </div>
+              ) : activeFile.kind === 'commit' && activeFile.commitSha ? (
                 <CommitDetailView
                   key={activeFile.key}
                   projectId={activeFile.projectId}

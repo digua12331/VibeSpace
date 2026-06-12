@@ -1,0 +1,61 @@
+{
+  "task": "微信接入设置",
+  "steps": [
+    {
+      "id": 1,
+      "title": "hub-session 抽成通道无关模块 + 单飞",
+      "verify": "grep 全仓无 feishu/hub-session 旧引用；pnpm -F @aimon/server build 过",
+      "status": "todo",
+      "read_files": ["packages/server/src/feishu/hub-session.ts", "packages/server/src/feishu/inbound.ts", "packages/server/src/feishu/outbound.ts"],
+      "write_files": ["packages/server/src/hub-session.ts", "packages/server/src/feishu/hub-session.ts", "packages/server/src/feishu/inbound.ts", "packages/server/src/feishu/outbound.ts"]
+    },
+    {
+      "id": 2,
+      "title": "wechat/config.ts + wechat/client.ts",
+      "verify": "pnpm -F @aimon/server build 过",
+      "status": "todo",
+      "read_files": ["packages/server/src/feishu/config.ts", "packages/server/src/feishu/client.ts", "dev/active/微信ilink可行性试点/*"],
+      "write_files": ["packages/server/src/wechat/config.ts", "packages/server/src/wechat/client.ts"]
+    },
+    {
+      "id": 3,
+      "title": "inbound 闭环 + 回复路由 + MCP 工具",
+      "verify": "server build 过；grep mcp-hub 工具与路由对应",
+      "status": "todo",
+      "read_files": ["packages/server/src/feishu/inbound.ts", "packages/server/src/routes/hub.ts", "packages/server/src/mcp-hub/index.ts", "packages/server/src/hub-workspace.ts"],
+      "write_files": ["packages/server/src/wechat/inbound.ts", "packages/server/src/wechat/index.ts", "packages/server/src/routes/hub.ts", "packages/server/src/mcp-hub/index.ts", "packages/server/src/hub-workspace.ts"]
+    },
+    {
+      "id": 4,
+      "title": "routes/wechat.ts + 服务启动/关机接线",
+      "verify": "server build 过；curl /api/wechat/status 合理 JSON",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/feishu.ts", "packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/routes/wechat.ts", "packages/server/src/index.ts"]
+    },
+    {
+      "id": 5,
+      "title": "web 设置页签 + api + types + qrcode 依赖",
+      "verify": "pnpm -F @aimon/web build 过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/SettingsDialog.tsx", "packages/web/src/api.ts", "packages/web/src/types.ts"],
+      "write_files": ["packages/web/src/components/SettingsDialog.tsx", "packages/web/src/api.ts", "packages/web/src/types.ts", "packages/web/package.json", "pnpm-lock.yaml"]
+    },
+    {
+      "id": 6,
+      "title": "wechat-smoke 脚本",
+      "verify": "pnpm smoke:wechat 全绿",
+      "status": "todo",
+      "read_files": ["scripts/worktree-smoke.mjs", "scripts/persistence-check.mjs"],
+      "write_files": ["scripts/wechat-smoke.mjs", "package.json"]
+    },
+    {
+      "id": 7,
+      "title": "端到端真机验收 + handoff",
+      "verify": "大哥确认微信收到 AI 回复；LogsView 起止配对；git diff 对照白名单",
+      "status": "todo",
+      "read_files": ["packages/server/data/logs/*"],
+      "write_files": []
+    }
+  ]
+}

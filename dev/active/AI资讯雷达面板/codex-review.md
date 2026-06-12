@@ -1,0 +1,25 @@
+# Codex 评审清单（第一轮，原文）
+
+- [结构] 保留后端代理；前端直连虽少一个路由，但会失去统一超时、缓存、错误日志能力，不值得简化。
+- [结构] 单一接口的抓取、校验、内存缓存可直接放在 routes/radar.ts，不要为一次性逻辑新增服务层。
+- [结构] 资讯列表状态放在 RadarView 内即可；后端已有 10 分钟缓存，无需再扩大全局 store。
+- [页签] 页签应保存资讯标题和 Markdown 内容快照，不能只保存 radarStoryId；刷新后故事消失时，已打开详情仍应可读。
+- [页签] radarStoryId 必须参与页签唯一键；当前 editorTabKey() 不读取它，否则可能错误去重。
+- [页签] 不要改 FilePreview；在 EditorArea 为 kind='radar' 单独渲染只读 Markdown。
+- [页签] 当前 openFile() 只保留一个文件类页签，打开资讯会替换现有文件/提交详情；需补入验收说明。
+- [高风险] 资讯是全局功能，但当前切换项目会按 projectId 删除页签；建议全局资讯页签不随项目切换消失。
+- [边界] 验收需覆盖"未选择任何项目"和"总控台项目"时，资讯按钮、列表、详情仍可正常使用。
+- [Activity] 新增 radar 后，现有 localStorage 清洗逻辑不会误删它；无需迁移。
+- [上游] 不要假定固定 20 条；需支持空列表、超过 20 条、重复或缺失 story_id。
+- [上游] 后端需校验响应结构，并把缺失的 items/sources/reasons 处理为空数组；结构损坏应返回明确错误。
+- [上游] 明确原文链接优先级 primary_url → url；仅允许 http/https 链接。
+- [安全] 拼装 Markdown 时需转义标题、理由、来源名中的 Markdown 特殊字符。
+- [陈旧数据] generated_at 无效、来自未来或超过 36 小时都需有明确展示规则；时间旁建议显示绝对时间。
+- [失败行为] 刷新失败时保留最后一次成功列表并显示错误提示，不要清空已有资讯。
+- [交互] 刷新进行中禁用刷新按钮。
+- [日志] 前端 logAction('radar','fetch',...)；后端日志补充 force/cached/itemCount/generatedAt。
+- [数据影响] 不改数据库和用户文件，操作日志写入 packages/server/data/logs/YYYY-MM-DD.log。
+- [范围] 仓库不存在 packages/server/src/types.ts；服务端响应类型放路由附近即可。
+- [范围] 预计 7 文件偏少，实际约 9–10 个；读写白名单按真实文件展开。
+- [验收] server 类型检查写成可执行命令：pnpm -F @aimon/server build。
+- [验收] 上游失败测试给出可执行方法，通过可控模拟确认错误提示与 ERROR 日志。

@@ -40,6 +40,7 @@ import { registerRawFileRoutes } from "./routes/raw-file.js";
 import { registerSubagentRunsRoutes } from "./routes/subagent-runs.js";
 import { registerSkillCatalogRoutes } from "./routes/skill-catalog.js";
 import { registerSkillMarketRoutes } from "./routes/skill-market.js";
+import { registerRadarRoutes } from "./routes/radar.js";
 import { registerWorkflowRoutes } from "./routes/workflow.js";
 import { registerSlashCommandRoutes } from "./routes/slash-commands.js";
 import { registerOpenspecRoutes } from "./routes/openspec.js";
@@ -50,9 +51,11 @@ import { registerProjectClaudeSettingsRoutes } from "./routes/project-claude-set
 import { registerMcpServersRoutes } from "./routes/mcp-servers.js";
 import { registerHubRoutes } from "./routes/hub.js";
 import { registerFeishuRoutes } from "./routes/feishu.js";
+import { registerWechatRoutes } from "./routes/wechat.js";
 import { registerLocalAiRoutes } from "./routes/local-ai.js";
 import { startManagerTick } from "./manager-tick.js";
 import { startFeishuBridge } from "./feishu/index.js";
+import { startWechatBridge, stopWechatBridge } from "./wechat/index.js";
 import { getHubToken } from "./hub-token.js";
 import { ensureHubWorkspace } from "./hub-workspace.js";
 import { ensureHubProject } from "./hub-project.js";
@@ -281,6 +284,7 @@ async function main(): Promise<void> {
   await registerSubagentRunsRoutes(app);
   await registerSkillCatalogRoutes(app);
   await registerSkillMarketRoutes(app);
+  await registerRadarRoutes(app);
   await registerWorkflowRoutes(app);
   await registerSlashCommandRoutes(app);
   await registerOpenspecRoutes(app);
@@ -291,6 +295,7 @@ async function main(): Promise<void> {
   await registerMcpServersRoutes(app);
   await registerHubRoutes(app);
   await registerFeishuRoutes(app);
+  await registerWechatRoutes(app);
   await registerLocalAiRoutes(app);
   registerWsHub(app);
 
@@ -323,6 +328,8 @@ async function main(): Promise<void> {
   // 飞书双向桥：fire-and-forget 拉起长连接（未配置时内部直接 no-op）。失败只落
   // LogsView，绝不阻塞服务启动——桥是可选能力。
   void startFeishuBridge();
+  // 微信双向桥：同飞书纪律——未登录/未启用时内部 no-op，失败只落 LogsView。
+  startWechatBridge();
   // Keep these two as plain console.log — they're startup-only path hints
   // for the operator, not operation events that need to reach LogsView.
   console.log(`VibeSpace db: ${getDbPath()}`);
@@ -336,6 +343,8 @@ async function main(): Promise<void> {
     serverLog("info", "server", "shutdown 开始", { meta: { sig } });
     try {
       stopProcessMemTicker();
+      // 先停微信长轮询（中止在途 35s hold 请求），避免关机期间继续写配置/打错误日志。
+      stopWechatBridge();
       for (const s of listSessions()) {
         if (ptyManager.has(s.id)) {
           try { endSession(s.id, "stopped", null); } catch { /* ignore */ }

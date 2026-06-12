@@ -35,6 +35,7 @@ import { getMemByProject } from "../process-mem-service.js";
 import { serverLog } from "../log-bus.js";
 import { resolveWithinProject, readGuarded } from "../hub-path-guard.js";
 import { sendToOwner } from "../feishu/outbound.js";
+import { resolveWechatReply } from "../wechat/inbound.js";
 
 const SHELL_SET = new Set<string>(BUILTIN_SHELL_AGENTS);
 const BUILTIN = new Set<string>(BUILTIN_SHELL_AGENTS);
@@ -124,6 +125,12 @@ const SendFeishuSchema = z.object({
 const SendInputSchema = z.object({
   sessionId: z.string().min(1),
   text: z.string().min(1).max(20_000),
+});
+
+// 微信桥：总控台回复某条微信入站消息（send_wechat_reply 工具的后端端点）。
+const SendWechatReplySchema = z.object({
+  requestId: z.string().min(1).max(64),
+  text: z.string().min(1).max(8000),
 });
 
 // send_input_to_session 的并发短锁：防总控台被诱导对同一 worker 连发抢人类输入。
@@ -482,6 +489,27 @@ export async function registerHubRoutes(app: FastifyInstance): Promise<void> {
       const e = err as Error;
       // outbound 失败已在 sendToOwner 内打 ERROR；这里回结构化错误给 MCP 工具。
       return reply.code(502).send({ error: "feishu_send_failed", message: e.message });
+    }
+  });
+
+  // 微信桥：总控台 AI 调 send_wechat_reply → 这里 → 回给微信里发问的 owner。
+  // 只能回带 requestId 的当前待回复请求（串行单请求，防回错人）。
+  app.post("/api/hub/send-wechat-reply", async (req, reply) => {
+    const parsed = SendWechatReplySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_body", detail: parsed.error.issues });
+    }
+    const cleanText = sanitizeDispatchText(parsed.data.text).trim();
+    if (cleanText.length === 0) {
+      return reply.code(400).send({ error: "invalid_body", detail: "text empty after sanitize" });
+    }
+    try {
+      await resolveWechatReply(parsed.data.requestId, cleanText);
+      return reply.send({ ok: true });
+    } catch (err) {
+      const e = err as Error;
+      // reply 失败已在 resolveWechatReply 内打 ERROR；这里回结构化错误给 MCP 工具。
+      return reply.code(502).send({ error: "wechat_reply_failed", message: e.message });
     }
   });
 

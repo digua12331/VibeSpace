@@ -40,3 +40,5 @@
 - [ ] refreshSessions 默认 subscribe 全部 alive 会话，与 TerminalHost 保活预算不一致（文件 packages/web/src/store.ts:668-669；上下文：2026-05-22 终端保活预算上线后，被预算剔除、未挂 SessionView 的会话仍被 refreshSessions 重新订阅 WS，订阅与渲染不同步；收益小未在本轮处理，建议让订阅跟随保活集合或做引用计数）
 - [ ] db.ts isWorkflowMode 只认 dev-docs|openspec，漏 spec-trio，会把 spec-trio 项目读 projects.json 时降级成 null（文件 packages/server/src/db.ts:47；上下文：types.ts 的 WorkflowMode 含 spec-trio，但 db 校验未同步）
 - [ ] VibeSpace 自身 CLAUDE.md 迁到独立文件需专门处理：通用"剥离版"母版缺「代码学习指引」等项目专属硬规则，直接套自动迁移会吞掉它们；应另生成一份"非剥离版/含VibeSpace专属段"的工作流文件再引用（文件 CLAUDE.md:288 与 packages/server/src/dev-docs-guidelines.ts；上下文：工作流改独立文件引用任务发现，自动迁移只对普通目标项目安全）
+- [ ] harness 装配把 7 个 VibeSpace 专属 .aimon/skills/*.md（db加列三处套路/加新api路由等，内容硬编码本仓库路径与函数名）原样拷给所有目标项目，对非同栈项目是"错的大脑"（文件 packages/server/src/harness-template-service.ts:74-86；上下文：2026-06-12 工作流装配agent团队任务已把 .claude/agents 换成通用 team-* 模板，skills 同根问题留待另立任务做通用化或按栈选配）
+- [ ] 技能市场从"一仓库多 skill"的仓库安装时会错抓字母序第一个 SKILL.md 而非请求的那个（文件 packages/server/src/skill-market-service.ts:489；上下文：findSkillRoot 的精确名匹配只在仓库根第一层生效，深层目录如 skills/radar 永远匹配不到，例如 LearnPrompt/ai-news-radar 会装成伯乐 skill）

@@ -442,6 +442,8 @@ export interface CliConfigState {
   claude: {
     selections: Record<string, TriState>
     custom: { allow: string[]; ask: string[]; deny: string[] }
+    /** permissions.defaultMode 当前值；面板只认 bypassPermissions，其他值视为 null */
+    defaultMode: 'bypassPermissions' | null
     fileExists: boolean
     shared: { allow: string[]; ask: string[]; deny: string[] } | null
     sharedError: string | null
@@ -590,6 +592,8 @@ export interface CliConfigSavePayload {
   claude?: {
     selections: Record<string, TriState>
     custom?: { allow: string[]; ask: string[]; deny: string[] }
+    /** bypassPermissions=写入"完全不问"；null=删除该字段；不传=不动 */
+    defaultMode?: 'bypassPermissions' | null
   }
   codex?: {
     values: Record<string, string | boolean | string[]>
@@ -1252,6 +1256,38 @@ export interface FeishuTestResult {
   message: string
 }
 
+// ---------- 微信（ilink）桥 ----------
+
+/** Masked wechat config the browser sees — bot token never leaves the server. */
+export interface WechatConfigMasked {
+  enabled: boolean
+  baseUrl: string
+  ownerUserId: string
+  hasToken: boolean
+}
+
+export type WechatConnState = 'idle' | 'scanning' | 'logged_in' | 'error'
+
+export interface WechatStatus {
+  state: WechatConnState
+  configured: boolean
+  ownerBound: boolean
+  lastError: string | null
+  lastInboundAt: number | null
+  lastOutboundAt: number | null
+  binding: { active: boolean; expiresAt: number | null }
+}
+
+export interface WechatLoginResult {
+  /** 登录链接（前端渲染成二维码给手机扫）。 */
+  loginUrl: string
+}
+
+export interface WechatBindStartResult {
+  code: string
+  expiresAt: number
+}
+
 // ---------- Local AI (Ollama / LM Studio) ----------
 
 export type LocalAiProviderId = 'ollama' | 'lmstudio'
@@ -1269,4 +1305,34 @@ export interface LocalAiModelsResult {
 export interface CommitMessageResult {
   message: string
   truncated: boolean
+}
+
+// ---------- AI 资讯雷达 (手抄镜像 packages/server/src/routes/radar.ts) ----------
+
+export interface RadarSource {
+  title: string
+  url: string | null
+  sourceName: string
+  publishedAt: string | null
+}
+
+export interface RadarStory {
+  storyId: string
+  title: string
+  primaryUrl: string | null
+  category: string | null
+  importanceLabel: string | null
+  score: number | null
+  reasons: string[]
+  sources: RadarSource[]
+  sourceCount: number
+  earliestAt: string | null
+  latestAt: string | null
+}
+
+export interface RadarDailyBrief {
+  generatedAt: string | null
+  fetchedAt: number
+  cached: boolean
+  items: RadarStory[]
 }

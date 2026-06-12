@@ -53,6 +53,7 @@ export default function ActivityBar() {
       badge: logErrorCount > 0 ? logErrorCount : undefined,
     },
     { id: 'appearance', icon: '🎨', label: '外观' },
+    { id: 'radar', icon: '📡', label: 'AI资讯' },
   ]
 
   function onClick(id: Activity) {

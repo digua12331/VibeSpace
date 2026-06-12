@@ -369,7 +369,38 @@ server.registerTool(
   },
 );
 
-// -------- 10. send_input_to_session ------------------------------------
+// -------- 10. send_wechat_reply -----------------------------------------
+
+server.registerTool(
+  "send_wechat_reply",
+  {
+    title: "Reply to the owner's WeChat question",
+    description:
+      "Reply to a question the owner asked via WeChat. When your input starts with a [微信 requestId=xxx] prefix, the owner is asking from WeChat — after finishing the work, call this tool with that exact requestId and your answer so it reaches their WeChat chat. One question at a time: the requestId is only valid until answered. Plain text only, keep it concise (WeChat chat bubble). This does NOT support proactive messages — it can only answer the pending request.",
+    inputSchema: {
+      requestId: z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("The requestId from the [微信 requestId=xxx] prefix of the owner's message"),
+      text: z
+        .string()
+        .min(1)
+        .max(8000)
+        .describe("Plain-text answer to send back to the owner's WeChat (control chars stripped server-side)"),
+    },
+  },
+  async ({ requestId, text }) => {
+    const r = await hubFetch("/api/hub/send-wechat-reply", {
+      method: "POST",
+      body: JSON.stringify({ requestId, text }),
+    });
+    if (!r.ok) return errorResult(failureToStructured(r.failure));
+    return okResult(r.data);
+  },
+);
+
+// -------- 11. send_input_to_session ------------------------------------
 
 server.registerTool(
   "send_input_to_session",

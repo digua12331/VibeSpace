@@ -1,0 +1,45 @@
+{
+  "task": "权限面板完全不问开关",
+  "steps": [
+    {
+      "id": 1,
+      "title": "core: writeClaudeLocal 加 defaultMode 可选参数",
+      "verify": "node 冒烟（临时目录写/删/不动三态）通过",
+      "status": "todo",
+      "read_files": ["scripts/lib/cli-configs-core.mjs"],
+      "write_files": ["scripts/lib/cli-configs-core.mjs"]
+    },
+    {
+      "id": 2,
+      "title": "server: GET 返回 defaultMode + SaveSchema/PUT 透传 + serverLog 起止",
+      "verify": "pnpm -F @aimon/server build 通过",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/cli-configs.ts", "packages/server/src/log-bus.ts"],
+      "write_files": ["packages/server/src/routes/cli-configs.ts"]
+    },
+    {
+      "id": 3,
+      "title": "web: types.ts 加字段 + PermissionsDrawer 开关 UI + onSave logAction",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/types.ts", "packages/web/src/components/PermissionsDrawer.tsx", "packages/web/src/logs.ts"],
+      "write_files": ["packages/web/src/types.ts", "packages/web/src/components/PermissionsDrawer.tsx"]
+    },
+    {
+      "id": 4,
+      "title": "端到端冒烟: curl GET/PUT defaultMode 读写 + 404 失败分支",
+      "verify": "curl 输出符合预期",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    },
+    {
+      "id": 5,
+      "title": "交付 handoff",
+      "verify": "首行为验收指引",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

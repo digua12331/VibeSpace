@@ -1,8 +1,10 @@
 /**
  * Server-side equivalent of `templates/harness/install.sh` —— 把 VibeSpace
- * 仓库根的 .aimon/skills + .aimon/docs + .claude/agents + dev/harness-*.md
- * + 一份 CUSTOMIZE 拷到目标项目，并往 .gitignore 追加 `.aimon/runtime/`。
- * "已存在则跳过"与脚本行为一致；不引新依赖（全用 node:fs/promises）。
+ * 仓库根的 .aimon/skills + .aimon/docs + dev/harness-*.md + 一份 CUSTOMIZE
+ * + `templates/agent-team/` 的通用团队 agent（team-*，带指纹标记支持升级）
+ * 拷到目标项目，并往 .gitignore 追加 `.aimon/runtime/`。
+ * "已存在则跳过"与脚本行为一致（team 文件例外：原样未改且落后时刷新）；
+ * 不引新依赖（全用 node:fs/promises + node:crypto）。
  *
  * **同步提醒**：未来加新模板文件时，本文件的 `getTemplateFiles()` 与
  * `templates/harness/install.sh` 的两段 `for f in ...` 都要改——它们是两份
@@ -10,6 +12,7 @@
  */
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, appendFile, writeFile, unlink, rmdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +24,10 @@ export interface HarnessFileSpec {
   /** POSIX-style relative destination inside the target project. */
   dstRel: string;
   kind: HarnessFileKind;
+  /** True for team templates: install appends a fingerprint stamp line so
+   *  re-apply can refresh outdated-but-unmodified copies and uninstall can
+   *  tell "installed by us" from user-authored files. */
+  stamped?: boolean;
 }
 
 export interface HarnessFileEntry {
@@ -99,17 +106,29 @@ export async function getTemplateFiles(): Promise<HarnessFileSpec[]> {
     }
   }
 
-  // .claude/agents/*.md
-  const agentsDir = repoFile(".claude", "agents");
-  if (existsSync(agentsDir)) {
-    const names = await readdir(agentsDir);
+  // templates/agent-team/team-*.md —— 去项目化的通用团队（不再拷仓库根的
+  // vibespace-* 专属 agent 给其他项目；本仓库自己的 vibespace-* 原件不动）。
+  // team-usage.md 是给主 AI 的派工说明书，落到 .aimon/docs/。
+  const teamDir = repoFile("templates", "agent-team");
+  if (existsSync(teamDir)) {
+    const names = await readdir(teamDir);
     for (const name of names) {
       if (!name.endsWith(".md")) continue;
-      out.push({
-        srcAbs: join(agentsDir, name),
-        dstRel: `.claude/agents/${name}`,
-        kind: "agent",
-      });
+      if (name === "team-usage.md") {
+        out.push({
+          srcAbs: join(teamDir, name),
+          dstRel: ".aimon/docs/team-usage.md",
+          kind: "workflow-doc",
+          stamped: true,
+        });
+      } else {
+        out.push({
+          srcAbs: join(teamDir, name),
+          dstRel: `.claude/agents/${name}`,
+          kind: "agent",
+          stamped: true,
+        });
+      }
     }
   }
 
@@ -138,6 +157,48 @@ export async function getTemplateFiles(): Promise<HarnessFileSpec[]> {
   return out;
 }
 
+// ---------- Team template stamp ----------
+
+/**
+ * 装配 team 模板时在文件末尾追加一行指纹标记：
+ *   <!-- aimon-team-agent v=1 fp=<sha256 前 12 位> -->
+ * fp 是"剥离标记行后的正文"的指纹。三个用途：
+ *   - 重复应用：有标记 + 正文未改 + fp 落后于当前母版 → 安全刷新；
+ *   - 卸载：有标记 + 正文未改 → 确认是我们装的原样文件，可删；
+ *   - 用户改过（正文 hash 与 fp 不符）或无标记 → 一律不动。
+ * 标记放末尾而不是开头：agent md 的 frontmatter `---` 必须在第一行。
+ */
+const TEAM_STAMP_RE = /\n?<!-- aimon-team-agent v=(\d+) fp=([0-9a-f]{12}) -->\s*$/;
+
+function fpOf(body: string): string {
+  return createHash("sha256").update(body, "utf8").digest("hex").slice(0, 12);
+}
+
+function withStamp(body: string): string {
+  const trimmed = body.replace(/\s*$/, "\n");
+  return `${trimmed}<!-- aimon-team-agent v=1 fp=${fpOf(trimmed)} -->\n`;
+}
+
+/** Parse a stamped file. Returns null when no stamp line is present. */
+function parseStamp(content: string): { fp: string; body: string; pristine: boolean } | null {
+  const m = content.match(TEAM_STAMP_RE);
+  if (!m) return null;
+  const body = content.slice(0, m.index ?? 0).replace(/\s*$/, "\n");
+  const fp = m[2];
+  return { fp, body, pristine: fpOf(body) === fp };
+}
+
+/** 历史错拷清理名单：旧版装配曾把仓库根的 vibespace-* 专属 agent 拷给目标项目。 */
+const LEGACY_AGENT_FILES = [
+  "vibespace-browser-tester.md",
+  "vibespace-db-scribe.md",
+  "vibespace-explorer.md",
+  "vibespace-route-author.md",
+  "vibespace-rules-auditor.md",
+  "vibespace-smoke-author.md",
+  "vibespace-ui-decorator.md",
+];
+
 // ---------- Status probe ----------
 
 /**
@@ -161,10 +222,10 @@ export async function getHarnessStatus(
     const exists = existsSync(dst);
     let renamed = false;
     if (exists && spec.kind === "agent") {
-      // Agent 文件如果还含字面 `vibespace-` 字符串 = 用户没改名 = 未改造
+      // renamed = 用户已本地化改造：有原样指纹标记 → false；标记缺失或正文被改 → true
       try {
-        const body = await readFile(dst, "utf8");
-        renamed = !body.includes("vibespace-");
+        const parsed = parseStamp(await readFile(dst, "utf8"));
+        renamed = !(parsed?.pristine ?? false);
       } catch {
         renamed = false;
       }
@@ -206,13 +267,41 @@ export async function applyHarnessTemplate(
 
   for (const spec of specs) {
     const dst = join(projectPath, spec.dstRel);
-    if (existsSync(dst)) {
-      skipped.push(spec.dstRel);
+    if (!spec.stamped) {
+      if (existsSync(dst)) {
+        skipped.push(spec.dstRel);
+        continue;
+      }
+      await mkdir(dirname(dst), { recursive: true });
+      await copyFile(spec.srcAbs, dst);
+      copied.push(spec.dstRel);
       continue;
     }
-    await mkdir(dirname(dst), { recursive: true });
-    await copyFile(spec.srcAbs, dst);
-    copied.push(spec.dstRel);
+
+    // Stamped team files: write template body + fingerprint line; on
+    // re-apply, refresh only copies that are pristine (stamp matches body)
+    // AND outdated (stamp differs from current template). User-authored or
+    // user-modified files are never touched.
+    const stamped = withStamp(await readFile(spec.srcAbs, "utf8"));
+    if (!existsSync(dst)) {
+      await mkdir(dirname(dst), { recursive: true });
+      await writeFile(dst, stamped, "utf8");
+      copied.push(spec.dstRel);
+      continue;
+    }
+    let refresh = false;
+    try {
+      const parsed = parseStamp(await readFile(dst, "utf8"));
+      refresh = parsed != null && parsed.pristine && parsed.fp !== parseStamp(stamped)!.fp;
+    } catch {
+      refresh = false;
+    }
+    if (refresh) {
+      await writeFile(dst, stamped, "utf8");
+      copied.push(spec.dstRel);
+    } else {
+      skipped.push(spec.dstRel);
+    }
   }
 
   const gitignoreAppended = await ensureGitignoreRuntime(projectPath);
@@ -238,6 +327,10 @@ export interface UninstallResult {
   removedCount: number;
   skippedCount: number;
   failedFiles: string[];
+  /** team-* files removed (subset of removedCount), for log meta. */
+  teamAgentsRemoved: number;
+  /** Legacy vibespace-* copies cleaned up in the target project. */
+  legacyCleaned: string[];
 }
 
 export async function uninstallHarnessTemplate(
@@ -246,15 +339,53 @@ export async function uninstallHarnessTemplate(
   const specs = await getTemplateFiles();
   let removedCount = 0;
   let skippedCount = 0;
+  let teamAgentsRemoved = 0;
   const failedFiles: string[] = [];
-  for (const { dstRel } of specs) {
+  for (const spec of specs) {
+    const dst = join(projectPath, spec.dstRel);
+    if (spec.stamped) {
+      // Team files: only remove copies we can confirm we installed and the
+      // user hasn't modified (pristine stamp). Modified/unstamped → keep.
+      try {
+        const parsed = parseStamp(await readFile(dst, "utf8"));
+        if (!parsed?.pristine) {
+          skippedCount++;
+          continue;
+        }
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") skippedCount++;
+        else failedFiles.push(spec.dstRel);
+        continue;
+      }
+    }
     try {
-      await unlink(join(projectPath, dstRel));
+      await unlink(dst);
       removedCount++;
+      if (spec.stamped) teamAgentsRemoved++;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === "ENOENT") skippedCount++;
-      else failedFiles.push(dstRel);
+      else failedFiles.push(spec.dstRel);
+    }
+  }
+
+  // 历史错拷清理：旧版装配拷过去的 vibespace-* 专属 agent。仅当文件还含
+  // `vibespace-` 字面量（= 用户未改造的原件）才删，拿不准一律保留。
+  // 本仓库（母版所在地）跳过——否则在 VibeSpace 仓库自己点卸载会删掉母版原件。
+  const legacyCleaned: string[] = [];
+  if (resolve(projectPath) !== REPO_ROOT) {
+    for (const name of LEGACY_AGENT_FILES) {
+      const rel = `.claude/agents/${name}`;
+      const abs = join(projectPath, rel);
+      try {
+        const body = await readFile(abs, "utf8");
+        if (!body.includes("vibespace-")) continue; // 用户改造过，保留
+        await unlink(abs);
+        legacyCleaned.push(rel);
+      } catch {
+        // ENOENT / 读失败：跳过即可，legacy 清理是尽力而为
+      }
     }
   }
   // 叶子→根：仅在目录已空时成功，非空 ENOTEMPTY / 不存在 ENOENT 都跳过，
@@ -271,5 +402,5 @@ export async function uninstallHarnessTemplate(
       }
     }
   }
-  return { removedCount, skippedCount, failedFiles };
+  return { removedCount, skippedCount, failedFiles, teamAgentsRemoved, legacyCleaned };
 }

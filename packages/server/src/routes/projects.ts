@@ -387,6 +387,12 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
                 r.harness && r.harness.ok ? r.harness.copied.length : 0,
               harnessSkipped:
                 r.harness && r.harness.ok ? r.harness.skipped.length : 0,
+              teamAgentsInstalled:
+                r.harness && r.harness.ok
+                  ? r.harness.copied.filter((p) =>
+                      p.startsWith(".claude/agents/team-"),
+                    ).length
+                  : 0,
               superpowersWrote:
                 r.superpowers !== null && r.superpowers.ok
                   ? r.superpowers.wrote
@@ -492,6 +498,8 @@ export async function registerProjectRoutes(app: FastifyInstance): Promise<void>
                 r.devDocs !== null ? r.devDocs.changed : null,
               harnessRemoved: r.harness.removedCount,
               harnessSkipped: r.harness.skippedCount,
+              teamAgentsRemoved: r.harness.teamAgentsRemoved,
+              legacyCleaned: r.harness.legacyCleaned.length,
               superpowersChanged:
                 r.superpowers !== null ? r.superpowers.changed : null,
               gstackInstalled: r.gstack !== null ? r.gstack.installed : null,

@@ -240,8 +240,10 @@ export function diffClaudeAgainstCatalog(catalog, localSettings) {
  *
  * Selections is { [itemId]: 'allow'|'ask'|'deny'|'off' }.
  * `customOverride` (optional) replaces the custom portion entirely.
+ * `defaultMode` (optional): 'bypassPermissions' writes permissions.defaultMode,
+ * null removes it, undefined leaves whatever is in the file untouched.
  */
-export function writeClaudeLocal(projectPath, catalog, selections, customOverride) {
+export function writeClaudeLocal(projectPath, catalog, selections, customOverride, defaultMode) {
   const p = claudeSettingsLocalPath(projectPath)
   const existing = readClaudeLocal(projectPath)
   const known = catalogKnownClaudeValues(catalog)
@@ -284,6 +286,11 @@ export function writeClaudeLocal(projectPath, catalog, selections, customOverrid
 
   const next = { ...existing }
   next.permissions = { ...(existing.permissions ?? {}), ...nextArrays }
+  if (defaultMode === null) {
+    delete next.permissions.defaultMode
+  } else if (typeof defaultMode === 'string') {
+    next.permissions.defaultMode = defaultMode
+  }
 
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, JSON.stringify(next, null, 2) + '\n', 'utf8')

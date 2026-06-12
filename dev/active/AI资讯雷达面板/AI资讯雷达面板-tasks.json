@@ -1,0 +1,61 @@
+{
+  "task": "AI资讯雷达面板",
+  "steps": [
+    {
+      "id": 1,
+      "title": "后端 radar 路由 + 注册",
+      "verify": "pnpm -F @aimon/server build 通过；curl /api/radar/daily-brief 普通与 ?force=1 返回归一化结构",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/skill-market.ts", "packages/server/src/log-bus.ts", "packages/server/src/index.ts"],
+      "write_files": ["packages/server/src/routes/radar.ts", "packages/server/src/index.ts"]
+    },
+    {
+      "id": 2,
+      "title": "后端验证脚本 radar-test.ts",
+      "verify": "pnpm -F @aimon/server exec tsx scripts/radar-test.ts 全部 PASS",
+      "status": "todo",
+      "read_files": ["packages/server/src/routes/radar.ts", "packages/server/scripts/*.ts"],
+      "write_files": ["packages/server/scripts/radar-test.ts"]
+    },
+    {
+      "id": 3,
+      "title": "前端类型镜像 + api 客户端",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"],
+      "write_files": ["packages/web/src/types.ts", "packages/web/src/api.ts"]
+    },
+    {
+      "id": 4,
+      "title": "store：activity/页签模型/切换过滤",
+      "verify": "pnpm -F @aimon/web build 通过；radar 页签跨项目保留、文件页签仍按原规则过滤",
+      "status": "todo",
+      "read_files": ["packages/web/src/store.ts"],
+      "write_files": ["packages/web/src/store.ts"]
+    },
+    {
+      "id": 5,
+      "title": "活动栏按钮 + 侧栏 RadarView",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/layout/ActivityBar.tsx", "packages/web/src/components/layout/PrimarySidebar.tsx", "packages/web/src/components/sidebar/AppearanceView.tsx", "packages/web/src/logs.ts"],
+      "write_files": ["packages/web/src/components/layout/ActivityBar.tsx", "packages/web/src/components/layout/PrimarySidebar.tsx", "packages/web/src/components/sidebar/RadarView.tsx"]
+    },
+    {
+      "id": 6,
+      "title": "EditorArea radar 渲染分支 + 详情 md 组装",
+      "verify": "pnpm -F @aimon/web build 通过",
+      "status": "todo",
+      "read_files": ["packages/web/src/components/editor/EditorArea.tsx", "packages/web/src/components/MarkdownView.tsx"],
+      "write_files": ["packages/web/src/components/editor/EditorArea.tsx", "packages/web/src/components/sidebar/RadarView.tsx"]
+    },
+    {
+      "id": 7,
+      "title": "终检与交付",
+      "verify": "两端 build + radar-test 全绿；git diff --name-only HEAD 不越白名单；handoff 附手动验收清单",
+      "status": "todo",
+      "read_files": ["dev/active/AI资讯雷达面板/AI资讯雷达面板-plan.md"],
+      "write_files": []
+    }
+  ]
+}

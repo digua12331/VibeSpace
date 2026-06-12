@@ -28,7 +28,9 @@
     "smoke:memory-parse": "node scripts/memory-parse-smoke.mjs",
     "smoke:global-skills": "node scripts/global-skills-smoke.mjs",
     "smoke:error-pattern": "node scripts/error-pattern-smoke.mjs",
-    "smoke:error-pattern-e2e": "node scripts/error-pattern-e2e-smoke.mjs"
+    "smoke:error-pattern-e2e": "node scripts/error-pattern-e2e-smoke.mjs",
+    "smoke:agent-team": "node scripts/agent-team-smoke.mjs",
+    "smoke:wechat": "node scripts/wechat-smoke.mjs"
   },
   "packageManager": "pnpm@10.20.0",
   "engines": {

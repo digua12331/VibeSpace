@@ -56,10 +56,17 @@ for f in "$SRC/.aimon/skills/"*.md; do
   copy_if_absent "$f" "$TARGET/.aimon/skills/$(basename "$f")"
 done
 
-# .claude/agents/*.md
-for f in "$SRC/.claude/agents/"*.md; do
+# templates/agent-team/team-*.md —— 通用团队 agent（不拷仓库根的 vibespace-* 专属件）。
+# 注意：本脚本是简化入口，纯拷贝、不带指纹标记；server 端装配（VibeSpace UI）
+# 会给 team 文件追加升级用的指纹行，功能更全，优先用 UI 装。
+for f in "$SRC/templates/agent-team/"team-*.md; do
   [ -e "$f" ] || continue
-  copy_if_absent "$f" "$TARGET/.claude/agents/$(basename "$f")"
+  if [ "$(basename "$f")" = "team-usage.md" ]; then
+    mkdir -p "$TARGET/.aimon/docs"
+    copy_if_absent "$f" "$TARGET/.aimon/docs/team-usage.md"
+  else
+    copy_if_absent "$f" "$TARGET/.claude/agents/$(basename "$f")"
+  fi
 done
 
 # dev/ 两份文档
@@ -99,6 +106,6 @@ echo ""
 echo "下一步必读："
 echo "  $TARGET/.aimon/CUSTOMIZE-harness.md"
 echo ""
-echo "改造完后启动一次 claude session，Task 工具菜单应能看到 vibespace-*"
-echo "（建议改名成你项目代号前缀，如 myproj-*）"
+echo "改造完后启动一次 claude session，Task 工具菜单应能看到 team-*"
+echo "（团队成员自带大脑加载协议，会先读你项目的 CLAUDE.md / dev/memory 再干活）"
 echo "============================================"

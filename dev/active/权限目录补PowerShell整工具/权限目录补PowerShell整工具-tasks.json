@@ -1,0 +1,29 @@
+{
+  "task": "权限目录补PowerShell整工具",
+  "steps": [
+    {
+      "id": 1,
+      "title": "main 仓 catalog 加 tool-powershell 条目 + vibespace 预设带上",
+      "verify": "node 断言脚本通过（tools 组含 tool-powershell/value=PowerShell；vibespace 预设含 tool-powershell=allow）",
+      "status": "todo",
+      "read_files": ["templates/cli-configs/permission-catalog.json"],
+      "write_files": ["templates/cli-configs/permission-catalog.json"]
+    },
+    {
+      "id": 2,
+      "title": "stable 仓同文件应用同样两处改动",
+      "verify": "同一 node 断言脚本指向 stable 路径通过",
+      "status": "todo",
+      "read_files": ["F:/VibeSpace/KB/AIkanban-stable/templates/cli-configs/permission-catalog.json"],
+      "write_files": ["F:/VibeSpace/KB/AIkanban-stable/templates/cli-configs/permission-catalog.json"]
+    },
+    {
+      "id": 3,
+      "title": "交付 handoff",
+      "verify": "handoff 首行为验收指引",
+      "status": "todo",
+      "read_files": [],
+      "write_files": []
+    }
+  ]
+}

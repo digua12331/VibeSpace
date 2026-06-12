@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { getProject } from "../db.js";
+import { serverLog } from "../log-bus.js";
 
 // The core library lives outside the server package (shared with scripts/).
 // Resolve it once at module init and reuse.
@@ -36,7 +37,9 @@ interface CoreLib {
   loadCatalog(): unknown;
   copyClaudeTemplate(p: string, opts?: { force?: boolean; initLocal?: boolean }): string[];
   copyCodexTemplate(p: string, opts?: { force?: boolean }): string[];
-  readClaudeLocal(p: string): { permissions: { allow: string[]; ask: string[]; deny: string[] } };
+  readClaudeLocal(p: string): {
+    permissions: { allow: string[]; ask: string[]; deny: string[]; defaultMode?: string };
+  };
   readClaudeShared(p: string): { allow: string[]; ask: string[]; deny: string[] } | null;
   diffClaudeAgainstCatalog(catalog: unknown, local: unknown): {
     selections: Record<string, "allow" | "ask" | "deny" | "off">;
@@ -47,6 +50,7 @@ interface CoreLib {
     catalog: unknown,
     selections: Record<string, string>,
     customOverride?: { allow: string[]; ask: string[]; deny: string[] },
+    defaultMode?: string | null,
   ): string;
   readCodexConfig(p: string, catalog: unknown): { values: Record<string, unknown>; managedPaths: string[] };
   writeCodexConfig(p: string, catalog: unknown, valuesByPath: Record<string, unknown>): string;
@@ -72,6 +76,9 @@ const ClaudeSaveSchema = z.object({
       deny: z.array(z.string()).default([]),
     })
     .optional(),
+  // 'bypassPermissions' writes permissions.defaultMode, null removes it,
+  // omitted leaves the file's current value untouched.
+  defaultMode: z.enum(["bypassPermissions"]).nullable().optional(),
 });
 
 const CodexSaveSchema = z.object({
@@ -136,6 +143,10 @@ export async function registerCliConfigRoutes(app: FastifyInstance): Promise<voi
         claude: {
           selections: claude.selections,
           custom: claude.custom,
+          defaultMode:
+            local.permissions.defaultMode === "bypassPermissions"
+              ? ("bypassPermissions" as const)
+              : null,
           fileExists: probe.claudeLocal.exists,
           shared,
           sharedError,
@@ -161,21 +172,40 @@ export async function registerCliConfigRoutes(app: FastifyInstance): Promise<voi
       }
       const c = await core();
       const catalog = c.loadCatalog();
-      const written: string[] = [];
-      if (parsed.data.claude) {
-        const p = c.writeClaudeLocal(
-          v.path,
-          catalog,
-          parsed.data.claude.selections,
-          parsed.data.claude.custom,
-        );
-        written.push(p);
+      const started = Date.now();
+      serverLog("info", "project", "cli-config save 开始", {
+        projectId: req.params.id,
+        meta: { defaultMode: parsed.data.claude?.defaultMode ?? null },
+      });
+      try {
+        const written: string[] = [];
+        if (parsed.data.claude) {
+          const p = c.writeClaudeLocal(
+            v.path,
+            catalog,
+            parsed.data.claude.selections,
+            parsed.data.claude.custom,
+            parsed.data.claude.defaultMode,
+          );
+          written.push(p);
+        }
+        if (parsed.data.codex) {
+          const p = c.writeCodexConfig(v.path, catalog, parsed.data.codex.values);
+          written.push(p);
+        }
+        serverLog("info", "project", `cli-config save 成功 (${Date.now() - started}ms)`, {
+          projectId: req.params.id,
+          meta: { written },
+        });
+        return { ok: true, written };
+      } catch (err) {
+        const e = err as Error;
+        serverLog("error", "project", `cli-config save 失败: ${e.message}`, {
+          projectId: req.params.id,
+          meta: { error: { name: e.name, message: e.message, stack: e.stack } },
+        });
+        throw err;
       }
-      if (parsed.data.codex) {
-        const p = c.writeCodexConfig(v.path, catalog, parsed.data.codex.values);
-        written.push(p);
-      }
-      return { ok: true, written };
     },
   );
 

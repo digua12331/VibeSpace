@@ -1,19 +1,21 @@
 import { nanoid } from "nanoid";
-import { createSession, listSessionsByProject, updateSessionPid, type Agent } from "../db.js";
-import { ptyManager } from "../pty-manager.js";
-import { statusManager } from "../status.js";
-import { injectMcpForAgent } from "../mcp-bridge.js";
-import { HUB_PROJECT_ID } from "../hub-project.js";
-import { ensureHubWorkspace, getHubWorkspaceDir } from "../hub-workspace.js";
-import { serverLog } from "../log-bus.js";
+import { createSession, listSessionsByProject, updateSessionPid, type Agent } from "./db.js";
+import { ptyManager } from "./pty-manager.js";
+import { statusManager } from "./status.js";
+import { injectMcpForAgent } from "./mcp-bridge.js";
+import { HUB_PROJECT_ID } from "./hub-project.js";
+import { ensureHubWorkspace, getHubWorkspaceDir } from "./hub-workspace.js";
+import { serverLog } from "./log-bus.js";
 
-// The hub session the feishu bridge talks to. Module-level so we can tell a
-// fresh spawn from a respawn-after-death (the latter loses conversation memory
-// and warrants a「总控台已重启」notice to feishu).
+// 通道无关的总控台会话保证器（原 feishu/hub-session.ts 平移至此，供飞书桥与
+// 微信桥共用）。The hub session the bridges talk to. Module-level so we can tell
+// a fresh spawn from a respawn-after-death (the latter loses conversation memory
+// and warrants a「总控台已重启」notice).
 let currentHubSessionId: string | null = null;
 
-// Wired by feishu/index.ts → outbound. Kept as an injected hook to avoid a
-// hub-session ↔ outbound import cycle. Null until outbound is wired (phase 2).
+// Wired by feishu/outbound.ts. Kept as an injected hook to avoid a
+// hub-session ↔ outbound import cycle. Single subscriber, owned by feishu —
+// 微信通道不注册（它只做即时问答，收不到重启提醒可接受）。
 let restartNotifier: ((text: string) => void) | null = null;
 
 export function setHubRestartNotifier(fn: (text: string) => void): void {
@@ -34,11 +36,14 @@ function findAliveHubSession(): string | null {
   return null;
 }
 
+// 单飞：飞书与微信入站可能同时触发 ensure，复用同一个在途创建，避免拉起两个总控台。
+let inFlight: Promise<{ sessionId: string; spawned: boolean }> | null = null;
+
 /**
  * Guarantee a live 总控台 (hub) claude session exists, spawning one in the
  * `__hub__` project if needed. Reuses any alive hub session first. When a
  * previously-known hub session has died and we respawn, fire the restart
- * notifier so feishu warns the owner that memory was lost.
+ * notifier so the owner is warned that memory was lost.
  *
  * Mirrors the core of routes/sessions.ts::startSession but skips the
  * HTTP-only concerns (worktree, skill injection, fastify reply). Agent is
@@ -50,11 +55,18 @@ export async function ensureHubSession(): Promise<{ sessionId: string; spawned: 
     currentHubSessionId = alive;
     return { sessionId: alive, spawned: false };
   }
+  if (inFlight) return inFlight;
+  inFlight = spawnHubSession().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
 
+async function spawnHubSession(): Promise<{ sessionId: string; spawned: boolean }> {
   const isRestart = currentHubSessionId !== null; // we had one; it's gone now
   const agent: Agent = "claude";
   const t0 = Date.now();
-  serverLog("info", "feishu", "hub-ensure 开始", {
+  serverLog("info", "hub", "hub-ensure 开始", {
     meta: { reason: isRestart ? "restart" : "spawn" },
   });
   try {
@@ -77,7 +89,7 @@ export async function ensureHubSession(): Promise<{ sessionId: string; spawned: 
     const { pid } = ptyManager.spawn({ sessionId, agent, cwd, env: {} });
     updateSessionPid(sessionId, pid);
     currentHubSessionId = sessionId;
-    serverLog("info", "feishu", `hub-ensure 成功 (${Date.now() - t0}ms)`, {
+    serverLog("info", "hub", `hub-ensure 成功 (${Date.now() - t0}ms)`, {
       sessionId,
       meta: { pid, agent, isRestart },
     });
@@ -91,7 +103,7 @@ export async function ensureHubSession(): Promise<{ sessionId: string; spawned: 
     return { sessionId, spawned: true };
   } catch (err) {
     const e = err as Error;
-    serverLog("error", "feishu", `hub-ensure 失败: ${e.message}`, {
+    serverLog("error", "hub", `hub-ensure 失败: ${e.message}`, {
       meta: { error: { name: e.name, message: e.message, stack: e.stack } },
     });
     throw e;

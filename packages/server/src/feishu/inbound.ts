@@ -6,7 +6,7 @@ import { statusManager } from "../status.js";
 import { serverLog } from "../log-bus.js";
 import { feishuClient, type FeishuInboundMessage } from "./client.js";
 import { getFeishuConfig, isSenderAllowed } from "./config.js";
-import { ensureHubSession } from "./hub-session.js";
+import { ensureHubSession } from "../hub-session.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

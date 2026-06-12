@@ -26,6 +26,10 @@ import type {
   FeishuConfigPatch,
   FeishuStatus,
   FeishuTestResult,
+  WechatConfigMasked,
+  WechatStatus,
+  WechatLoginResult,
+  WechatBindStartResult,
   DocFileContent,
   DocFileKind,
   DocTaskSummary,
@@ -82,6 +86,7 @@ import type {
   LocalAiProviderId,
   LocalAiModelsResult,
   CommitMessageResult,
+  RadarDailyBrief,
 } from './types'
 
 const BASE: string =
@@ -1230,6 +1235,38 @@ export function testFeishu(body: {
   return request<FeishuTestResult>('/api/feishu/test', jsonInit('POST', body))
 }
 
+// ---------- 微信（ilink）桥 ----------
+
+export function getWechatConfig(): Promise<WechatConfigMasked> {
+  return request<WechatConfigMasked>('/api/wechat/config')
+}
+
+export function updateWechatConfig(patch: {
+  enabled?: boolean
+}): Promise<WechatConfigMasked> {
+  return request<WechatConfigMasked>('/api/wechat/config', jsonInit('PUT', patch))
+}
+
+export function getWechatStatus(): Promise<WechatStatus> {
+  return request<WechatStatus>('/api/wechat/status')
+}
+
+export function wechatLogin(): Promise<WechatLoginResult> {
+  return request<WechatLoginResult>('/api/wechat/login', jsonInit('POST', {}))
+}
+
+export function wechatBindStart(): Promise<WechatBindStartResult> {
+  return request<WechatBindStartResult>('/api/wechat/bind-start', jsonInit('POST', {}))
+}
+
+export function wechatLogout(): Promise<WechatConfigMasked> {
+  return request<WechatConfigMasked>('/api/wechat/logout', jsonInit('POST', {}))
+}
+
+export function wechatResetBinding(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/api/wechat/reset-binding', jsonInit('POST', {}))
+}
+
 export function getClaudeSettings(): Promise<ClaudeGlobalSettings> {
   return request<ClaudeGlobalSettings>('/api/claude-settings')
 }
@@ -1343,5 +1380,13 @@ export function localAiCommitMessage(
   return request<CommitMessageResult>(
     '/api/local-ai/commit-message',
     jsonInit('POST', { projectId, provider, model }),
+  )
+}
+
+// ---------- AI 资讯雷达 ----------
+
+export function getRadarDailyBrief(force?: boolean): Promise<RadarDailyBrief> {
+  return request<RadarDailyBrief>(
+    `/api/radar/daily-brief${force ? '?force=1' : ''}`,
   )
 }
